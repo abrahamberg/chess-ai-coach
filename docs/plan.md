@@ -264,8 +264,8 @@ test('rejects unknown category', () => {
   Split return (`staticPart`/`dynamicPart`) exists **for cache breakpoints** — gateway callers place `cache_control` after each.
 - Text must match `docs/prompts.md` §2/§3/§5/§6 verbatim (templates in code, doc is source of truth).
 
-- [ ] **Steps 1–4:** failing tests (staticPart is byte-identical across two different users — cache invariant; dynamicPart contains focus areas and plan moments; empty history renders the "(none yet…)" fallback; all 13 categories appear in each prompt's category list; calibration table matches prompts.md §2.3 values) → implement → pass.
-- [ ] **Step 5: Commit** — `feat: prompt builders with cache-safe split`.
+- [x] **Steps 1–4:** failing tests (staticPart is byte-identical across two different users — cache invariant; dynamicPart contains focus areas and plan moments; empty history renders the "(none yet…)" fallback; all 13 categories appear in each prompt's category list; calibration table matches prompts.md §2.3 values) → implement → pass.
+- [x] **Step 5: Commit** — `feat: prompt builders with cache-safe split`.
 
 ### Task 4.2: Worker + analyze-game job
 

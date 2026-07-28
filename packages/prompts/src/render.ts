@@ -1,0 +1,70 @@
+import { MISTAKE_CATEGORIES } from '@chess-coach/shared';
+import type { CoachingPlan, MistakeCategory } from '@chess-coach/shared';
+
+export const MISTAKE_CATEGORIES_BLOCK = MISTAKE_CATEGORIES.join(', ');
+
+const FOCUS_AREAS_EMPTY_FALLBACK = '(none yet — this is early in your work together)';
+const RECENT_FINDINGS_EMPTY_FALLBACK = '(none yet — no findings recorded so far)';
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** Coarse relative-date phrasing for prompt text (not UI-precise). */
+export function relativeDate(date: Date, now: Date): string {
+  const days = Math.floor((startOfDay(now).getTime() - startOfDay(date).getTime()) / MS_PER_DAY);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+  return `${Math.floor(days / 30)} months ago`;
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+export interface FocusAreaSummary {
+  category: MistakeCategory;
+  status: 'active' | 'improving' | 'resolved';
+  note: string;
+  evidenceCount: number;
+  lastSeenAt: Date;
+}
+
+/** prompts.md §2.2: `- [status] category: note (seen Nx, last {date})`. */
+export function renderFocusAreasBlock(focusAreas: FocusAreaSummary[], now: Date): string {
+  if (focusAreas.length === 0) return FOCUS_AREAS_EMPTY_FALLBACK;
+  return focusAreas
+    .map(
+      (area) =>
+        `- [${area.status}] ${area.category}: ${area.note} (seen ${area.evidenceCount}x, last ${relativeDate(area.lastSeenAt, now)})`
+    )
+    .join('\n');
+}
+
+export interface RecentFinding {
+  category: MistakeCategory;
+  description: string;
+  isPositive: boolean;
+  createdAt: Date;
+}
+
+/** prompts.md §2.2: `- [+/-] category: description ({relative date})`. */
+export function renderRecentFindingsBlock(findings: RecentFinding[], now: Date): string {
+  if (findings.length === 0) return RECENT_FINDINGS_EMPTY_FALLBACK;
+  return findings
+    .map(
+      (finding) =>
+        `- [${finding.isPositive ? '+' : '-'}] ${finding.category}: ${finding.description} (${relativeDate(finding.createdAt, now)})`
+    )
+    .join('\n');
+}
+
+/** prompts.md §2.2: numbered moments with ply, kind, question, and key line. */
+export function renderCoachingPlanBlock(plan: CoachingPlan): string {
+  return plan.moments
+    .map(
+      (moment, index) =>
+        `${index + 1}. Ply ${moment.ply} (${moment.kind}): "${moment.socraticQuestion}" Key line: ${moment.keyLine}`
+    )
+    .join('\n');
+}
