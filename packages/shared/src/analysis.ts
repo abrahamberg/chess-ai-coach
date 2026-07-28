@@ -27,3 +27,17 @@ export type EngineEval = z.infer<typeof EngineEvalSchema>;
 
 export const MOVE_QUALITIES = ['good', 'inaccuracy', 'mistake', 'blunder'] as const;
 export type MoveQuality = (typeof MOVE_QUALITIES)[number];
+
+export const AnalyzeGameRequestSchema = z.object({
+  fens: z.array(z.string()).min(1),
+  depth: z.number().int().positive().optional(),
+  multiPv: z.number().int().positive().optional()
+});
+export type AnalyzeGameRequest = z.infer<typeof AnalyzeGameRequestSchema>;
+
+export const AnalyzePositionRequestSchema = z.object({
+  fen: z.string(),
+  depth: z.number().int().positive().optional(),
+  multiPv: z.number().int().positive().optional()
+});
+export type AnalyzePositionRequest = z.infer<typeof AnalyzePositionRequestSchema>;

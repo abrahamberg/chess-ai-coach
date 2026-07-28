@@ -31,4 +31,17 @@ describe('EnginePool', () => {
 
     expect(events).toEqual(['a:start', 'a:end', 'b:start', 'b:end']);
   }, 20000);
+
+  test('exposes size and a busy count that rises and falls around withEngine', async () => {
+    const busyDuring: number[] = [];
+
+    await pool.withEngine(async (engine) => {
+      busyDuring.push(pool.busy);
+      await engine.analyze(START_FEN, { depth: 6, multiPv: 1 });
+    });
+
+    expect(pool.size).toBe(1);
+    expect(busyDuring).toEqual([1]);
+    expect(pool.busy).toBe(0);
+  }, 20000);
 });

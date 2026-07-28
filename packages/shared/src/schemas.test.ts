@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { EngineEvalSchema } from './analysis.js';
+import { AnalyzeGameRequestSchema, AnalyzePositionRequestSchema, EngineEvalSchema } from './analysis.js';
 import { CoachingPlanSchema, type CoachingPlan } from './coaching-plan.js';
 import { CreditPackSchema } from './credits.js';
 import { FindingSchema } from './finding.js';
@@ -51,6 +51,32 @@ describe('EngineEvalSchema', () => {
   test('rejects a line missing moveSan', () => {
     const bad = { ...validEngineEval, lines: [{ moveUci: 'e2e4', cp: 10, mateIn: null }] };
     expect(EngineEvalSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('AnalyzeGameRequestSchema', () => {
+  test('accepts fens with optional depth and multiPv', () => {
+    const body = { fens: ['startpos-fen', 'next-fen'], depth: 12, multiPv: 3 };
+    expect(AnalyzeGameRequestSchema.safeParse(body).success).toBe(true);
+  });
+  test('accepts fens with depth/multiPv omitted', () => {
+    expect(AnalyzeGameRequestSchema.safeParse({ fens: ['startpos-fen'] }).success).toBe(true);
+  });
+  test('rejects an empty fens array', () => {
+    expect(AnalyzeGameRequestSchema.safeParse({ fens: [] }).success).toBe(false);
+  });
+  test('rejects a non-positive depth', () => {
+    expect(AnalyzeGameRequestSchema.safeParse({ fens: ['f'], depth: 0 }).success).toBe(false);
+  });
+});
+
+describe('AnalyzePositionRequestSchema', () => {
+  test('accepts a fen with optional depth and multiPv', () => {
+    const body = { fen: 'startpos-fen', depth: 12, multiPv: 2 };
+    expect(AnalyzePositionRequestSchema.safeParse(body).success).toBe(true);
+  });
+  test('rejects a missing fen', () => {
+    expect(AnalyzePositionRequestSchema.safeParse({ depth: 12 }).success).toBe(false);
   });
 });
 

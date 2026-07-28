@@ -5,9 +5,9 @@ import { Chess } from 'chess.js';
 import type { EngineLine } from '@chess-coach/shared';
 import { parseBestMove, parseInfoLine } from './uci-info-parser.js';
 
-const DEFAULT_DEPTH = 16;
-const DEFAULT_MULTI_PV = 2;
-const DEFAULT_TIMEOUT_MS = 5000;
+export const DEFAULT_DEPTH = 16;
+export const DEFAULT_MULTI_PV = 2;
+export const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_STOCKFISH_PATH = '/usr/games/stockfish';
 
 export interface AnalyzeOptions {

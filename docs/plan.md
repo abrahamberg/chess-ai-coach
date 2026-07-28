@@ -174,8 +174,8 @@ test('rejects unknown category', () => {
 **Interfaces:**
 - Produces the HTTP contract of architecture §4: `POST /analyze-game {fens, depth?, multiPv?} → {evals}`, `POST /analyze-position → {eval}`, `GET /health`. Env: `ENGINE_POOL_SIZE=2`, `ENGINE_DEFAULT_DEPTH=16`, `ENGINE_MOVE_TIMEOUT_MS=5000`, `PORT=8081`. Bodies validated with shared schemas.
 
-- [ ] **Steps 1–4:** failing inject-tests (3 fens → 3 evals in order; bad fen → 400 problem+json) → implement → pass.
-- [ ] **Step 5: Commit** — `feat: engine http service`.
+- [x] **Steps 1–4:** failing inject-tests (3 fens → 3 evals in order; bad fen → 400 problem+json) → implement → pass.
+- [x] **Step 5: Commit** — `feat: engine http service`.
 
 ---
 

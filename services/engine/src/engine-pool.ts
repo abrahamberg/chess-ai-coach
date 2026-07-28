@@ -25,6 +25,14 @@ export class EnginePool {
     await Promise.all(this.engines.map((engine) => engine.quit()));
   }
 
+  get size(): number {
+    return this.engines.length;
+  }
+
+  get busy(): number {
+    return this.engines.length - this.idle.length;
+  }
+
   private acquire(): Promise<UciEngine> {
     const engine = this.idle.pop();
     if (engine) return Promise.resolve(engine);
