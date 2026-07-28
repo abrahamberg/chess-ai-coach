@@ -17,3 +17,7 @@ export class InsufficientCreditsError extends HttpError {
 export class ConflictError extends HttpError {
   readonly status = 409;
 }
+
+export class RateLimitError extends HttpError {
+  readonly status = 429;
+}

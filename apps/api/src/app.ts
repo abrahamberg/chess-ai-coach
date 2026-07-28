@@ -2,14 +2,17 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
 import { pingDb } from './db/index.js';
 import type { Database } from './db/schema.js';
+import { registerGamesRoutes } from './routes/games.js';
 import { authHeadersPlugin, type AuthHeadersOptions } from './plugins/auth-headers.js';
 import { errorMapperPlugin } from './plugins/error-mapper.js';
 import { registerUsersRoutes } from './routes/users.js';
+import { noopJobQueue, type JobQueue } from './jobs/queue.js';
 
 export interface BuildAppOptions {
   authMode?: AuthHeadersOptions['authMode'];
   checkReady?: () => Promise<boolean>;
   db?: Kysely<Database>;
+  jobQueue?: JobQueue;
 }
 
 /** Builds the Fastify app: proxy-auth header decoration, problem+json error mapping,
@@ -39,6 +42,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   if (options.db) {
     registerUsersRoutes(app, options.db);
+    registerGamesRoutes(app, options.db, options.jobQueue ?? noopJobQueue);
   }
 
   return app;

@@ -213,8 +213,8 @@ test('rejects unknown category', () => {
 - Consumes: `parsePgn`, `detectUserColor` (Task 1.1), `ImportGameRequestSchema`.
 - Produces: `POST /api/games` → `{gameId, analysisId}` (creates `analyses` row `status:'queued'` + enqueues `analyze-game` job — job runner mocked until Phase 4); `GET /api/games`, `GET /api/games/:id`. `userColor` from request, else `detectUserColor`, else 422 problem+json `{missing:'userColor'}`. Rate limit 10 imports/day (429).
 
-- [ ] **Steps 1–4:** failing tests (valid PGN → rows exist, queued; illegal PGN → 400; ambiguous color → 422; 11th import same day → 429) → implement → pass.
-- [ ] **Step 5: Commit** — `feat: pgn game import`.
+- [x] **Steps 1–4:** failing tests (valid PGN → rows exist, queued; illegal PGN → 400; ambiguous color → 422; 11th import same day → 429) → implement → pass.
+- [x] **Step 5: Commit** — `feat: pgn game import`.
 
 ### Task 3.4: LLM gateway + key vault
 
