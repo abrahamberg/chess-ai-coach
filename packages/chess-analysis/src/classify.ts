@@ -61,7 +61,7 @@ function classifyMove(
 }
 
 /** Converts a white-perspective centipawn score to the given mover's perspective. */
-function toMoverPerspective(whiteCp: number, mover: 'white' | 'black'): number {
+export function toMoverPerspective(whiteCp: number, mover: 'white' | 'black'): number {
   return mover === 'white' ? whiteCp : -whiteCp;
 }
 
@@ -87,7 +87,7 @@ function bestLine(engineEval: EngineEval | undefined): EngineLine | undefined {
 }
 
 /** The best line's score in white-perspective centipawns, mapping mate scores to +-1000 first. */
-function whitePerspectiveCp(line: EngineLine | undefined): number {
+export function whitePerspectiveCp(line: EngineLine | undefined): number {
   if (!line) return 0;
   if (line.mateIn !== null) return mateToCp(line.mateIn);
   return line.cp ?? 0;

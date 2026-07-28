@@ -35,7 +35,7 @@
 **Interfaces:**
 - Produces: workspace commands `npm run lint|typecheck|test` at root; `@chess-coach/shared` importable by all workspaces.
 
-- [ ] **Step 1: Root package.json with workspaces**
+- [x] **Step 1: Root package.json with workspaces**
 
 ```json
 {
@@ -50,9 +50,9 @@
 }
 ```
 
-- [ ] **Step 2: tsconfig.base.json** — `strict`, `noUncheckedIndexedAccess`, `module: NodeNext`, `composite: true`. Each workspace tsconfig extends it with `references`.
+- [x] **Step 2: tsconfig.base.json** — `strict`, `noUncheckedIndexedAccess`, `module: NodeNext`, `composite: true`. Each workspace tsconfig extends it with `references`.
 
-- [ ] **Step 3: Seed `packages/shared`** with `src/index.ts` exporting a placeholder-free constant to prove the pipeline:
+- [x] **Step 3: Seed `packages/shared`** with `src/index.ts` exporting a placeholder-free constant to prove the pipeline:
 
 ```ts
 export const MISTAKE_CATEGORIES = ['hanging_piece','missed_tactic','allowed_tactic',
@@ -65,9 +65,9 @@ export type RatingBand = typeof RATING_BANDS[number];
 
 And a trivial test `src/index.test.ts` asserting `MISTAKE_CATEGORIES.length === 13`.
 
-- [ ] **Step 4: Verify** — `npm install && npm run typecheck && npm test` all pass.
+- [x] **Step 4: Verify** — `npm install && npm run typecheck && npm test` all pass.
 
-- [ ] **Step 5: Commit** — `git init` (if needed), `chore: scaffold monorepo workspaces`.
+- [x] **Step 5: Commit** — `git init` (if needed), `chore: scaffold monorepo workspaces`.
 
 ### Task 0.2: Shared zod schemas
 
@@ -84,7 +84,7 @@ And a trivial test `src/index.test.ts` asserting `MISTAKE_CATEGORIES.length === 
   `UserProfileSchema`, `CreditPackSchema ('small'|'medium'|'large')`,
   `ThreadSchema`/`Thread` (conversation-ledger entry, architecture §6.5).
 
-- [ ] **Step 1: Write failing tests** — for each schema: a valid fixture parses; an invalid one (bad enum value, missing field, >8 moments) fails. Example:
+- [x] **Step 1: Write failing tests** — for each schema: a valid fixture parses; an invalid one (bad enum value, missing field, >8 moments) fails. Example:
 
 ```ts
 import { CoachingPlanSchema } from './coaching-plan';
@@ -95,10 +95,10 @@ test('rejects unknown category', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests — fail** (`npm test -w packages/shared`).
-- [ ] **Step 3: Implement schemas** exactly per `architecture.md` §6 (EngineEval §6.2, CoachingPlan §6.3, SessionOutcome §6.4). Derive types with `z.infer`.
-- [ ] **Step 4: Tests pass.**
-- [ ] **Step 5: Commit** — `feat: shared zod schemas for API contracts`.
+- [x] **Step 2: Run tests — fail** (`npm test -w packages/shared`).
+- [x] **Step 3: Implement schemas** exactly per `architecture.md` §6 (EngineEval §6.2, CoachingPlan §6.3, SessionOutcome §6.4). Derive types with `z.infer`.
+- [x] **Step 4: Tests pass.**
+- [x] **Step 5: Commit** — `feat: shared zod schemas for API contracts`.
 
 ---
 
@@ -115,11 +115,11 @@ test('rejects unknown category', () => {
   (positions[0] = start, ply 0, null move). Throws `InvalidPgnError` (exported) on illegal/corrupt PGN.
 - Produces: `detectUserColor(headers, usernames: {lichess?: string; chesscom?: string; displayName: string}): 'white'|'black'|null` (case-insensitive match on White/Black headers).
 
-- [ ] **Step 1: Failing tests** — Scholar's mate PGN → 8 positions (7 plies + start); multi-game PGN → parses first game; garbage → `InvalidPgnError`; headers extracted; `detectUserColor` matches case-insensitively and returns null when no match.
-- [ ] **Step 2: Run — fail.**
-- [ ] **Step 3: Implement with `chess.js`** (`loadPgn`, walk `history({verbose:true})` replaying to collect FENs).
-- [ ] **Step 4: Run — pass.**
-- [ ] **Step 5: Commit** — `feat: pgn parsing to position list`.
+- [x] **Step 1: Failing tests** — Scholar's mate PGN → 8 positions (7 plies + start); multi-game PGN → parses first game; garbage → `InvalidPgnError`; headers extracted; `detectUserColor` matches case-insensitively and returns null when no match.
+- [x] **Step 2: Run — fail.**
+- [x] **Step 3: Implement with `chess.js`** (`loadPgn`, walk `history({verbose:true})` replaying to collect FENs).
+- [x] **Step 4: Run — pass.**
+- [x] **Step 5: Commit** — `feat: pgn parsing to position list`.
 
 ### Task 1.2: Move classification
 
@@ -132,9 +132,9 @@ test('rejects unknown category', () => {
   `ClassifiedMove = { ply: number; moveSan: string; mover: 'white'|'black'; isUserMove: boolean; cpLoss: number; quality: MoveQuality; bestLineSan: string[]; evalAfterCp: number }`.
 - Key logic (write exactly): eval from mover's perspective; `cpLoss = clamp(bestCp - playedCp, 0, 1000)`; mate scores map to ±1000cp before subtraction; thresholds from Global Constraints.
 
-- [ ] **Step 1: Failing tests** — hand-built eval fixtures: cpLoss 0 → `good`; 75 → `inaccuracy`; 150 → `mistake`; 400 → `blunder`; mate-missed maps to 1000; black-to-move perspective flip is correct (the classic sign bug — test it explicitly).
-- [ ] **Step 2: fail.** **Step 3: implement** (small pure functions: `toMoverPerspective`, `mateToCp`, `qualityFor(cpLoss)`). **Step 4: pass.**
-- [ ] **Step 5: Commit** — `feat: cp-loss move classification`.
+- [x] **Step 1: Failing tests** — hand-built eval fixtures: cpLoss 0 → `good`; 75 → `inaccuracy`; 150 → `mistake`; 400 → `blunder`; mate-missed maps to 1000; black-to-move perspective flip is correct (the classic sign bug — test it explicitly).
+- [x] **Step 2: fail.** **Step 3: implement** (small pure functions: `toMoverPerspective`, `mateToCp`, `qualityFor(cpLoss)`). **Step 4: pass.**
+- [x] **Step 5: Commit** — `feat: cp-loss move classification`.
 
 ### Task 1.3: Critical-moment candidates
 
@@ -146,8 +146,8 @@ test('rejects unknown category', () => {
   `CandidateMoment = { ply: number; kind: 'user_mistake'|'missed_chance'|'turning_point'; cpLoss: number }`.
 - Rules (specs §4.2.3): user mistakes/blunders; user `good` moves where a ≥300cp better alternative existed (missed_chance uses multiPv line gap); plies where white-perspective eval crosses ±150. No cap here (planner LLM prioritizes); sorted by ply; deduped by ply (priority: user_mistake > missed_chance > turning_point).
 
-- [ ] **Steps 1–4:** failing tests with fixture games covering each rule + dedup, then implement, then pass.
-- [ ] **Step 5: Commit** — `feat: critical moment detection`.
+- [x] **Steps 1–4:** failing tests with fixture games covering each rule + dedup, then implement, then pass.
+- [x] **Step 5: Commit** — `feat: critical moment detection`.
 
 ---
 
