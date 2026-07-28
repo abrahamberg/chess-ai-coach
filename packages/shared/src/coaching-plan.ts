@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MISTAKE_CATEGORIES } from './index.js';
+import { MISTAKE_CATEGORIES } from './constants.js';
 
 export const MomentKindSchema = z.enum([
   'user_mistake',

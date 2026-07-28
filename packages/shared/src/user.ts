@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RATING_BANDS } from './index.js';
+import { RATING_BANDS } from './constants.js';
 
 export const UserProfileSchema = z.object({
   id: z.string().uuid(),

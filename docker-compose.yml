@@ -1,0 +1,114 @@
+x-node-dev: &node-dev
+  image: node:22-slim
+  working_dir: /app
+  volumes:
+    - .:/app
+  environment: &node-dev-env
+    DATABASE_URL: postgresql://chess_coach:chess_coach@postgres:5432/chess_coach
+    ENGINE_URL: http://engine:8081
+    LLM_KEY_MASTER_KEY: SDtgaBVHXZO3s7NF/eK8S7kF/2lJ6hPVO9NRI+XciQg=
+    LLM_STANDARD_MODEL_ANTHROPIC: ${LLM_STANDARD_MODEL_ANTHROPIC:-claude-fake}
+    LLM_STANDARD_MODEL_OPENAI: ${LLM_STANDARD_MODEL_OPENAI:-gpt-fake}
+    LLM_LIGHT_MODEL_ANTHROPIC: ${LLM_LIGHT_MODEL_ANTHROPIC:-claude-fake-light}
+    LLM_LIGHT_MODEL_OPENAI: ${LLM_LIGHT_MODEL_OPENAI:-gpt-fake-light}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    LLM_FAKE: ${LLM_FAKE:-0}
+    AUTH_MODE: ${AUTH_MODE:-dev-stub}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: chess_coach
+      POSTGRES_USER: chess_coach
+      POSTGRES_PASSWORD: chess_coach
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U chess_coach']
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  engine:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.engine
+    ports:
+      - '8081:8081'
+
+  migrate:
+    <<: *node-dev
+    command: npm run migrate --workspace=@chess-coach/api
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *node-dev
+    command: npm run dev --workspace=@chess-coach/api
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      engine:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *node-dev
+    command: npm run dev:worker --workspace=@chess-coach/api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      engine:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+
+  web-dev:
+    image: node:22-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: npm run dev --workspace=@chess-coach/web -- --host
+    ports:
+      - '5173:5173'
+    depends_on:
+      - api
+
+  # Optional — only needed to exercise the real proxy-auth path (design.md/architecture.md §11).
+  # Daily dev uses AUTH_MODE=dev-stub instead (see docs/dev-setup.md); this profile
+  # requires real Google + Lichess OAuth app credentials, which are never checked in.
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    profiles: ['auth']
+    command:
+      - --http-address=0.0.0.0:4180
+      - --upstreams=http://api:3000
+      - --email-domain=*
+      - --set-xauthrequest=true
+      - --skip-auth-route=^/api/stripe/webhook$
+      - --skip-auth-route=^/healthz$
+      - --skip-auth-route=^/readyz$
+    # OAUTH2_PROXY_CLIENT_ID/_SECRET/_COOKIE_SECRET must be set in a .env file
+    # (see docs/dev-setup.md) before `docker compose --profile auth up` will
+    # actually authenticate anyone — these placeholders just let the file
+    # parse without a .env present for everyday (non-auth-profile) dev.
+    environment:
+      OAUTH2_PROXY_PROVIDER: google
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:-unset-see-docs-dev-setup}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:-unset-see-docs-dev-setup}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:-unset-see-docs-dev-setup}
+    ports:
+      - '4180:4180'
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:

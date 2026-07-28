@@ -9,7 +9,7 @@ WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/
 COPY services/engine/package.json services/engine/
-RUN npm ci --workspace=@chess-coach/shared --workspace=@chess-coach/engine
+RUN npm ci --workspace=@chess-coach/shared --workspace=@chess-coach/engine --include-workspace-root
 
 COPY packages/shared packages/shared
 COPY services/engine services/engine
@@ -17,4 +17,9 @@ RUN npm run typecheck -- --build services/engine
 
 ENV PORT=8081
 EXPOSE 8081
-CMD ["node", "--experimental-strip-types", "services/engine/src/server.ts"]
+# tsx, not plain node --experimental-strip-types: workspace packages' exports
+# point at raw .ts source (e.g. @chess-coach/shared -> src/index.ts), whose
+# own NodeNext-style `./foo.js` relative imports (really `./foo.ts`) plain
+# Node's type-stripping does not resolve. `npm run typecheck` above is the
+# build-time type-safety gate; this is just the runtime loader.
+CMD ["npx", "tsx", "services/engine/src/server.ts"]

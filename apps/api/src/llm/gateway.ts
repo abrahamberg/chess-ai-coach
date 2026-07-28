@@ -5,6 +5,7 @@ import * as creditsRepo from '../db/repositories/credits.js';
 import * as llmKeysRepo from '../db/repositories/llm-keys.js';
 import type { Database } from '../db/schema.js';
 import { anthropicModel } from './anthropic.js';
+import { buildFakeModel } from './fake.js';
 import { computeCredits, type UsageTokens } from './metering.js';
 import { openaiModel } from './openai.js';
 import type { KeyVault } from './key-vault.js';
@@ -18,6 +19,9 @@ export interface GatewayConfig {
   modelIds: Record<Tier, Record<LlmProvider, string>>;
   /** architecture §8: standard=1, light=0.25 by default (CREDIT_MULT_STANDARD/_LIGHT). */
   tierMultipliers?: Record<Tier, number>;
+  /** Task 7.2: LLM_FAKE=1 local-dev/smoke-test mode — every getModelForUser
+   * call returns a canned MockLanguageModelV1 stream, no keys or DB lookups. */
+  fake?: boolean;
 }
 
 export interface ModelResolution {
@@ -37,6 +41,10 @@ export async function getModelForUser(
   userId: string,
   tier: Tier
 ): Promise<ModelResolution> {
+  if (config.fake) {
+    return { model: buildFakeModel(), metered: false, provider: 'anthropic', modelId: 'llm-fake' };
+  }
+
   const byok = await resolveByokKey(db, config.keyVault, userId);
   if (byok) {
     const modelId = config.modelIds[tier][byok.provider];
@@ -114,6 +122,6 @@ function platformProviderFor(config: GatewayConfig): LlmProvider {
   return config.platformKeys.anthropic ? 'anthropic' : 'openai';
 }
 
-function buildModel(provider: LlmProvider, apiKey: string, modelId: string): LanguageModel {
+export function buildModel(provider: LlmProvider, apiKey: string, modelId: string): LanguageModel {
   return provider === 'anthropic' ? anthropicModel(apiKey, modelId) : openaiModel(apiKey, modelId);
 }

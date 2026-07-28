@@ -71,6 +71,15 @@ describe('llm gateway', () => {
       expect(resolution.provider).toBe('anthropic');
       expect(resolution.metered).toBe(false);
     });
+
+    test('Task 7.2: config.fake short-circuits to a canned model, never touching keys or the DB', async () => {
+      const fakeConfig: GatewayConfig = { ...config, fake: true };
+
+      const resolution = await getModelForUser(db, fakeConfig, 'nonexistent-user-id', 'standard');
+
+      expect(resolution.metered).toBe(false);
+      expect(resolution.model).toBeDefined();
+    });
   });
 
   describe('recordUsage', () => {

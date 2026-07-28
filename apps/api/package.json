@@ -6,6 +6,9 @@
   "exports": { ".": "./src/app.ts" },
   "types": "./src/app.ts",
   "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "migrate": "tsx src/db/migrate-cli.ts",
     "test": "vitest run"
   },
   "dependencies": {

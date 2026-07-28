@@ -412,7 +412,7 @@ behavior are specified there; do not invent visual design in code.
 **Files:**
 - Create: `docker-compose.yml` (postgres, engine, api, worker, web-dev, oauth2-proxy in optional profile), `docs/dev-setup.md`
 
-- [ ] **Steps 1–5:** compose up with `AUTH_MODE=dev-stub` → end-to-end smoke script (`scripts/smoke.sh`: import PGN → poll ready → create session with mocked LLM env `LLM_FAKE=1` flag in gateway returning canned stream) passes → commit `chore: local dev compose and smoke test`.
+- [x] **Steps 1–5:** compose up with `AUTH_MODE=dev-stub` → end-to-end smoke script (`scripts/smoke.sh`: import PGN → poll ready → create session with mocked LLM env `LLM_FAKE=1` flag in gateway returning canned stream) passes → commit `chore: local dev compose and smoke test`.
 
 ---
 

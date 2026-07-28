@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MISTAKE_CATEGORIES } from './index.js';
+import { MISTAKE_CATEGORIES } from './constants.js';
 import { PlayerColorSchema } from './game.js';
 
 export const FocusAreaSummarySchema = z.object({
