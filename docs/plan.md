@@ -354,12 +354,16 @@ test('rejects unknown category', () => {
 
 ## Phase 6 — Web app
 
+**Every task in this phase implements `docs/design.md` — read it first.** Layouts,
+breakpoints (768/1080), color/typography tokens, component props, and per-screen
+behavior are specified there; do not invent visual design in code.
+
 ### Task 6.1: SPA shell + API client
 
 **Files:**
-- Create: `apps/web` (Vite react-ts), `src/api/client.ts` (typed fetch using shared schemas), `src/App.tsx` routing (`/import`, `/games`, `/session/:id`, `/dashboard`, `/settings`), TanStack Query setup, tests (Vitest + Testing Library)
+- Create: `apps/web` (Vite react-ts), `src/api/client.ts` (typed fetch using shared schemas), `src/App.tsx` routing (`/import`, `/games`, `/session/:id`, `/dashboard`, `/settings`), `src/components/AppShell.tsx` (design.md §3: bottom tab bar <1080 px, icon rail ≥1080 px), `src/styles/tokens.css` (design.md §2.1 tokens, light+dark), TanStack Query setup, tests (Vitest + Testing Library)
 
-- [ ] **Steps 1–5:** failing test (client parses `/users/me` fixture with `UserProfileSchema`; unknown fields tolerated) → implement → pass → commit `feat: web shell and typed api client`.
+- [ ] **Steps 1–5:** failing tests (client parses `/users/me` fixture with `UserProfileSchema`, unknown fields tolerated; AppShell renders tab bar vs rail per viewport — matchMedia mock; tokens.css defines every §2.1 variable in both themes) → implement → pass → commit `feat: web shell, design tokens, typed api client`.
 
 ### Task 6.2: Import flow + analysis progress
 
@@ -371,14 +375,16 @@ test('rejects unknown category', () => {
 ### Task 6.3: Session page — board + chat
 
 **Files:**
-- Create: `src/features/session/SessionPage.tsx`, `src/features/board/{CoachBoard,AnnotationLayer,ExplorePanel}.tsx`, `src/features/chat/{ChatPane,MessageList,ToolActivity}.tsx`, `src/hooks/{useCoachChat.ts,useWasmEngine.ts}`, tests
+- Create: `src/features/session/SessionPage.tsx`, `src/features/board/{CoachBoard,MiniBoard,MoveStrip,AnnotationLayer,ExplorePanel}.tsx`, `src/features/chat/{ChatPane,MessageList,MoveCard,PositionDivider,ToolActivity,SessionSummaryCard}.tsx`, `src/hooks/{useCoachChat.ts,useWasmEngine.ts,useBoardDock.ts}`, tests
 
 **Interfaces:**
-- `useCoachChat(sessionId)`: wraps AI SDK `useChat` against our SSE endpoint; executes client tools: `show_position {ply}` → set board FEN from game positions + POST tool-result; `annotate_board` → arrows/highlights props for `CoachBoard`; exposes `sendBoardMove(san, fen)` formatting the `[board_move]` message (prompts.md §2.5).
-- `CoachBoard`: react-chessboard wrapper, props `{fen, arrows, highlights, onUserMove}` — presentational only.
-- `useWasmEngine`: lazy-loads stockfish.js in a Web Worker for the collapsed ExplorePanel; evals labeled "exploration only", never sent to server.
+- Layout per design.md §5: side-by-side ≥768 px (board ≤640 px + chat column); mobile = board docked top, chat below, `useBoardDock` collapsing to 96 px mini-board on chat scroll-up/keyboard-open and auto-expanding on coach `show_position`.
+- `useCoachChat(sessionId)`: wraps AI SDK `useChat` against our SSE endpoint; executes client tools: `show_position {ply}` → set board FEN from game positions + POST tool-result; `annotate_board` → arrows/highlights props for `CoachBoard`; exposes `sendBoardMove(san, fen)` formatting the `[board_move]` message (prompts.md §2.5). `update_threads` and server-tool frames render nothing (design.md §5.3).
+- `CoachBoard`: react-chessboard wrapper, props per design.md §6 `{fen, orientation, arrows, highlights, mode:'answer'|'peek', onUserMove}` — presentational only; answer-mode moves show the 2 s undo pill before send (design.md §5.4).
+- `MoveStrip {sanMoves, currentPly, momentPlies, onSelect}`: peek-mode navigation; snaps back on next coach `show_position`.
+- `useWasmEngine`: lazy-loads stockfish.js in a Web Worker for ExplorePanel; word-based evals only, labeled per design.md §5.6, never sent to server.
 
-- [ ] **Steps 1–5:** failing tests (mock SSE emitting show_position → board fen updates + tool-result POSTed; user drags a move → `[board_move]` message sent; annotations clear on next show_position) → implement → pass → commit `feat: coaching session ui`.
+- [ ] **Steps 1–5:** failing tests (mock SSE emitting show_position → board fen updates + tool-result POSTed + docked board expands; user drags a move in answer mode → undo pill then `[board_move]` sent, in peek mode → nothing sent; annotations clear on next show_position; auto-scroll suppressed when user is scrolled up; `update_threads` frame renders nothing) → implement → pass → commit `feat: coaching session ui`.
 
 ### Task 6.4: Dashboard + settings
 

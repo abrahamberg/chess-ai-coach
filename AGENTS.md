@@ -12,6 +12,8 @@ Socratically while tracking their progress over time. Read before coding:
 - `docs/specs.md` — what we're building and why
 - `docs/architecture.md` — how it fits together (layout, DB, agent, K8s)
 - `docs/prompts.md` — the production LLM prompts (code must match this doc)
+- `docs/design.md` — UI/UX: layouts, breakpoints, tokens, components (frontend
+  code must match this doc; change the doc first if a deviation is needed)
 - `docs/plan.md` — the build order; implement tasks in sequence
 
 ## Golden rules

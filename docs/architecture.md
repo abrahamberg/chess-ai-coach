@@ -562,6 +562,9 @@ every route parses body/params with the shared zod schemas.
 
 ## 10. Frontend structure (`apps/web`)
 
+Visual/UX contract: `docs/design.md` (tokens, breakpoints, per-screen layouts,
+component inventory). This section covers code structure only.
+
 - **features/import** — PGN paste/upload, Lichess game picker, side-detection confirm.
 - **features/board** — `CoachBoard` (react-chessboard wrapper), annotations layer,
   move-input mode, WASM-engine exploration panel (collapsed by default).

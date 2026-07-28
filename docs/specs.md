@@ -196,6 +196,11 @@ clamps them to the nearest band.
   (`architecture.md` §8.1–8.4).
 - **N10** Layering: agent tools and routes never contain SQL; all data access goes
   tool/route → service (invariants) → repository (only place with queries).
+- **N11** UI/UX implements `docs/design.md` exactly: mobile-first responsive
+  (usable one-handed at 360 px; board docked top with collapse-to-mini on
+  mobile, side-by-side ≥768 px), 4-destination navigation, WCAG AA, no raw
+  engine output anywhere outside the labeled Explore panel. Design deviations
+  require updating design.md first.
 
 ## 6. Out of scope (v1)
 
