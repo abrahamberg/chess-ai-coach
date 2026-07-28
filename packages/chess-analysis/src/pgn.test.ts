@@ -42,6 +42,26 @@ const PROMOTION_PGN = `[Event "Test"]
 
 const GARBAGE_PGN = 'this is not a pgn at all !! 1231234';
 
+const FROM_POSITION_FEN = 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3';
+
+const FROM_POSITION_PGN = `[Event "Test"]
+[White "Alice"]
+[Black "Bob"]
+[Result "*"]
+[SetUp "1"]
+[FEN "${FROM_POSITION_FEN}"]
+
+3. Bc4 Nf6 4. Ng5 *`;
+
+const ILLEGAL_FEN_HEADER_PGN = `[Event "Test"]
+[White "Alice"]
+[Black "Bob"]
+[Result "*"]
+[SetUp "1"]
+[FEN "not-a-fen"]
+
+*`;
+
 describe('parsePgn', () => {
   test('parses scholars mate into a position for every ply, ending in checkmate', () => {
     const game = parsePgn(SCHOLARS_MATE_PGN);
@@ -107,6 +127,48 @@ describe('parsePgn', () => {
     expect(whitePromotion?.mover).toBe('white');
     expect(blackPromotion?.moveUci).toBe('g2h1q');
     expect(blackPromotion?.mover).toBe('black');
+  });
+
+  test('replays from a custom [FEN]/[SetUp] starting position instead of the standard array', () => {
+    const game = parsePgn(FROM_POSITION_PGN);
+
+    expect(game.headers['FEN']).toBe(FROM_POSITION_FEN);
+    expect(game.positions).toHaveLength(4);
+
+    const start = game.positions[0]!;
+    expect(start).toEqual({
+      ply: 0,
+      fen: FROM_POSITION_FEN,
+      moveSan: null,
+      moveUci: null,
+      mover: null
+    });
+
+    expect(game.positions[1]).toEqual({
+      ply: 1,
+      fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3',
+      moveSan: 'Bc4',
+      moveUci: 'f1c4',
+      mover: 'white'
+    });
+    expect(game.positions[2]).toEqual({
+      ply: 2,
+      fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4',
+      moveSan: 'Nf6',
+      moveUci: 'g8f6',
+      mover: 'black'
+    });
+    expect(game.positions[3]).toEqual({
+      ply: 3,
+      fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p1N1/2B1P3/8/PPPP1PPP/RNBQK2R b KQkq - 5 4',
+      moveSan: 'Ng5',
+      moveUci: 'f3g5',
+      mover: 'white'
+    });
+  });
+
+  test('throws InvalidPgnError when the [FEN] header is not a legal FEN', () => {
+    expect(() => parsePgn(ILLEGAL_FEN_HEADER_PGN)).toThrow(InvalidPgnError);
   });
 
   test('throws InvalidPgnError on corrupt PGN', () => {

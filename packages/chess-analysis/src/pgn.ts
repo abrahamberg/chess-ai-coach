@@ -100,10 +100,20 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Replays a loaded game's moves on a fresh board, collecting the FEN after every ply. */
+/**
+ * Replays a loaded game's moves on a board seeded at the game's actual
+ * starting position, collecting the FEN after every ply.
+ *
+ * The starting position is usually the standard array, but a PGN carrying a
+ * `[FEN]` header (with or without `[SetUp "1"]`, which chess.js honors either
+ * way) starts from that custom position instead — reading it off the first
+ * move's `before` FEN (or, for a zero-move game, off the loaded game's
+ * current FEN) keeps this correct without re-parsing headers ourselves.
+ */
 function buildPositions(chess: Chess): ParsedPosition[] {
   const moves = chess.history({ verbose: true });
-  const replay = new Chess();
+  const startingFen = moves[0]?.before ?? chess.fen();
+  const replay = new Chess(startingFen);
   const positions: ParsedPosition[] = [startingPosition(replay.fen())];
 
   for (const move of moves) {
