@@ -70,10 +70,17 @@ function mockFetch(session: SessionFixture = {}, extra: (path: string) => Respon
     }
     if (path === '/api/games/game-1') {
       return Promise.resolve(
-        new Response(JSON.stringify({ id: 'game-1', pgn: PGN, userColor: 'black' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' }
-        })
+        new Response(
+          JSON.stringify({
+            id: 'game-1',
+            pgn: PGN,
+            userColor: 'black',
+            whiteName: 'daniel',
+            blackName: 'Marta',
+            result: '1-0'
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
       );
     }
     throw new Error(`unexpected fetch: ${path}`);

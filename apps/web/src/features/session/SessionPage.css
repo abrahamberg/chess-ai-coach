@@ -1,10 +1,18 @@
-/* design.md §5: the session screen. Desktop = board column + chat column
- * side by side; mobile/tablet = board docked top, chat scrolls beneath. */
+/* design.md §5: the session screen. A persistent header (game context) on
+ * top; below it, desktop = board column + chat column side by side,
+ * mobile/tablet = board docked top, chat scrolls beneath. */
 
 .session-page {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+.session-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .session-board-column {
@@ -27,6 +35,23 @@
   background: none;
   border: none;
   color: var(--accent);
+  font-weight: 600;
+  padding: 0 0 0 6px;
+}
+
+.peek-pill {
+  align-self: center;
+  background: color-mix(in srgb, var(--annotate-2) 15%, var(--surface-2));
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 14px;
+  margin: 0;
+}
+
+.peek-pill button {
+  background: none;
+  border: none;
+  color: var(--annotate-2);
   font-weight: 600;
   padding: 0 0 0 6px;
 }
@@ -54,12 +79,12 @@
 }
 
 /* --- mobile / tablet: board docked top, chat scrolls below --- */
-.session-page.mobile {
+.session-body.mobile {
   flex: 1;
   min-height: 0;
 }
 
-.session-page.mobile .session-board-column {
+.session-body.mobile .session-board-column {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -67,7 +92,7 @@
   border-bottom: 1px solid rgb(0 0 0 / 8%);
 }
 
-.session-page.mobile .chat-pane {
+.session-body.mobile .chat-pane {
   flex: 1;
   min-height: 0;
 }
@@ -82,19 +107,19 @@
 }
 
 /* --- desktop: board column | chat column, side by side --- */
-.session-page.desktop {
+.session-body.desktop {
   flex-direction: row;
   overflow: hidden;
 }
 
-.session-page.desktop .session-board-column {
+.session-body.desktop .session-board-column {
   width: 640px;
   max-width: 55%;
   margin: 0 auto;
   justify-content: center;
 }
 
-.session-page.desktop .chat-pane {
+.session-body.desktop .chat-pane {
   width: 420px;
   flex: 0 0 420px;
   border-left: 1px solid rgb(0 0 0 / 8%);

@@ -5,6 +5,8 @@
 }
 
 .analysis-progress__board {
+  width: 100%;
+  aspect-ratio: 1;
   opacity: 0.35;
   pointer-events: none;
   border-radius: 12px;

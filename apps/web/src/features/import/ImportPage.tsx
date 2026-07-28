@@ -16,6 +16,7 @@ import { AnalysisProgress } from './AnalysisProgress.js';
 import { ColorConfirm } from './ColorConfirm.js';
 import { LichessGamePicker } from './LichessGamePicker.js';
 import { PgnPasteForm } from './PgnPasteForm.js';
+import { PgnUploadForm } from './PgnUploadForm.js';
 import './ImportPage.css';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -30,7 +31,7 @@ function finalFenOf(pgn: string): string {
 }
 
 const SessionSummarySchema = z.object({ id: z.string() });
-type ImportTab = 'paste' | 'lichess';
+type ImportTab = 'paste' | 'upload' | 'lichess';
 
 /** Import a game, watch its analysis (SSE), and hand off into a coaching
  * session once it's ready. Composes PgnPasteForm + ColorConfirm; no fetching
@@ -107,13 +108,16 @@ export function ImportPage(): ReactNode {
             <button type="button" aria-pressed={tab === 'paste'} onClick={() => setTab('paste')}>
               Paste
             </button>
+            <button type="button" aria-pressed={tab === 'upload'} onClick={() => setTab('upload')}>
+              Upload
+            </button>
             <button type="button" aria-pressed={tab === 'lichess'} onClick={() => setTab('lichess')}>
               From Lichess
             </button>
           </div>
-          {tab === 'paste' ? (
-            <PgnPasteForm onSubmit={(body) => importPgn(body.pgn, body.source, body.userColor)} />
-          ) : (
+          {tab === 'paste' && <PgnPasteForm onSubmit={(body) => importPgn(body.pgn, body.source, body.userColor)} />}
+          {tab === 'upload' && <PgnUploadForm onSubmit={(body) => importPgn(body.pgn, body.source)} />}
+          {tab === 'lichess' && (
             <LichessGamePicker
               games={lichessQuery.data ?? []}
               isLoading={lichessQuery.isLoading}

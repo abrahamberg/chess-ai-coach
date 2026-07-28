@@ -74,6 +74,25 @@ describe('useSessionBoardState', () => {
     expect(result.current.mode).toBe('peek');
   });
 
+  test('design.md §5.4: backToCoach restores answer mode at the last coach-set ply, not wherever peek left off', () => {
+    const { result } = renderHook(() => useSessionBoardState(POSITIONS));
+
+    act(() => {
+      result.current.handleToolCall({ toolCallId: '5', toolName: 'show_position', args: { ply: 0 } });
+    });
+    act(() => {
+      result.current.peekAt(4);
+    });
+    expect(result.current.mode).toBe('peek');
+
+    act(() => {
+      result.current.backToCoach();
+    });
+
+    expect(result.current.mode).toBe('answer');
+    expect(result.current.fen).toBe(POSITIONS[0]?.fen);
+  });
+
   test('the next show_position snaps back to answer mode at the coach ply', () => {
     const { result } = renderHook(() => useSessionBoardState(POSITIONS));
 

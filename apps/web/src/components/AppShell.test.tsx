@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { AppShell } from './AppShell.js';
 
@@ -24,9 +25,11 @@ describe('AppShell (design.md §3)', () => {
     mockMatchMedia(false);
 
     render(
-      <AppShell>
-        <div>content</div>
-      </AppShell>
+      <MemoryRouter>
+        <AppShell>
+          <div>content</div>
+        </AppShell>
+      </MemoryRouter>
     );
 
     expect(screen.getByRole('navigation', { name: /tab bar/i })).toBeInTheDocument();
@@ -37,9 +40,11 @@ describe('AppShell (design.md §3)', () => {
     mockMatchMedia(true);
 
     render(
-      <AppShell>
-        <div>content</div>
-      </AppShell>
+      <MemoryRouter>
+        <AppShell>
+          <div>content</div>
+        </AppShell>
+      </MemoryRouter>
     );
 
     expect(screen.getByRole('navigation', { name: /icon rail/i })).toBeInTheDocument();
@@ -50,9 +55,11 @@ describe('AppShell (design.md §3)', () => {
     mockMatchMedia(true);
 
     render(
-      <AppShell>
-        <div>unique-content-marker</div>
-      </AppShell>
+      <MemoryRouter>
+        <AppShell>
+          <div>unique-content-marker</div>
+        </AppShell>
+      </MemoryRouter>
     );
 
     expect(screen.getByText('unique-content-marker')).toBeInTheDocument();

@@ -1,6 +1,7 @@
 import { Chess } from 'chess.js';
 import type { ReactNode } from 'react';
 import { Chessboard, type ChessboardOptions, type PieceDropHandlerArgs } from 'react-chessboard';
+import './CoachBoard.css';
 
 export interface BoardArrow {
   from: string;
@@ -63,5 +64,9 @@ export function CoachBoard({
     )
   };
 
-  return <Chessboard options={options} />;
+  return (
+    <div className={mode === 'peek' ? 'coach-board-frame coach-board-frame--peek' : 'coach-board-frame'}>
+      <Chessboard options={options} />
+    </div>
+  );
 }

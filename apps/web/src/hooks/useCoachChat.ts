@@ -34,6 +34,9 @@ export interface UseCoachChatResult {
    * turns / once the coach's text resumes. ToolActivity decides which tool
    * names actually render something (most are backstage). */
   activeToolName: string | null;
+  /** design.md §5.7: true while waiting for the coach's first token this
+   * turn (the empty assistant placeholder hasn't received any text yet). */
+  isThinking: boolean;
   sendMessage: (content: string) => Promise<void>;
 }
 
@@ -121,5 +124,7 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
     [postTurn]
   );
 
-  return { messages, isStreaming, activeToolName, sendMessage };
+  const isThinking = isStreaming && messages.at(-1)?.text === '';
+
+  return { messages, isStreaming, activeToolName, isThinking, sendMessage };
 }

@@ -139,6 +139,34 @@ describe('ImportPage', () => {
     expect(await screen.findByText('Engine review')).toHaveAttribute('aria-current', 'step');
   });
 
+  test('design.md §4.2: switching to the Upload tab and choosing a file imports it as source upload', async () => {
+    const fetchMock = vi.fn().mockImplementation((path: string) => {
+      if (path === '/api/games') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ gameId: 'game-3', analysisId: 'analysis-3' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' }
+          })
+        );
+      }
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    renderImportPage();
+    await user.click(screen.getByRole('button', { name: /upload/i }));
+    const file = new File(['1. e4 e5 *'], 'game.pgn', { type: 'application/x-chess-pgn' });
+    await user.upload(screen.getByLabelText(/pgn file/i), file);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/games',
+        expect.objectContaining({ body: JSON.stringify({ pgn: '1. e4 e5 *', source: 'upload' }) })
+      )
+    );
+  });
+
   test('switching to the Lichess tab fetches and lists recent games; selecting one imports it as source lichess', async () => {
     const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
       if (path === '/api/lichess/recent-games') {

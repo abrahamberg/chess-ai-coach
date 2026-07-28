@@ -39,6 +39,38 @@ describe('useCoachChat', () => {
     expect(last?.text).toBe('Hello there!');
   });
 
+  test('design.md §5.7: isThinking is true once sendMessage starts, false once text arrives', async () => {
+    const encoder = new TextEncoder();
+    let enqueueText: (() => void) | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        enqueueText = () => {
+          controller.enqueue(encoder.encode(formatDataStreamPart('text', 'Hello')));
+          controller.close();
+        };
+      }
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(stream, { status: 200, headers: { 'content-type': 'text/plain' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1'));
+    expect(result.current.isThinking).toBe(false);
+
+    let sendPromise!: Promise<void>;
+    act(() => {
+      sendPromise = result.current.sendMessage('hi');
+    });
+    await waitFor(() => expect(result.current.isThinking).toBe(true));
+
+    await act(async () => {
+      enqueueText?.();
+      await sendPromise;
+    });
+    expect(result.current.isThinking).toBe(false);
+  });
+
   test('a client tool call invokes onToolCall and posts the result back to the same endpoint', async () => {
     const onToolCall = vi.fn().mockReturnValue({ ply: 4 });
     const fetchMock = vi

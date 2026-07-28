@@ -91,6 +91,11 @@ describe('CoachBoard', () => {
     expect(options?.squareStyles?.d5).toMatchObject({ backgroundColor: '#4a7fb5' });
   });
 
+  test('design.md §5.4: peek mode tints the board frame', () => {
+    render(<CoachBoard fen={START_FEN} orientation="white" mode="peek" />);
+    expect(screen.getByTestId('mock-chessboard').parentElement).toHaveClass('coach-board-frame--peek');
+  });
+
   test('renders nothing extra for screen readers beyond the board itself', () => {
     render(<CoachBoard fen={START_FEN} orientation="white" mode="answer" />);
     expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument();

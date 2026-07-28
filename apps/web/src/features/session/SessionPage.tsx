@@ -5,7 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { z } from 'zod';
 import { apiGet } from '../../api/client.js';
 import { useCoachChat, type CoachMessage } from '../../hooks/useCoachChat.js';
-import { useIsDesktop } from '../../hooks/useIsDesktop.js';
+import { useIsBoardSideBySide } from '../../hooks/useIsBoardSideBySide.js';
 import { useWasmEngine } from '../../hooks/useWasmEngine.js';
 import { CoachBoard } from '../board/CoachBoard.js';
 import { ExplorePanel } from '../board/ExplorePanel.js';
@@ -14,6 +14,7 @@ import { MoveStrip } from '../board/MoveStrip.js';
 import { ChatPane } from '../chat/ChatPane.js';
 import { encodePositionDivider, sanForPly } from '../chat/positionDivider.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
+import { SessionHeader } from './SessionHeader.js';
 import { useSessionBoardState } from './useSessionBoardState.js';
 import './SessionPage.css';
 
@@ -93,7 +94,10 @@ function toCoachMessages(messages: z.infer<typeof SessionMessageSchema>[], sanMo
 const GameDetailSchema = z.object({
   id: z.string(),
   pgn: z.string(),
-  userColor: z.enum(['white', 'black'])
+  userColor: z.enum(['white', 'black']),
+  whiteName: z.string().nullable(),
+  blackName: z.string().nullable(),
+  result: z.string().nullable()
 });
 
 /** design.md §5: composes board + chat for an active coaching session.
@@ -102,7 +106,7 @@ export function SessionPage(): ReactNode {
   const { id } = useParams<{ id: string }>();
   const sessionId = id ?? '';
   const navigate = useNavigate();
-  const isDesktop = useIsDesktop();
+  const isSideBySide = useIsBoardSideBySide();
 
   const sessionQuery = useQuery({
     queryKey: ['session', sessionId],
@@ -159,49 +163,66 @@ export function SessionPage(): ReactNode {
   }
 
   const orientation = gameQuery.data?.userColor ?? 'white';
-  const showMiniBoard = !isDesktop && boardState.isDocked;
+  const showMiniBoard = !isSideBySide && boardState.isDocked;
 
   return (
-    <div className={isDesktop ? 'session-page desktop' : 'session-page mobile'}>
-      <div className="session-board-column">
-        {showMiniBoard ? (
-          <MiniBoard fen={boardState.fen} size={96} onExpand={boardState.expandDock} />
+    <div className="session-page">
+      <SessionHeader
+        whiteName={gameQuery.data?.whiteName ?? null}
+        blackName={gameQuery.data?.blackName ?? null}
+        result={gameQuery.data?.result ?? null}
+        onBack={() => navigate('/games')}
+      />
+      <div className={isSideBySide ? 'session-body desktop' : 'session-body mobile'}>
+        <div className="session-board-column">
+          {showMiniBoard ? (
+            <MiniBoard fen={boardState.fen} size={96} onExpand={boardState.expandDock} />
+          ) : (
+            <CoachBoard
+              fen={boardState.fen}
+              orientation={orientation}
+              mode={boardState.mode}
+              arrows={boardState.arrows}
+              highlights={boardState.highlights}
+              onUserMove={handleUserMove}
+            />
+          )}
+          {pendingMove && (
+            <p className="undo-pill">
+              Sending {pendingMove.san}…{' '}
+              <button type="button" onClick={handleUndoMove}>
+                ↩︎ undo
+              </button>
+            </p>
+          )}
+          {boardState.mode === 'peek' && (
+            <p className="peek-pill">
+              exploring —{' '}
+              <button type="button" onClick={boardState.backToCoach}>
+                ⟲ back to coach
+              </button>
+            </p>
+          )}
+          <MoveStrip sanMoves={sanMoves} currentPly={boardState.ply} momentPlies={[]} onSelect={boardState.peekAt} />
+          <ExplorePanel fen={boardState.fen} onEnterPeekMode={() => boardState.setMode('peek')} engine={engine} />
+        </div>
+        {session.status === 'paused_no_credits' ? (
+          <div className="session-paused-card">
+            <p>The session is saved. Add credits or your own API key to continue.</p>
+            <button type="button" onClick={() => navigate('/settings')}>
+              Add credits
+            </button>
+          </div>
         ) : (
-          <CoachBoard
-            fen={boardState.fen}
-            orientation={orientation}
-            mode={boardState.mode}
-            arrows={boardState.arrows}
-            highlights={boardState.highlights}
-            onUserMove={handleUserMove}
+          <ChatPane
+            messages={chat.messages}
+            activeToolName={chat.activeToolName}
+            isThinking={chat.isThinking}
+            onSend={(content) => void chat.sendMessage(content)}
+            onScrollUp={boardState.collapseDock}
           />
         )}
-        {pendingMove && (
-          <p className="undo-pill">
-            Sending {pendingMove.san}…{' '}
-            <button type="button" onClick={handleUndoMove}>
-              ↩︎ undo
-            </button>
-          </p>
-        )}
-        <MoveStrip sanMoves={sanMoves} currentPly={boardState.ply} momentPlies={[]} onSelect={boardState.peekAt} />
-        <ExplorePanel fen={boardState.fen} onEnterPeekMode={() => boardState.setMode('peek')} engine={engine} />
       </div>
-      {session.status === 'paused_no_credits' ? (
-        <div className="session-paused-card">
-          <p>The session is saved. Add credits or your own API key to continue.</p>
-          <button type="button" onClick={() => navigate('/settings')}>
-            Add credits
-          </button>
-        </div>
-      ) : (
-        <ChatPane
-          messages={chat.messages}
-          activeToolName={chat.activeToolName}
-          onSend={(content) => void chat.sendMessage(content)}
-          onScrollUp={boardState.collapseDock}
-        />
-      )}
     </div>
   );
 }

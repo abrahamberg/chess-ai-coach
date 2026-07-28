@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useIsDesktop } from '../hooks/useIsDesktop.js';
 import './AppShell.css';
 
@@ -26,17 +27,13 @@ const NAV_DESTINATIONS = [
   { to: '/settings', label: 'Settings' }
 ];
 
-function isActive(to: string): boolean {
-  return typeof window !== 'undefined' && window.location.pathname.startsWith(to);
-}
-
 function BottomTabBar(): ReactNode {
   return (
     <nav className="bottom-tab-bar" aria-label="bottom tab bar">
       {NAV_DESTINATIONS.map((item) => (
-        <a key={item.to} href={item.to} className={isActive(item.to) ? 'active' : undefined}>
+        <NavLink key={item.to} to={item.to} className={({ isActive }) => (isActive ? 'active' : undefined)}>
           {item.label}
-        </a>
+        </NavLink>
       ))}
     </nav>
   );
@@ -46,9 +43,14 @@ function IconRail(): ReactNode {
   return (
     <nav className="icon-rail" aria-label="icon rail">
       {NAV_DESTINATIONS.map((item) => (
-        <a key={item.to} href={item.to} title={item.label} className={isActive(item.to) ? 'active' : undefined}>
+        <NavLink
+          key={item.to}
+          to={item.to}
+          title={item.label}
+          className={({ isActive }) => (isActive ? 'active' : undefined)}
+        >
           {item.label}
-        </a>
+        </NavLink>
       ))}
     </nav>
   );

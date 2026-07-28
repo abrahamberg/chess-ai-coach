@@ -22,6 +22,26 @@ describe('MessageList', () => {
     vi.restoreAllMocks();
   });
 
+  test('design.md §5.3: one small avatar starts each coach run, not every message', () => {
+    render(
+      <MessageList
+        messages={[
+          msg('1', 'first coach line'),
+          msg('2', 'second coach line'),
+          { id: '3', role: 'user', text: 'my reply' },
+          { id: '4', role: 'assistant', text: 'new coach run' }
+        ]}
+      />
+    );
+
+    expect(screen.getAllByText('♞')).toHaveLength(2);
+  });
+
+  test('design.md §7: coach messages stream into an aria-live polite region', () => {
+    render(<MessageList messages={[msg('1', 'hi')]} />);
+    expect(screen.getByTestId('message-list')).toHaveAttribute('aria-live', 'polite');
+  });
+
   test('auto-scrolls to the bottom when a new message arrives while at the bottom', () => {
     const { rerender } = render(<MessageList messages={[msg('1', 'hi')]} />);
     const container = screen.getByTestId('message-list');

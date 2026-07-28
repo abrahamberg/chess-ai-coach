@@ -1,13 +1,18 @@
 /* design.md §3: icon rail (desktop, >=1080px) / bottom tab bar (mobile, tablet). */
 
 .app-shell {
-  min-height: 100%;
+  height: 100%;
   display: flex;
 }
 
+/* The single scroll region for every non-session page (Games, Progress,
+ * Settings, Import). The session screen fills this exactly (height: 100%)
+ * and manages its own internal scrolling (chat pane) instead. */
 .app-shell__content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .icon-rail,

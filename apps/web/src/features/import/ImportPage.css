@@ -41,6 +41,25 @@
   margin-top: 12px;
 }
 
+.pgn-upload-form label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.pgn-upload-form input[type='file'] {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.pgn-upload-form [role='alert'] {
+  color: var(--warn);
+  font-size: 14px;
+}
+
 .lichess-game-picker {
   list-style: none;
   margin: 0;

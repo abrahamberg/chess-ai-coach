@@ -1,0 +1,16 @@
+/* react-chessboard's grid fills its container with width/height: 100% — it
+ * needs a definite square frame to size against, or in a flex column with
+ * auto height, rows collapse to content size instead of staying square. */
+.coach-board-frame {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 3px solid transparent;
+}
+
+/* design.md §5.4: peek mode (move strip / Explore) tints the board frame so
+ * it's never mistaken for the coach's live position. */
+.coach-board-frame--peek {
+  border-color: var(--annotate-2);
+}

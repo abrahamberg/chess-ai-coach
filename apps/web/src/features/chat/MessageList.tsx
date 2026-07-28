@@ -35,10 +35,10 @@ export function MessageList({ messages, onScrollUp }: MessageListProps): ReactNo
   }, [messages]);
 
   return (
-    <div ref={containerRef} onScroll={handleScroll} data-testid="message-list">
+    <div ref={containerRef} onScroll={handleScroll} data-testid="message-list" aria-live="polite">
       {messages
         .filter((message) => message.text.trim() !== '')
-        .map((message) => {
+        .map((message, index, visible) => {
           const boardMove = message.text.match(BOARD_MOVE_PATTERN);
           if (boardMove) {
             const [, san, fen] = boardMove;
@@ -48,8 +48,17 @@ export function MessageList({ messages, onScrollUp }: MessageListProps): ReactNo
           if (divider) {
             return <PositionDivider key={message.id} ply={divider.ply} san={divider.san} />;
           }
+          // design.md §5.3: one small avatar at the start of each coach run,
+          // not on every message — only when the previous visible message
+          // wasn't also from the assistant.
+          const startsCoachRun = message.role === 'assistant' && visible[index - 1]?.role !== 'assistant';
           return (
             <p key={message.id} data-role={message.role}>
+              {startsCoachRun && (
+                <span className="coach-avatar" aria-hidden="true">
+                  ♞
+                </span>
+              )}
               {message.text}
             </p>
           );
