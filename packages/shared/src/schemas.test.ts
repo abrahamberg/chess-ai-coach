@@ -5,7 +5,7 @@ import { CreditPackSchema } from './credits.js';
 import { FindingSchema } from './finding.js';
 import { ImportGameRequestSchema } from './game.js';
 import { SessionOutcomeSchema, ThreadSchema } from './session.js';
-import { UserProfileSchema } from './user.js';
+import { UpdateUserProfileRequestSchema, UserProfileSchema } from './user.js';
 
 const validEngineEval = {
   ply: 12,
@@ -200,6 +200,22 @@ describe('UserProfileSchema', () => {
         creditBalance: 0
       }).success
     ).toBe(false);
+  });
+});
+
+describe('UpdateUserProfileRequestSchema', () => {
+  test('accepts a partial patch', () => {
+    expect(UpdateUserProfileRequestSchema.safeParse({ ratingBand: 'advanced' }).success).toBe(true);
+  });
+  test('accepts an empty patch', () => {
+    expect(UpdateUserProfileRequestSchema.safeParse({}).success).toBe(true);
+  });
+  test('rejects a rating band outside RATING_BANDS', () => {
+    expect(UpdateUserProfileRequestSchema.safeParse({ ratingBand: 'grandmaster' }).success).toBe(false);
+  });
+  test('accepts nullable lichessUsername/chesscomUsername/selfAssessment', () => {
+    const patch = { lichessUsername: null, chesscomUsername: null, selfAssessment: null };
+    expect(UpdateUserProfileRequestSchema.safeParse(patch).success).toBe(true);
   });
 });
 

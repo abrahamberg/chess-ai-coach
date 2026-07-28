@@ -1,17 +1,22 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import type { Kysely } from 'kysely';
+import { pingDb } from './db/index.js';
+import type { Database } from './db/schema.js';
 import { authHeadersPlugin, type AuthHeadersOptions } from './plugins/auth-headers.js';
 import { errorMapperPlugin } from './plugins/error-mapper.js';
+import { registerUsersRoutes } from './routes/users.js';
 
 export interface BuildAppOptions {
   authMode?: AuthHeadersOptions['authMode'];
   checkReady?: () => Promise<boolean>;
+  db?: Kysely<Database>;
 }
 
 /** Builds the Fastify app: proxy-auth header decoration, problem+json error mapping,
- * and the /healthz and /readyz probes. Route registration happens in later tasks. */
+ * the /healthz and /readyz probes, and (when `db` is supplied) the DB-backed routes. */
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const authMode = options.authMode ?? defaultAuthMode();
-  const checkReady = options.checkReady ?? (() => Promise.resolve(true));
+  const checkReady = options.checkReady ?? defaultCheckReady(options.db);
 
   const app = Fastify();
 
@@ -32,9 +37,18 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     return { status: 'ok' };
   });
 
+  if (options.db) {
+    registerUsersRoutes(app, options.db);
+  }
+
   return app;
 }
 
 function defaultAuthMode(): AuthHeadersOptions['authMode'] {
   return process.env.AUTH_MODE === 'dev-stub' ? 'dev-stub' : 'proxy';
+}
+
+function defaultCheckReady(db: Kysely<Database> | undefined): () => Promise<boolean> {
+  if (!db) return () => Promise.resolve(true);
+  return () => pingDb(db);
 }

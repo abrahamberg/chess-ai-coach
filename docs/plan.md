@@ -201,8 +201,8 @@ test('rejects unknown category', () => {
 - Produces: migration 0001 = full schema of architecture §3 (all tables incl. `sessions.context_digest`, `llm_call_log.cached_input_tokens`). `usersRepo: { findByEmail, insert, update }`; `userProfileService: { getOrCreate(identity): Promise<User>; getProfileSummary(userId): Promise<{focusAreas, recentFindings, findingCounts, sessionCount}> }` (summary powers prompts + dashboard). Routes: `GET/PATCH /api/users/me`.
 - First-login flow: `getOrCreate` inserts with 100-credit `signup_grant` ledger row (same transaction).
 
-- [ ] **Steps 1–4:** failing integration tests (fresh container → migrate → `GET /users/me` creates user + grants 100 credits exactly once across two calls; PATCH validates band against `RATING_BANDS`) → implement → pass.
-- [ ] **Step 5: Commit** — `feat: db schema, users repo, me endpoints`.
+- [x] **Steps 1–4:** failing integration tests (fresh container → migrate → `GET /users/me` creates user + grants 100 credits exactly once across two calls; PATCH validates band against `RATING_BANDS`) → implement → pass.
+- [x] **Step 5: Commit** — `feat: db schema, users repo, me endpoints`.
 
 ### Task 3.3: Game import
 
