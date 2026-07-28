@@ -294,8 +294,8 @@ test('rejects unknown category', () => {
 - `get_engine_analysis {fen, question}` = engine HTTP call → `buildInterpreterMessages` → gateway **light** tier → returns `[engine check] {text}` (≤80 words). Raw engine lines never returned to the coach (architecture §7.4.4).
 - Budget wrappers per architecture §8.3: `withBudget(name, max, fn)` returns `{error:'budget_exhausted — answer with what you have'}` when exceeded; repeat-call breaker caches identical name+args.
 
-- [ ] **Steps 1–4:** failing tests (4th active focus-area create → queued not inserted; unknown category → ValidationError; 3rd engine call in one turn → budget error object; identical repeated call → cached result, no second service invocation; engine tool result is the interpreter subagent's text on light tier — asserted via mocked gateway — and contains no raw UCI lines) → implement → pass.
-- [ ] **Step 5: Commit** — `feat: coach agent tools with budgets and layered services`.
+- [x] **Steps 1–4:** failing tests (4th active focus-area create → queued not inserted; unknown category → ValidationError; 3rd engine call in one turn → budget error object; identical repeated call → cached result, no second service invocation; engine tool result is the interpreter subagent's text on light tier — asserted via mocked gateway — and contains no raw UCI lines) → implement → pass.
+- [x] **Step 5: Commit** — `feat: coach agent tools with budgets and layered services`.
 
 ### Task 5.2: Session context compaction
 

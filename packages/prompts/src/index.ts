@@ -5,3 +5,4 @@ export * from './engine-interpreter.js';
 export * from './onboarding-profiler.js';
 export * from './progress-summarizer.js';
 export * from './render.js';
+export * from './tools.js';

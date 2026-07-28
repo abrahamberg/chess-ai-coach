@@ -42,7 +42,10 @@ describe('POST/GET /api/games', () => {
   }
 
   function buildTestApp() {
-    jobQueue = { enqueueAnalyzeGame: vi.fn().mockResolvedValue(undefined) };
+    jobQueue = {
+      enqueueAnalyzeGame: vi.fn().mockResolvedValue(undefined),
+      enqueueSummarizeSession: vi.fn().mockResolvedValue(undefined)
+    };
     return buildApp({ authMode: 'proxy', db, jobQueue });
   }
 

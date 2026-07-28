@@ -3,10 +3,12 @@ import { makeWorkerUtils, type WorkerUtils } from 'graphile-worker';
 /** Job enqueueing, abstracted so routes don't depend on graphile-worker directly. */
 export interface JobQueue {
   enqueueAnalyzeGame(gameId: string): Promise<void>;
+  enqueueSummarizeSession(sessionId: string): Promise<void>;
 }
 
 export const noopJobQueue: JobQueue = {
-  enqueueAnalyzeGame: () => Promise.resolve()
+  enqueueAnalyzeGame: () => Promise.resolve(),
+  enqueueSummarizeSession: () => Promise.resolve()
 };
 
 export interface GraphileJobQueueHandle {
@@ -24,6 +26,9 @@ export async function createGraphileJobQueue(connectionString: string): Promise<
     queue: {
       enqueueAnalyzeGame: async (gameId: string) => {
         await workerUtils.addJob('analyze-game', { gameId });
+      },
+      enqueueSummarizeSession: async (sessionId: string) => {
+        await workerUtils.addJob('summarize-session', { sessionId });
       }
     },
     close: async () => {
