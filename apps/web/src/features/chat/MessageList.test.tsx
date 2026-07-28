@@ -56,6 +56,32 @@ describe('MessageList', () => {
     expect(onScrollUp).toHaveBeenCalledOnce();
   });
 
+  test('design.md §5.3: renders a [board_move] message as a compact move card, not raw plumbing text', () => {
+    render(
+      <MessageList
+        messages={[
+          {
+            id: '1',
+            role: 'user',
+            text: '[board_move] I played Nf3 (position now: rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 1)'
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByText(/you played/i)).toBeInTheDocument();
+    expect(screen.getByText('Nf3')).toBeInTheDocument();
+    expect(screen.queryByText(/\[board_move\]/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/position now/i)).not.toBeInTheDocument();
+  });
+
+  test('design.md §5.3: renders a position-divider sentinel as "— move N, after SAN —"', () => {
+    render(<MessageList messages={[{ id: '1', role: 'assistant', text: '[position_divider]|14|Bg4' }]} />);
+
+    expect(screen.getByText(/move 14/)).toBeInTheDocument();
+    expect(screen.getByText('Bg4')).toBeInTheDocument();
+  });
+
   test('does not call onScrollUp while at the bottom', () => {
     const onScrollUp = vi.fn();
     render(<MessageList messages={[msg('1', 'hi')]} onScrollUp={onScrollUp} />);

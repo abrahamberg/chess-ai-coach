@@ -1,5 +1,10 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { CoachMessage } from '../../hooks/useCoachChat.js';
+import { MoveCard } from './MoveCard.js';
+import { decodePositionDivider } from './positionDivider.js';
+import { PositionDivider } from './PositionDivider.js';
+
+const BOARD_MOVE_PATTERN = /^\[board_move\] I played (\S+) \(position now: (.+)\)$/;
 
 export interface MessageListProps {
   messages: CoachMessage[];
@@ -33,11 +38,22 @@ export function MessageList({ messages, onScrollUp }: MessageListProps): ReactNo
     <div ref={containerRef} onScroll={handleScroll} data-testid="message-list">
       {messages
         .filter((message) => message.text.trim() !== '')
-        .map((message) => (
-          <p key={message.id} data-role={message.role}>
-            {message.text}
-          </p>
-        ))}
+        .map((message) => {
+          const boardMove = message.text.match(BOARD_MOVE_PATTERN);
+          if (boardMove) {
+            const [, san, fen] = boardMove;
+            return <MoveCard key={message.id} san={san ?? ''} fen={fen ?? ''} />;
+          }
+          const divider = decodePositionDivider(message.text);
+          if (divider) {
+            return <PositionDivider key={message.id} ply={divider.ply} san={divider.san} />;
+          }
+          return (
+            <p key={message.id} data-role={message.role}>
+              {message.text}
+            </p>
+          );
+        })}
     </div>
   );
 }

@@ -209,6 +209,30 @@ describe('SessionPage', () => {
     expect(screen.queryByText('[session_start]')).not.toBeInTheDocument();
   });
 
+  test('design.md §5.3: a persisted show_position tool-call reopens as a position divider', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch({
+        messages: [
+          { id: 'm1', role: 'user', content: '[session_start]' },
+          {
+            id: 'm2',
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'Let me show you.' },
+              { type: 'tool-call', toolName: 'show_position', args: { ply: 2 }, toolCallId: 'call-1' }
+            ]
+          }
+        ]
+      })
+    );
+    renderSessionPage();
+
+    expect(await screen.findByText(/let's dive into your game|let me show you/i)).toBeInTheDocument();
+    const divider = screen.getByText(/move 2/).closest('.position-divider');
+    expect(divider).toHaveTextContent('e5');
+  });
+
   test('a paused_no_credits session shows the add-credits card instead of the chat input', async () => {
     vi.stubGlobal('fetch', mockFetch({ status: 'paused_no_credits' }));
     renderSessionPage();

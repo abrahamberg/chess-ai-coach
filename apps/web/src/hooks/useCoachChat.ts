@@ -1,5 +1,6 @@
 import { processDataStream } from 'ai';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { encodePositionDivider, sanForPly } from '../features/chat/positionDivider.js';
 
 export interface CoachMessage {
   id: string;
@@ -21,11 +22,18 @@ export interface UseCoachChatOptions {
   /** Prior turns from GET /api/sessions/:id, so reopening an in-progress
    * session shows its transcript instead of starting blank. */
   initialMessages?: CoachMessage[];
+  /** design.md §5.3: SAN of every played move, used to label a show_position
+   * jump as "— move N, after <SAN> —" in the transcript. */
+  sanMoves?: string[];
 }
 
 export interface UseCoachChatResult {
   messages: CoachMessage[];
   isStreaming: boolean;
+  /** design.md §5.3: the tool currently in flight this turn, or null between
+   * turns / once the coach's text resumes. ToolActivity decides which tool
+   * names actually render something (most are backstage). */
+  activeToolName: string | null;
   sendMessage: (content: string) => Promise<void>;
 }
 
@@ -36,6 +44,7 @@ export interface UseCoachChatResult {
 export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {}): UseCoachChatResult {
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [activeToolName, setActiveToolName] = useState<string | null>(null);
 
   // The session/game fetch (SessionPage) resolves after this hook's first
   // render, so initialMessages arrives on a later render, not at mount —
@@ -62,23 +71,39 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
       let assistantText = '';
       setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', text: '' }]);
 
-      await processDataStream({
-        stream: response.body,
-        onTextPart: (delta) => {
-          assistantText += delta;
-          setMessages((prev) =>
-            prev.map((message) => (message.id === assistantId ? { ...message, text: assistantText } : message))
-          );
-        },
-        onToolCallPart: async (toolCall) => {
-          const result = options.onToolCall?.(toolCall);
-          if (result !== undefined) {
-            await postTurn({
-              clientToolResult: { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, result }
-            });
+      try {
+        await processDataStream({
+          stream: response.body,
+          onTextPart: (delta) => {
+            setActiveToolName(null);
+            assistantText += delta;
+            setMessages((prev) =>
+              prev.map((message) => (message.id === assistantId ? { ...message, text: assistantText } : message))
+            );
+          },
+          onToolCallPart: async (toolCall) => {
+            setActiveToolName(toolCall.toolName);
+            if (toolCall.toolName === 'show_position') {
+              const { ply } = toolCall.args as { ply: number };
+              const san = sanForPly(options.sanMoves ?? [], ply);
+              if (san) {
+                setMessages((prev) => [
+                  ...prev,
+                  { id: crypto.randomUUID(), role: 'assistant', text: encodePositionDivider(ply, san) }
+                ]);
+              }
+            }
+            const result = options.onToolCall?.(toolCall);
+            if (result !== undefined) {
+              await postTurn({
+                clientToolResult: { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, result }
+              });
+            }
           }
-        }
-      });
+        });
+      } finally {
+        setActiveToolName(null);
+      }
     },
     [sessionId, options]
   );
@@ -96,5 +121,5 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
     [postTurn]
   );
 
-  return { messages, isStreaming, sendMessage };
+  return { messages, isStreaming, activeToolName, sendMessage };
 }

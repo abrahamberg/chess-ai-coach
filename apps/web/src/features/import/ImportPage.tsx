@@ -1,3 +1,4 @@
+import { parsePgn } from '@chess-coach/chess-analysis';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -11,10 +12,22 @@ import {
 } from '@chess-coach/shared';
 import { apiGet, apiPost, ApiError } from '../../api/client.js';
 import { useAnalysisStatus } from '../../hooks/useAnalysisStatus.js';
+import { AnalysisProgress } from './AnalysisProgress.js';
 import { ColorConfirm } from './ColorConfirm.js';
 import { LichessGamePicker } from './LichessGamePicker.js';
 import { PgnPasteForm } from './PgnPasteForm.js';
 import './ImportPage.css';
+
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+function finalFenOf(pgn: string): string {
+  try {
+    const { positions } = parsePgn(pgn);
+    return positions.at(-1)?.fen ?? START_FEN;
+  } catch {
+    return START_FEN;
+  }
+}
 
 const SessionSummarySchema = z.object({ id: z.string() });
 type ImportTab = 'paste' | 'lichess';
@@ -34,7 +47,6 @@ export function ImportPage(): ReactNode {
     onSuccess: (data) => {
       setGameId(data.gameId);
       setAnalysisId(data.analysisId);
-      setPendingPgn(null);
     }
   });
 
@@ -67,6 +79,21 @@ export function ImportPage(): ReactNode {
     const body = ImportGameRequestSchema.parse({ pgn, source, userColor });
     setPendingPgn(pgn);
     importMutation.mutate(body);
+  }
+
+  function retry(): void {
+    setGameId(null);
+    setAnalysisId(null);
+    importMutation.reset();
+  }
+
+  if (gameId && analysisId) {
+    return (
+      <div className="page import-page">
+        <h1>Import a game</h1>
+        <AnalysisProgress status={status} finalFen={finalFenOf(pendingPgn ?? '')} onRetry={retry} />
+      </div>
+    );
   }
 
   return (

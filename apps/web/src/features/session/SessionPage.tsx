@@ -12,6 +12,7 @@ import { ExplorePanel } from '../board/ExplorePanel.js';
 import { MiniBoard } from '../board/MiniBoard.js';
 import { MoveStrip } from '../board/MoveStrip.js';
 import { ChatPane } from '../chat/ChatPane.js';
+import { encodePositionDivider, sanForPly } from '../chat/positionDivider.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
 import { useSessionBoardState } from './useSessionBoardState.js';
 import './SessionPage.css';
@@ -49,15 +50,44 @@ function extractText(content: unknown): string {
   return '';
 }
 
-function toCoachMessages(messages: z.infer<typeof SessionMessageSchema>[]): CoachMessage[] {
+interface ToolCallPart {
+  type: 'tool-call';
+  toolName: string;
+  args: unknown;
+}
+
+function isToolCallPart(part: unknown): part is ToolCallPart {
+  return typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'tool-call';
+}
+
+/** design.md §5.3: a persisted show_position tool-call becomes a position
+ * divider on reload too, matching the live-stream path in useCoachChat. */
+function showPositionPlies(content: unknown): number[] {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter(isToolCallPart)
+    .filter((part) => part.toolName === 'show_position')
+    .map((part) => (part.args as { ply: number }).ply);
+}
+
+function toCoachMessages(messages: z.infer<typeof SessionMessageSchema>[], sanMoves: string[]): CoachMessage[] {
   return messages
     .filter((message) => message.role !== 'tool')
-    .map((message) => ({
-      id: message.id,
-      role: message.role as 'user' | 'assistant',
-      text: extractText(message.content)
-    }))
-    .filter((message) => message.text.trim() !== '' && message.text !== SESSION_START_MARKER);
+    .flatMap((message): CoachMessage[] => {
+      const role = message.role as 'user' | 'assistant';
+      const text = extractText(message.content);
+      const entries: CoachMessage[] = [];
+      if (text.trim() !== '' && text !== SESSION_START_MARKER) {
+        entries.push({ id: message.id, role, text });
+      }
+      if (role === 'assistant') {
+        for (const ply of showPositionPlies(message.content)) {
+          const san = sanForPly(sanMoves, ply);
+          if (san) entries.push({ id: `${message.id}-divider-${ply}`, role, text: encodePositionDivider(ply, san) });
+        }
+      }
+      return entries;
+    });
 }
 
 const GameDetailSchema = z.object({
@@ -92,8 +122,9 @@ export function SessionPage(): ReactNode {
 
   const boardState = useSessionBoardState(positions);
   const engine = useWasmEngine();
-  const initialMessages = sessionQuery.data ? toCoachMessages(sessionQuery.data.messages) : undefined;
-  const chat = useCoachChat(sessionId, { onToolCall: boardState.handleToolCall, initialMessages });
+  const initialMessages =
+    sessionQuery.data && gameQuery.data ? toCoachMessages(sessionQuery.data.messages, sanMoves) : undefined;
+  const chat = useCoachChat(sessionId, { onToolCall: boardState.handleToolCall, initialMessages, sanMoves });
 
   const [pendingMove, setPendingMove] = useState<{ san: string; fen: string } | null>(null);
   const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -166,7 +197,7 @@ export function SessionPage(): ReactNode {
       ) : (
         <ChatPane
           messages={chat.messages}
-          activeToolName={null}
+          activeToolName={chat.activeToolName}
           onSend={(content) => void chat.sendMessage(content)}
           onScrollUp={boardState.collapseDock}
         />

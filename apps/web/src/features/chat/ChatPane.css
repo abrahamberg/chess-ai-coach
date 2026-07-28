@@ -36,6 +36,21 @@
   border-bottom-right-radius: 4px;
 }
 
+.chat-pane [data-testid='message-list'] .move-card {
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-bottom-right-radius: 4px;
+  font-size: 14px;
+}
+
+.chat-pane [data-testid='message-list'] .position-divider {
+  align-self: center;
+  background: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 4px 0;
+}
+
 .tool-activity {
   padding: 0 16px 8px;
   margin: 0;

@@ -1,0 +1,50 @@
+.analysis-progress {
+  max-width: 480px;
+  margin: 24px auto 0;
+  text-align: center;
+}
+
+.analysis-progress__board {
+  opacity: 0.35;
+  pointer-events: none;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.analysis-progress__steps {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.analysis-progress__steps li {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.analysis-progress__steps li[aria-current='step'] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.analysis-progress__steps li[data-done='true'] {
+  color: var(--accent);
+}
+
+.analysis-progress__tip {
+  color: var(--text-muted);
+  font-style: italic;
+  min-height: 1.6em;
+}
+
+.analysis-progress--failed {
+  padding: 24px;
+}

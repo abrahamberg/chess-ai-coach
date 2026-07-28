@@ -3,7 +3,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ImportPage } from './ImportPage.js';
+
+vi.mock('react-chessboard', () => ({
+  Chessboard: () => <div data-testid="mock-chessboard" />
+}));
+
+const { ImportPage } = await import('./ImportPage.js');
 
 class MockEventSource {
   static instances: MockEventSource[] = [];
@@ -106,6 +111,32 @@ describe('ImportPage', () => {
       '/api/sessions',
       expect.objectContaining({ body: JSON.stringify({ gameId: 'game-1' }) })
     );
+  });
+
+  test('design.md §4.2: shows the 3-step analysis progress screen (not the form) while waiting', async () => {
+    const fetchMock = vi.fn().mockImplementation((path: string) => {
+      if (path === '/api/games') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ gameId: 'game-1', analysisId: 'analysis-1' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' }
+          })
+        );
+      }
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    renderImportPage();
+    await submitPgn(user);
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+
+    expect(screen.queryByRole('textbox', { name: /pgn/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Reading game')).toBeInTheDocument();
+
+    MockEventSource.instances[0]?.emit({ status: 'engine_running' });
+    expect(await screen.findByText('Engine review')).toHaveAttribute('aria-current', 'step');
   });
 
   test('switching to the Lichess tab fetches and lists recent games; selecting one imports it as source lichess', async () => {
