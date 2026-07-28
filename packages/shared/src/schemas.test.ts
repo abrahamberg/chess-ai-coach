@@ -1,0 +1,187 @@
+import { describe, expect, test } from 'vitest';
+import { EngineEvalSchema } from './analysis.js';
+import { CoachingPlanSchema, type CoachingPlan } from './coaching-plan.js';
+import { CreditPackSchema } from './credits.js';
+import { FindingSchema } from './finding.js';
+import { ImportGameRequestSchema } from './game.js';
+import { SessionOutcomeSchema, ThreadSchema } from './session.js';
+import { UserProfileSchema } from './user.js';
+
+const validEngineEval = {
+  ply: 12,
+  fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
+  depth: 16,
+  lines: [
+    { moveUci: 'f1b5', moveSan: 'Bb5', cp: 35, mateIn: null },
+    { moveUci: 'b1c3', moveSan: 'Nc3', cp: 28, mateIn: null }
+  ]
+};
+
+function validPlanFixture(): CoachingPlan {
+  return {
+    gameSummary: 'Sharp Italian where the student lost the thread in the middlegame.',
+    openingNote: 'Opening was fine through move 8.',
+    themes: ['calculation_error', 'king_safety'],
+    connectionToHistory: 'Second game in a row with a delayed castle.',
+    moments: [
+      {
+        ply: 23,
+        kind: 'user_mistake',
+        category: 'king_safety',
+        whatHappened: 'Pushed g4 in front of the uncastled king, eval swung -1.8.',
+        socraticQuestion: 'Before pushing this pawn, where is your king going to live?',
+        keyLine: 'O-O Re8 d3 h6',
+        revealDepthPlies: 6
+      }
+    ]
+  };
+}
+
+describe('EngineEvalSchema', () => {
+  test('accepts a valid eval', () => {
+    expect(EngineEvalSchema.safeParse(validEngineEval).success).toBe(true);
+  });
+  test('accepts mate scores with null cp', () => {
+    const mate = {
+      ...validEngineEval,
+      lines: [{ moveUci: 'd8h4', moveSan: 'Qh4#', cp: null, mateIn: 1 }]
+    };
+    expect(EngineEvalSchema.safeParse(mate).success).toBe(true);
+  });
+  test('rejects a line missing moveSan', () => {
+    const bad = { ...validEngineEval, lines: [{ moveUci: 'e2e4', cp: 10, mateIn: null }] };
+    expect(EngineEvalSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('CoachingPlanSchema', () => {
+  test('accepts a valid plan', () => {
+    expect(CoachingPlanSchema.safeParse(validPlanFixture()).success).toBe(true);
+  });
+  test('rejects unknown category', () => {
+    const plan = validPlanFixture();
+    // @ts-expect-error deliberately invalid
+    plan.moments[0].category = 'laziness';
+    expect(CoachingPlanSchema.safeParse(plan).success).toBe(false);
+  });
+  test('rejects more than 8 moments', () => {
+    const plan = validPlanFixture();
+    const moment = plan.moments[0];
+    if (!moment) throw new Error('fixture broken');
+    plan.moments = Array.from({ length: 9 }, () => ({ ...moment }));
+    expect(CoachingPlanSchema.safeParse(plan).success).toBe(false);
+  });
+  test('rejects empty moments', () => {
+    const plan = { ...validPlanFixture(), moments: [] };
+    expect(CoachingPlanSchema.safeParse(plan).success).toBe(false);
+  });
+  test('rejects more than 3 themes', () => {
+    const plan = {
+      ...validPlanFixture(),
+      themes: ['no_plan', 'king_safety', 'passive_play', 'missed_tactic']
+    };
+    expect(CoachingPlanSchema.safeParse(plan).success).toBe(false);
+  });
+});
+
+describe('FindingSchema', () => {
+  const valid = {
+    category: 'calculation_error',
+    severity: 'significant',
+    ply: 23,
+    description: 'Stops calculating after the first capture in forcing lines.',
+    isPositive: false
+  };
+  test('accepts a valid finding', () => {
+    expect(FindingSchema.safeParse(valid).success).toBe(true);
+  });
+  test('accepts null ply (session-level observation)', () => {
+    expect(FindingSchema.safeParse({ ...valid, ply: null }).success).toBe(true);
+  });
+  test('rejects invalid severity', () => {
+    expect(FindingSchema.safeParse({ ...valid, severity: 'huge' }).success).toBe(false);
+  });
+});
+
+describe('SessionOutcomeSchema', () => {
+  test('accepts a valid outcome and rejects a bad focus-area action', () => {
+    const outcome = {
+      sessionSummary: 'You calculated the critical line well once prompted.',
+      homework: 'Blunder-check every move in your next two games.',
+      findings: [],
+      focusAreaUpdates: [
+        { category: 'calculation_error', action: 'progress', note: 'Found the refutation unprompted.' }
+      ]
+    };
+    expect(SessionOutcomeSchema.safeParse(outcome).success).toBe(true);
+    outcome.focusAreaUpdates[0]!.action = 'delete';
+    expect(SessionOutcomeSchema.safeParse(outcome).success).toBe(false);
+  });
+});
+
+describe('ThreadSchema', () => {
+  const valid = {
+    id: 1,
+    topic: 'branch 14.Nxd5',
+    status: 'parked',
+    hypothesis: 'stops calculating after first capture',
+    anchorPly: 27,
+    anchorFen: null
+  };
+  test('accepts a valid thread', () => {
+    expect(ThreadSchema.safeParse(valid).success).toBe(true);
+  });
+  test('rejects invalid status', () => {
+    expect(ThreadSchema.safeParse({ ...valid, status: 'open' }).success).toBe(false);
+  });
+});
+
+describe('ImportGameRequestSchema', () => {
+  test('accepts paste without userColor', () => {
+    const req = { pgn: '1. e4 e5', source: 'paste' };
+    expect(ImportGameRequestSchema.safeParse(req).success).toBe(true);
+  });
+  test('rejects empty pgn and unknown source', () => {
+    expect(ImportGameRequestSchema.safeParse({ pgn: '', source: 'paste' }).success).toBe(false);
+    expect(ImportGameRequestSchema.safeParse({ pgn: '1. e4', source: 'email' }).success).toBe(false);
+  });
+});
+
+describe('UserProfileSchema', () => {
+  test('accepts a valid profile', () => {
+    const profile = {
+      id: '7d9f2a44-9a5f-4f6e-b1a1-0a4c1e2d3f4b',
+      email: 'student@example.com',
+      displayName: 'daniel',
+      ratingBand: 'club',
+      lichessUsername: null,
+      chesscomUsername: 'daniel_c',
+      selfAssessment: null,
+      creditBalance: 100
+    };
+    expect(UserProfileSchema.safeParse(profile).success).toBe(true);
+  });
+  test('rejects unknown rating band', () => {
+    expect(
+      UserProfileSchema.safeParse({
+        id: '7d9f2a44-9a5f-4f6e-b1a1-0a4c1e2d3f4b',
+        email: 'student@example.com',
+        displayName: 'daniel',
+        ratingBand: 'grandmaster',
+        lichessUsername: null,
+        chesscomUsername: null,
+        selfAssessment: null,
+        creditBalance: 0
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe('CreditPackSchema', () => {
+  test('accepts the 3 packs, rejects others', () => {
+    expect(CreditPackSchema.safeParse('small').success).toBe(true);
+    expect(CreditPackSchema.safeParse('medium').success).toBe(true);
+    expect(CreditPackSchema.safeParse('large').success).toBe(true);
+    expect(CreditPackSchema.safeParse('jumbo').success).toBe(false);
+  });
+});
