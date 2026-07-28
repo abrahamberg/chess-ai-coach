@@ -3,7 +3,7 @@ import { AnalyzeGameRequestSchema, AnalyzePositionRequestSchema, EngineEvalSchem
 import { CoachingPlanSchema, type CoachingPlan } from './coaching-plan.js';
 import { CreditPackSchema } from './credits.js';
 import { FindingSchema } from './finding.js';
-import { ImportGameRequestSchema } from './game.js';
+import { ImportGameRequestSchema, ImportGameResponseSchema } from './game.js';
 import { LlmProviderSchema, SetLlmKeyRequestSchema } from './llm.js';
 import {
   CreateSessionRequestSchema,
@@ -198,6 +198,16 @@ describe('ImportGameRequestSchema', () => {
   test('rejects empty pgn and unknown source', () => {
     expect(ImportGameRequestSchema.safeParse({ pgn: '', source: 'paste' }).success).toBe(false);
     expect(ImportGameRequestSchema.safeParse({ pgn: '1. e4', source: 'email' }).success).toBe(false);
+  });
+});
+
+describe('ImportGameResponseSchema', () => {
+  test('accepts a gameId/analysisId pair', () => {
+    const res = { gameId: 'g1', analysisId: 'a1' };
+    expect(ImportGameResponseSchema.safeParse(res).success).toBe(true);
+  });
+  test('rejects a missing analysisId', () => {
+    expect(ImportGameResponseSchema.safeParse({ gameId: 'g1' }).success).toBe(false);
   });
 });
 

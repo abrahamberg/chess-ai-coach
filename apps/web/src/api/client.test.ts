@@ -55,4 +55,19 @@ describe('apiGet', () => {
 
     await expect(apiGet('/api/users/me', UserProfileSchema)).rejects.toThrow();
   });
+
+  test('ApiError carries the parsed problem+json body (e.g. {missing: "userColor"})', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ type: 'about:blank', title: 'x', status: 422, missing: 'userColor' }),
+        { status: 422, headers: { 'content-type': 'application/problem+json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const error = await apiGet('/api/games', UserProfileSchema).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).body).toMatchObject({ missing: 'userColor' });
+  });
 });

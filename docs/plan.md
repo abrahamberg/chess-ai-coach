@@ -370,7 +370,7 @@ behavior are specified there; do not invent visual design in code.
 **Files:**
 - Create: `src/features/import/{ImportPage,PgnPasteForm,LichessGamePicker,ColorConfirm}.tsx`, `src/hooks/useAnalysisStatus.ts` (SSE), tests
 
-- [ ] **Steps 1–5:** failing tests (paste → POST body matches `ImportGameRequestSchema`; 422 missing color → `ColorConfirm` renders; SSE `ready` → navigate to new session) → implement → pass → commit `feat: game import flow`.
+- [x] **Steps 1–5:** failing tests (paste → POST body matches `ImportGameRequestSchema`; 422 missing color → `ColorConfirm` renders; SSE `ready` → navigate to new session) → implement → pass → commit `feat: game import flow`.
 
 ### Task 6.3: Session page — board + chat
 

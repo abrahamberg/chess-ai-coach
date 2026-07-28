@@ -3,7 +3,8 @@ import type { ZodType } from 'zod';
 export class ApiError extends Error {
   constructor(
     readonly status: number,
-    message: string
+    message: string,
+    readonly body?: unknown
   ) {
     super(message);
     this.name = 'ApiError';
@@ -16,7 +17,7 @@ export class ApiError extends Error {
 export async function apiGet<T>(path: string, schema: ZodType<T>): Promise<T> {
   const response = await fetch(path, { credentials: 'include' });
   if (!response.ok) {
-    throw new ApiError(response.status, `GET ${path} failed with ${response.status}`);
+    throw new ApiError(response.status, `GET ${path} failed with ${response.status}`, await safeJson(response));
   }
   const body: unknown = await response.json();
   return schema.parse(body);
@@ -30,8 +31,18 @@ export async function apiPost<T>(path: string, payload: unknown, schema: ZodType
     body: JSON.stringify(payload)
   });
   if (!response.ok) {
-    throw new ApiError(response.status, `POST ${path} failed with ${response.status}`);
+    throw new ApiError(response.status, `POST ${path} failed with ${response.status}`, await safeJson(response));
   }
   const body: unknown = await response.json();
   return schema.parse(body);
+}
+
+/** Problem+json error bodies (e.g. {missing: 'userColor'}) carry data callers
+ * need; best-effort since not every error response has a JSON body. */
+async function safeJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
 }

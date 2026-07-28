@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell.js';
+import { ImportPage } from './features/import/ImportPage.js';
 
 const queryClient = new QueryClient();
 
@@ -22,7 +23,7 @@ export function AppRoutes(): ReactNode {
     <AppShell>
       <Routes>
         <Route path="/" element={<Navigate to="/games" replace />} />
-        <Route path="/import" element={<PlaceholderPage title="Import" />} />
+        <Route path="/import" element={<ImportPage />} />
         <Route path="/games" element={<PlaceholderPage title="Games" />} />
         <Route path="/session/:id" element={<PlaceholderPage title="Session" />} />
         <Route path="/dashboard" element={<PlaceholderPage title="Progress" />} />

@@ -12,3 +12,9 @@ export const ImportGameRequestSchema = z.object({
   userColor: PlayerColorSchema.optional()
 });
 export type ImportGameRequest = z.infer<typeof ImportGameRequestSchema>;
+
+export const ImportGameResponseSchema = z.object({
+  gameId: z.string().min(1),
+  analysisId: z.string().min(1)
+});
+export type ImportGameResponse = z.infer<typeof ImportGameResponseSchema>;
