@@ -81,7 +81,8 @@ And a trivial test `src/index.test.ts` asserting `MISTAKE_CATEGORIES.length === 
   `SessionOutcomeSchema`/`SessionOutcome`, `FindingSchema`/`Finding`,
   `MoveQuality = 'good'|'inaccuracy'|'mistake'|'blunder'`,
   `ImportGameRequestSchema { pgn: string; source: 'paste'|'upload'|'lichess'; userColor?: 'white'|'black' }`,
-  `UserProfileSchema`, `CreditPackSchema ('small'|'medium'|'large')`.
+  `UserProfileSchema`, `CreditPackSchema ('small'|'medium'|'large')`,
+  `ThreadSchema`/`Thread` (conversation-ledger entry, architecture §6.5).
 
 - [ ] **Step 1: Write failing tests** — for each schema: a valid fixture parses; an invalid one (bad enum value, missing field, >8 moments) fails. Example:
 
@@ -288,7 +289,7 @@ test('rejects unknown category', () => {
 - Create: `apps/api/src/services/{coach-tools.ts,progress.ts}`, `db/repositories/{findings.ts,focus-areas.ts,sessions.ts}`, tests
 
 **Interfaces:**
-- Produces: `buildCoachTools(ctx: {userId; sessionId; gameId}): ToolSet` — the 7 tools of architecture §7.1. Client tools (`show_position`, `annotate_board`) defined schema-only (no execute → forwarded to client). Server tools call services only:
+- Produces: `buildCoachTools(ctx: {userId; sessionId; gameId}): ToolSet` — the 8 tools of architecture §7.1 (`update_threads` is built in Task 5.5; stub it schema-only here). Client tools (`show_position`, `annotate_board`) defined schema-only (no execute → forwarded to client). Server tools call services only:
   `progressService: { recordFinding(userId, sessionId, f: Finding); applyFocusAreaUpdate(userId, u: FocusAreaUpdate) }` — the max-3-active rule and category validation live HERE, not in tool code, not in SQL.
 - `get_engine_analysis {fen, question}` = engine HTTP call → `buildInterpreterMessages` → gateway **light** tier → returns `[engine check] {text}` (≤80 words). Raw engine lines never returned to the coach (architecture §7.4.4).
 - Budget wrappers per architecture §8.3: `withBudget(name, max, fn)` returns `{error:'budget_exhausted — answer with what you have'}` when exceeded; repeat-call breaker caches identical name+args.
@@ -334,6 +335,20 @@ test('rejects unknown category', () => {
 
 - [ ] **Steps 1–4:** failing tests (dedup skips already-recorded finding; `resolve` action moves state; regress on resolved → active) → implement → pass.
 - [ ] **Step 5: Commit** — `feat: post-session progress summarizer`.
+
+### Task 5.5: Conversation thread ledger
+
+**Files:**
+- Create: `apps/api/src/services/threads.ts`, tests
+- Modify: `services/coach-tools.ts` (wire `update_threads` execute), `db/repositories/sessions.ts` (add `updateThreads`, `getThreads`), `services/session-context.ts` (compaction carries threads)
+
+**Interfaces:**
+- Consumes: `ThreadSchema` (Task 0.2), `sessions.threads` column (in migration 0001, Task 3.2).
+- Produces: `threadsService: { replace(sessionId, threads: Thread[]): Promise<Thread[]> }` — validates via `ThreadSchema.array()`, enforces ≤8 threads and ≤1 `active` (else `ValidationError`); tool returns the stored ledger. `prepareContext` (Task 5.2) gains a rule: when compacting, open/parked thread entries are appended to the digest verbatim; resolved ones dropped.
+
+- [ ] **Step 1: Failing tests** — 2 `active` threads → ValidationError; 9 threads → ValidationError; valid replace → persisted and returned; compaction of a history containing an `update_threads` result → digest contains the parked thread's topic and hypothesis, not the resolved one; ledger absent from `GET /api/sessions/:id` client payload (backstage only — messages returned to the UI filter `update_threads` tool frames).
+- [ ] **Step 2: Run — fail.** **Step 3: Implement** (tool → service → repository; no SQL outside the repo). **Step 4: Run — pass.**
+- [ ] **Step 5: Commit** — `feat: conversation thread ledger`.
 
 ---
 

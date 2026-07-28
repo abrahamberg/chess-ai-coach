@@ -148,6 +148,7 @@ sessions (
   user_id     uuid FK→users NOT NULL,
   status      text NOT NULL CHECK (status IN ('active','completed','paused_no_credits')),
   current_ply int  NOT NULL DEFAULT 0,         -- last board position shown
+  threads     jsonb NOT NULL DEFAULT '[]',     -- Thread[] — conversation ledger, §6.5
   started_at  timestamptz NOT NULL DEFAULT now(),
   ended_at    timestamptz
 )
@@ -315,6 +316,18 @@ const SessionOutcomeSchema = z.object({
 });
 ```
 
+### 6.5 Thread (conversation ledger entry)
+```ts
+const ThreadSchema = z.object({
+  id: z.number().int(),                 // coach-assigned, stable within a session
+  topic: z.string().max(200),           // coach's shorthand, e.g. "branch 14.Nxd5"
+  status: z.enum(['active','parked','resolved']),
+  hypothesis: z.string().max(300).nullable(), // diagnosis being tested, if any
+  anchorPly: z.number().int().nullable(),     // board position to restore on resume
+  anchorFen: z.string().nullable()            // for off-game branches (explored lines)
+});
+```
+
 ## 7. The coach agent (`apps/api/src/services/coach-agent.ts`)
 
 The heart of the product. Implemented with the **Vercel AI SDK** (`ai` package, latest
@@ -338,6 +351,7 @@ Model          = via llm/gateway.ts → user's BYOK provider, else platform key 
 | `get_user_profile` | `{}` | Server tool: focus areas + last 15 findings + per-category counts (last 20 games) + session count. |
 | `record_finding` | `Finding` (schema §6.4) | Server tool: insert into `findings`. |
 | `propose_focus_area_update` | `FocusAreaUpdate` (§6.4) | Server tool: applied by `progress.ts` service (enforces max-3-active). |
+| `update_threads` | `{ threads: Thread[] }` (§6.5) | Server tool: full-replace of the session's conversation-thread ledger (`sessions.threads`). Service enforces: ≤8 threads, ≤1 `active`, valid statuses. Returns the stored ledger. Backstage only — never rendered to the student. |
 | `end_session` | `{ summary: string, homework: string \| null }` | Server tool: marks session completed, enqueues `summarize-session` job. |
 
 Client tools (`show_position`, `annotate_board`) execute on the frontend: the SSE
@@ -411,6 +425,26 @@ implementation contract for the agent loop (details in §8.1–8.3):
    or contain non-conversational data (UCI lines, JSON rows), a light subagent must
    digest it before it reaches the coach's context.**
 
+### 7.5 Conversation threading
+
+Human conversations interleave topics: open a branch, park it, jump to another,
+come back, cross-reference. The coach gets this behavior from two pieces:
+
+- **Prompt rules** (prompts.md §2, "Conversation threading"): short turns, one
+  topic per message, park out loud in human language, resume naturally, connect
+  threads when it teaches, let threads die honestly.
+- **The thread ledger** (`update_threads` tool + `sessions.threads`): the coach's
+  backstage inventory of open/parked/resolved threads, each with an optional
+  hypothesis about the student's thinking and an optional board anchor so
+  resuming a thread also restores the position (`show_position`).
+
+Design properties: ledger updates travel as ordinary tool calls in the
+append-only message stream → **cache-safe** (no system-prompt mutation); the
+compactor carries open/parked threads across context compaction → **long-session
+safe**; the ledger persists on the session row → **resume-safe**; `end_session`'s
+prompt instructions require open threads to be resolved or explicitly let go →
+no dangling conversations. The ledger is never rendered in the student UI.
+
 ## 8. LLM gateway (`apps/api/src/llm/`)
 
 - `gateway.ts` — `getModelForUser(userId, tier)`: returns an AI-SDK model instance.
@@ -454,7 +488,9 @@ A full session can reach 60+ turns. Unbounded replay is slow and expensive:
   (`SESSION_CONTEXT_BUDGET_TOKENS`, estimated at 4 chars/token — no tokenizer dep).
 - **Rolling compaction:** when the budget is exceeded, a light-tier call summarizes
   the oldest ~50% of turns into a "session so far" digest (≤300 tokens: positions
-  covered, student's answers, findings recorded, coaching threads still open). The
+  covered, student's answers, findings recorded). The compactor MUST carry forward
+  the thread ledger's open/parked entries verbatim (they are the conversation's
+  live state); resolved threads may be dropped from the digest. The
   digest is stored in `sessions.context_digest text` and injected at the top of the
   message list; the summarized messages are excluded from replay (marked by
   `sessions.digest_through_message_id bigint`). Raw messages are never deleted —

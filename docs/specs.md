@@ -105,7 +105,16 @@ clamps them to the nearest band.
 - F3.5 The coach's system prompt includes the user's profile: focus areas, recent
   findings, band, session count. Cross-session continuity is a hard requirement.
 - F3.6 Sessions are resumable: full message history persists; reopening a session
-  restores board state and conversation.
+  restores board state, conversation, and the thread ledger (F3.8).
+- F3.8 **Conversational threading.** The coach converses like a human: short
+  replies addressing ONE topic at a time, never essays covering everything open.
+  It maintains a backstage ledger of conversation threads (active/parked/resolved,
+  with optional hypothesis and board anchor) via a tool; parks topics out loud in
+  natural language, resumes them later (restoring the board to the thread's
+  position), cross-references threads when the connection teaches, and may not end
+  a session with threads that were neither resolved nor explicitly let go. The
+  ledger itself is never shown to the user. (`architecture.md` §7.5,
+  `prompts.md` §2 "Conversation threading".)
 - F3.7 One active session per game; re-analyzing a game starts a new session but the
   coach can reference the old one.
 
