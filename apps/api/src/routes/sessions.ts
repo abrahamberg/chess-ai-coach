@@ -53,6 +53,11 @@ export function registerSessionsRoutes(
     const streamResult = await coachAgent.startTurn(agentDeps, session, parsed.data);
 
     reply.hijack();
-    streamResult.pipeDataStreamToResponse(reply.raw);
+    streamResult.pipeDataStreamToResponse(reply.raw, {
+      getErrorMessage: (error) => {
+        console.error('coach stream error:', error);
+        return 'An error occurred.';
+      }
+    });
   });
 }

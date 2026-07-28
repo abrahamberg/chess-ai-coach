@@ -65,6 +65,20 @@
   padding: 4px 0;
 }
 
+.chat-pane [data-testid='message-list'] .position-context-message__note {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.chat-pane [data-testid='message-list'] .annotation-note {
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--annotate-2) 12%, var(--surface));
+  border-bottom-left-radius: 4px;
+  font-size: 14px;
+}
+
 .thinking-indicator {
   align-self: flex-start;
   margin: 0 16px 8px;

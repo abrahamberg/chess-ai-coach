@@ -1,3 +1,4 @@
+import type { ClassifiedMove } from '@chess-coach/chess-analysis';
 import type { Kysely } from 'kysely';
 import type { AnalysisStatus, CoachingPlan, EngineEval } from '@chess-coach/shared';
 import type { Database } from '../schema.js';
@@ -82,6 +83,33 @@ export function storeEngineEvals(
     .where('id', '=', id)
     .execute()
     .then(() => undefined);
+}
+
+export function storeClassifiedMoves(
+  db: Kysely<Database>,
+  id: string,
+  moves: ClassifiedMove[]
+): Promise<void> {
+  return db
+    .updateTable('analyses')
+    .set({ classifiedMoves: JSON.stringify(moves) })
+    .where('id', '=', id)
+    .execute()
+    .then(() => undefined);
+}
+
+/** Reads back the stored per-move classification for a ready analysis (move
+ * explorer color-coding). */
+export function findClassifiedMovesByGameId(
+  db: Kysely<Database>,
+  gameId: string
+): Promise<ClassifiedMove[] | undefined> {
+  return db
+    .selectFrom('analyses')
+    .select('classifiedMoves')
+    .where('gameId', '=', gameId)
+    .executeTakeFirst()
+    .then((row) => row?.classifiedMoves as ClassifiedMove[] | undefined);
 }
 
 export function markReady(

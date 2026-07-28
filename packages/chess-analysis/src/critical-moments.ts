@@ -1,6 +1,6 @@
 import type { EngineEval, EngineLine } from '@chess-coach/shared';
 import type { ClassifiedMove } from './classify.js';
-import { toMoverPerspective, whitePerspectiveCp } from './classify.js';
+import { isSoundQuality, toMoverPerspective, whitePerspectiveCp } from './classify.js';
 
 const MISSED_CHANCE_GAP_CP = 300;
 const TURNING_POINT_THRESHOLD_CP = 150;
@@ -57,11 +57,12 @@ function userMistakeMoments(moves: ClassifiedMove[]): CandidateMoment[] {
     .map((move): CandidateMoment => ({ ply: move.ply, kind: 'user_mistake', cpLoss: move.cpLoss }));
 }
 
-/** Rule (b): user "good" moves where a >=300cp better line existed per multiPv but wasn't played. */
+/** Rule (b): user's sound moves (not dubious/mistake/blunder) where a
+ * >=300cp better line existed per multiPv but wasn't played. */
 function missedChanceMoments(moves: ClassifiedMove[], evals: EngineEval[]): CandidateMoment[] {
   const moments: CandidateMoment[] = [];
   for (const move of moves) {
-    if (!move.isUserMove || move.quality !== 'good') continue;
+    if (!move.isUserMove || !isSoundQuality(move.quality)) continue;
     const gapCp = missedChanceGapCp(evals[move.ply - 1], move.mover, move.moveSan);
     if (gapCp >= MISSED_CHANCE_GAP_CP) moments.push({ ply: move.ply, kind: 'missed_chance', cpLoss: gapCp });
   }

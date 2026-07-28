@@ -43,7 +43,7 @@ describe('classifyMoves', () => {
     expect(whiteMove?.quality).toBe('good');
   });
 
-  test('cpLoss 75 classifies as inaccuracy', () => {
+  test('cpLoss 75 classifies as dubious', () => {
     const game = twoPlyGame();
     // White to move at ply 0: best = +100 (white perspective). White plays a
     // move leaving the position at ply 1 with best = +25 (still white
@@ -53,7 +53,77 @@ describe('classifyMoves', () => {
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
     expect(whiteMove?.cpLoss).toBe(75);
-    expect(whiteMove?.quality).toBe('inaccuracy');
+    expect(whiteMove?.quality).toBe('dubious');
+  });
+
+  test('cpLoss 30 (below dubious, above the near-best band) classifies as interesting', () => {
+    const game = twoPlyGame();
+    const evals = [evalAt(START_FEN, 100), evalAt(AFTER_E4_FEN, 70), evalAt(AFTER_E4_E5_FEN, 70)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.cpLoss).toBe(30);
+    expect(whiteMove?.quality).toBe('interesting');
+  });
+
+  test('a non-capture move onto a square defended by a black pawn, with low cpLoss, classifies as brilliant', () => {
+    // White bishop c4-e6 (non-capture): e6 is defended by both black pawns
+    // d7 and f7. The engine still rates it best (cpLoss 0) — a genuine
+    // "offer" the opponent could refuse to take, which is what makes it
+    // worth flagging rather than an ordinary trade.
+    const beforeFen = '4k3/3p1p2/8/8/2B5/8/8/4K3 w - - 0 1';
+    const afterFen = '4k3/3p1p2/4B3/8/8/8/8/4K3 b - - 1 1';
+    const game: ParsedGame = {
+      headers: {},
+      positions: [
+        { ply: 0, fen: beforeFen, moveSan: null, moveUci: null, mover: null },
+        { ply: 1, fen: afterFen, moveSan: 'Be6', moveUci: 'c4e6', mover: 'white' }
+      ]
+    };
+    const evals = [evalAt(beforeFen, 0), evalAt(afterFen, 0)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.cpLoss).toBe(0);
+    expect(whiteMove?.quality).toBe('brilliant');
+  });
+
+  test('the same non-capture move onto an undefended square stays good, not brilliant', () => {
+    const beforeFen = '4k3/8/8/8/2B5/8/8/4K3 w - - 0 1';
+    const afterFen = '4k3/8/4B3/8/8/8/8/4K3 b - - 1 1';
+    const game: ParsedGame = {
+      headers: {},
+      positions: [
+        { ply: 0, fen: beforeFen, moveSan: null, moveUci: null, mover: null },
+        { ply: 1, fen: afterFen, moveSan: 'Be6', moveUci: 'c4e6', mover: 'white' }
+      ]
+    };
+    const evals = [evalAt(beforeFen, 0), evalAt(afterFen, 0)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.quality).toBe('good');
+  });
+
+  test('a capture is never classified as brilliant, even onto a defended square with low cpLoss', () => {
+    // Bxd7: bishop captures a black pawn on d7, landing on a square also
+    // defended by the black king — but this is an ordinary trade (a
+    // capture), not a material "offer", so the sacrifice heuristic excludes
+    // it deliberately.
+    const beforeFen = '4k3/3p4/8/8/2B5/8/8/4K3 w - - 0 1';
+    const afterFen = '4k3/3B4/8/8/8/8/8/4K3 b - - 0 1';
+    const game: ParsedGame = {
+      headers: {},
+      positions: [
+        { ply: 0, fen: beforeFen, moveSan: null, moveUci: null, mover: null },
+        { ply: 1, fen: afterFen, moveSan: 'Bxd7', moveUci: 'c4d7', mover: 'white' }
+      ]
+    };
+    const evals = [evalAt(beforeFen, 0), evalAt(afterFen, 0)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.quality).toBe('good');
   });
 
   test('cpLoss 150 classifies as mistake', () => {
@@ -210,6 +280,32 @@ describe('classifyMoves', () => {
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
     expect(whiteMove?.evalAfterCp).toBe(1000);
+  });
+
+  test('delivering checkmate is always cpLoss 0, even though the engine has no lines for the resulting no-legal-moves position', () => {
+    // The engine can't search a position with no legal moves, so evals for a
+    // checkmating move's "after" position come back with an empty lines
+    // array — whitePerspectiveCp(undefined) falls back to 0, which would
+    // otherwise make the winning move look like it "lost" the mate-in-1
+    // advantage (cpLoss 1000, 'blunder') instead of being the best move.
+    const beforeMateFen = 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4';
+    const afterMateFen = 'r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4';
+    const game: ParsedGame = {
+      headers: {},
+      positions: [
+        { ply: 0, fen: beforeMateFen, moveSan: null, moveUci: null, mover: null },
+        { ply: 1, fen: afterMateFen, moveSan: 'Qxf7#', moveUci: 'h5f7', mover: 'white' }
+      ]
+    };
+    const evals = [
+      { ply: 0, fen: beforeMateFen, depth: 16, lines: [{ moveUci: 'h5f7', moveSan: 'Qxf7#', cp: null, mateIn: 1 }] },
+      { ply: 1, fen: afterMateFen, depth: 16, lines: [] }
+    ];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.cpLoss).toBe(0);
+    expect(whiteMove?.quality).toBe('good');
   });
 
   test('returns an empty array for a zero-move game', () => {

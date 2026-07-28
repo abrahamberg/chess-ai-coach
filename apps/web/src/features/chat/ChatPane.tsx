@@ -12,11 +12,20 @@ export interface ChatPaneProps {
   isThinking?: boolean;
   onSend: (content: string) => void;
   onScrollUp?: () => void;
+  /** Clicking a PositionDivider jumps the board to that ply (peek mode). */
+  onSelectPly?: (ply: number) => void;
 }
 
 /** Composes MessageList + ToolActivity + the reply input. No fetching — the
  * parent (SessionPage) owns useCoachChat. */
-export function ChatPane({ messages, activeToolName, isThinking = false, onSend, onScrollUp }: ChatPaneProps): ReactNode {
+export function ChatPane({
+  messages,
+  activeToolName,
+  isThinking = false,
+  onSend,
+  onScrollUp,
+  onSelectPly
+}: ChatPaneProps): ReactNode {
   const [draft, setDraft] = useState('');
 
   function handleSubmit(event: FormEvent): void {
@@ -29,7 +38,7 @@ export function ChatPane({ messages, activeToolName, isThinking = false, onSend,
 
   return (
     <div className="chat-pane">
-      <MessageList messages={messages} onScrollUp={onScrollUp} />
+      <MessageList messages={messages} onScrollUp={onScrollUp} onSelectPly={onSelectPly} />
       <ThinkingIndicator visible={isThinking} />
       <ToolActivity toolName={activeToolName} />
       <form onSubmit={handleSubmit}>

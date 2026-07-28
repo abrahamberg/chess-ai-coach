@@ -1,7 +1,9 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { CoachMessage } from '../../hooks/useCoachChat.js';
+import { AnnotationNote } from './AnnotationNote.js';
 import { MoveCard } from './MoveCard.js';
-import { decodePositionDivider } from './positionDivider.js';
+import { PositionContextMessage } from './PositionContextMessage.js';
+import { decodeAnnotationNote, decodePositionContext, decodePositionDivider } from './positionDivider.js';
 import { PositionDivider } from './PositionDivider.js';
 
 const BOARD_MOVE_PATTERN = /^\[board_move\] I played (\S+) \(position now: (.+)\)$/;
@@ -10,13 +12,15 @@ export interface MessageListProps {
   messages: CoachMessage[];
   /** design.md §5.2: mobile board-docking collapses on chat scroll-up. */
   onScrollUp?: () => void;
+  /** Clicking a PositionDivider jumps the board to that ply (peek mode). */
+  onSelectPly?: (ply: number) => void;
 }
 
 const AT_BOTTOM_THRESHOLD_PX = 24;
 
 /** design.md §5.3: auto-scroll only if the user is already at the bottom —
  * never yank them while reading history. */
-export function MessageList({ messages, onScrollUp }: MessageListProps): ReactNode {
+export function MessageList({ messages, onScrollUp, onSelectPly }: MessageListProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
 
@@ -46,7 +50,23 @@ export function MessageList({ messages, onScrollUp }: MessageListProps): ReactNo
           }
           const divider = decodePositionDivider(message.text);
           if (divider) {
-            return <PositionDivider key={message.id} ply={divider.ply} san={divider.san} />;
+            return <PositionDivider key={message.id} ply={divider.ply} san={divider.san} onSelect={onSelectPly} />;
+          }
+          const annotation = decodeAnnotationNote(message.text);
+          if (annotation) {
+            return <AnnotationNote key={message.id} arrows={annotation.arrows} highlights={annotation.highlights} />;
+          }
+          const context = decodePositionContext(message.text);
+          if (context) {
+            return (
+              <PositionContextMessage
+                key={message.id}
+                moveNumber={context.moveNumber}
+                color={context.color}
+                san={context.san}
+                content={context.content}
+              />
+            );
           }
           // design.md §5.3: one small avatar at the start of each coach run,
           // not on every message — only when the previous visible message

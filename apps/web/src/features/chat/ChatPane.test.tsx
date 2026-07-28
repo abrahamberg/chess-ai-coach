@@ -39,6 +39,22 @@ describe('ChatPane', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  test('forwards onSelectPly through to MessageList', () => {
+    const onSelectPly = vi.fn();
+    render(
+      <ChatPane
+        messages={[{ id: '1', role: 'assistant', text: '[position_divider]|14|Bg4' }]}
+        activeToolName={null}
+        onSend={vi.fn()}
+        onSelectPly={onSelectPly}
+      />
+    );
+
+    screen.getByRole('button', { name: /move 7/i }).click();
+
+    expect(onSelectPly).toHaveBeenCalledWith(14);
+  });
+
   test('shows tool activity for a visible tool', () => {
     render(<ChatPane messages={[]} activeToolName="get_engine_analysis" onSend={vi.fn()} />);
     expect(screen.getByText(/checking a line/i)).toBeInTheDocument();

@@ -1,0 +1,122 @@
+/* chess.com/lichess-style move explorer — Daniel requested this directly,
+ * no design.md section yet. Desktop-only (session-body.desktop wires it in;
+ * there's no room for a third column on mobile/tablet). */
+.move-explorer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  border-right: 1px solid rgb(0 0 0 / 8%);
+  padding: 12px;
+  gap: 8px;
+}
+
+.move-explorer__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.move-explorer__nav button {
+  background: var(--surface-2);
+  border: none;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.move-explorer__position {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.move-explorer__notes-toggle {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.move-explorer__notes-toggle[aria-pressed='true'] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.move-explorer__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.move-explorer__list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.move-explorer__number {
+  color: var(--text-muted);
+  font-size: 13px;
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.move-explorer__list button {
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.move-explorer__list button[aria-current='true'] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.move-explorer__note {
+  font-size: 13px;
+  color: var(--text-muted);
+  border-top: 1px solid rgb(0 0 0 / 8%);
+  padding-top: 8px;
+  margin: 0;
+}
+
+/* Quality color coding, brilliant (blue) through blunder (red) — Daniel's
+ * requested gradient. Doesn't override the current-move highlight above. */
+.move-quality-brilliant {
+  color: var(--quality-brilliant);
+  font-weight: 600;
+}
+.move-quality-interesting {
+  color: var(--quality-interesting);
+}
+.move-quality-dubious {
+  color: var(--quality-dubious);
+}
+.move-quality-mistake {
+  color: var(--quality-mistake);
+}
+.move-quality-blunder {
+  color: var(--quality-blunder);
+  font-weight: 600;
+}
+
+.move-explorer__list button[aria-current='true'].move-quality-brilliant,
+.move-explorer__list button[aria-current='true'].move-quality-interesting,
+.move-explorer__list button[aria-current='true'].move-quality-dubious,
+.move-explorer__list button[aria-current='true'].move-quality-mistake,
+.move-explorer__list button[aria-current='true'].move-quality-blunder {
+  color: var(--accent-contrast);
+}

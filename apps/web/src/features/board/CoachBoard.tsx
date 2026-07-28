@@ -23,6 +23,15 @@ export interface CoachBoardProps {
   arrows?: BoardArrow[];
   highlights?: BoardHighlight[];
   onUserMove?: (san: string, fen: string) => void;
+  /** Fired for every legal drop regardless of mode — keeps the displayed
+   * position in sync with the drag immediately. react-chessboard is a fully
+   * controlled component: its own internal position only updates via an
+   * effect keyed on the `fen` prop, so without this the dropped piece snaps
+   * back on the next render (most visible on castling, whose two-piece move
+   * only animates through that same prop-driven path). Separate from
+   * onUserMove, which is answer-mode-only and drives the chat side-effect —
+   * peek mode must keep updating the display without notifying the coach. */
+  onLocalMove?: (fen: string) => void;
 }
 
 /** Presentational react-chessboard wrapper (AGENTS.md rule 7) — no fetching,
@@ -34,7 +43,8 @@ export function CoachBoard({
   mode,
   arrows = [],
   highlights = [],
-  onUserMove
+  onUserMove,
+  onLocalMove
 }: CoachBoardProps): ReactNode {
   function handlePieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
     if (!targetSquare) return false;
@@ -48,6 +58,7 @@ export function CoachBoard({
     }
     if (!move) return false;
 
+    onLocalMove?.(chess.fen());
     if (mode === 'answer') {
       onUserMove?.(move.san, chess.fen());
     }

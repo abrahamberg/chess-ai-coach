@@ -50,6 +50,7 @@ export async function runAnalyzeGameJob(
     await analysesRepo.storeEngineEvals(db, analysis.id, evals);
 
     const classifiedMoves = classifyMoves(parsedGame, evals, game.userColor);
+    await analysesRepo.storeClassifiedMoves(db, analysis.id, classifiedMoves);
     const candidateMoments = findCandidateMoments(classifiedMoves, evals);
 
     await analysesRepo.updateStatus(db, analysis.id, 'planning');

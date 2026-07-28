@@ -1,4 +1,4 @@
-import type { RatingBand } from '@chess-coach/shared';
+import { MOVE_QUALITY_SYMBOLS, type RatingBand } from '@chess-coach/shared';
 import type { CandidateMoment, ClassifiedMove } from '@chess-coach/chess-analysis';
 import { CALIBRATION } from './calibration.js';
 import {
@@ -85,7 +85,8 @@ function renderMovesTable(moves: ClassifiedMove[]): string {
     if (!move.isUserMove) return null;
     const opponentMove = moves[index - 1];
     const context = opponentMove && !opponentMove.isUserMove ? `${opponentMove.moveSan} ` : '';
-    const qualityNote = move.quality === 'good' ? '' : `? (cpLoss ${move.cpLoss}, ${move.quality})`;
+    const qualityNote =
+      move.quality === 'good' ? '' : `${MOVE_QUALITY_SYMBOLS[move.quality]} (cpLoss ${move.cpLoss}, ${move.quality})`;
     return `${move.ply}. ${context}${move.moveSan}${qualityNote} | best line: ${move.bestLineSan.join(' ')}`;
   });
   return rows.filter((row): row is string => row !== null).join('\n');

@@ -43,7 +43,8 @@ export function registerGamesRoutes(app: FastifyInstance, db: Kysely<Database>, 
     if (!game) throw new NotFoundError('Game not found');
 
     const analysis = await analysesRepo.findByGameId(db, game.id);
-    return { ...game, analysisStatus: analysis?.status ?? null };
+    const classifiedMoves = await analysesRepo.findClassifiedMovesByGameId(db, game.id);
+    return { ...game, analysisStatus: analysis?.status ?? null, classifiedMoves: classifiedMoves ?? null };
   });
 }
 

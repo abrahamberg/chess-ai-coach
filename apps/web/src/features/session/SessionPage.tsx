@@ -1,18 +1,21 @@
 import { parsePgn } from '@chess-coach/chess-analysis';
+import { ClassifiedMoveSchema } from '@chess-coach/shared';
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { z } from 'zod';
 import { apiGet } from '../../api/client.js';
 import { useCoachChat, type CoachMessage } from '../../hooks/useCoachChat.js';
 import { useIsBoardSideBySide } from '../../hooks/useIsBoardSideBySide.js';
+import { useIsDesktop } from '../../hooks/useIsDesktop.js';
 import { useWasmEngine } from '../../hooks/useWasmEngine.js';
 import { CoachBoard } from '../board/CoachBoard.js';
 import { ExplorePanel } from '../board/ExplorePanel.js';
 import { MiniBoard } from '../board/MiniBoard.js';
+import { MoveExplorer } from '../board/MoveExplorer.js';
 import { MoveStrip } from '../board/MoveStrip.js';
 import { ChatPane } from '../chat/ChatPane.js';
-import { encodePositionDivider, sanForPly } from '../chat/positionDivider.js';
+import { encodePositionContext, encodePositionDivider, sanForPly } from '../chat/positionDivider.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
 import { SessionHeader } from './SessionHeader.js';
 import { useSessionBoardState } from './useSessionBoardState.js';
@@ -71,6 +74,13 @@ function showPositionPlies(content: unknown): number[] {
     .map((part) => (part.args as { ply: number }).ply);
 }
 
+/** Reopening a session should show the board where the coach last left it,
+ * not the game's start — find the most recent show_position across the
+ * whole transcript. */
+function lastShowPositionPly(messages: z.infer<typeof SessionMessageSchema>[]): number | undefined {
+  return messages.flatMap((message) => showPositionPlies(message.content)).at(-1);
+}
+
 function toCoachMessages(messages: z.infer<typeof SessionMessageSchema>[], sanMoves: string[]): CoachMessage[] {
   return messages
     .filter((message) => message.role !== 'tool')
@@ -97,7 +107,8 @@ const GameDetailSchema = z.object({
   userColor: z.enum(['white', 'black']),
   whiteName: z.string().nullable(),
   blackName: z.string().nullable(),
-  result: z.string().nullable()
+  result: z.string().nullable(),
+  classifiedMoves: z.array(ClassifiedMoveSchema).nullable()
 });
 
 /** design.md §5: composes board + chat for an active coaching session.
@@ -107,6 +118,7 @@ export function SessionPage(): ReactNode {
   const sessionId = id ?? '';
   const navigate = useNavigate();
   const isSideBySide = useIsBoardSideBySide();
+  const isDesktop = useIsDesktop();
 
   const sessionQuery = useQuery({
     queryKey: ['session', sessionId],
@@ -124,11 +136,26 @@ export function SessionPage(): ReactNode {
   const positions = gameQuery.data ? parsePgn(gameQuery.data.pgn).positions : [];
   const sanMoves = positions.filter((position) => position.moveSan !== null).map((position) => position.moveSan as string);
 
-  const boardState = useSessionBoardState(positions);
+  const initialPly = sessionQuery.data ? lastShowPositionPly(sessionQuery.data.messages) : undefined;
+  const boardState = useSessionBoardState(positions, initialPly);
   const engine = useWasmEngine();
   const initialMessages =
     sessionQuery.data && gameQuery.data ? toCoachMessages(sessionQuery.data.messages, sanMoves) : undefined;
   const chat = useCoachChat(sessionId, { onToolCall: boardState.handleToolCall, initialMessages, sanMoves });
+
+  // A fresh session has only the internal [session_start] marker persisted
+  // at creation (coach-agent.ts) — nothing has ever triggered a model turn
+  // on it, so the coach otherwise never speaks until the student does.
+  const kickedOffRef = useRef(false);
+  useEffect(() => {
+    const messages = sessionQuery.data?.messages;
+    if (!kickedOffRef.current && messages && sessionQuery.data?.status === 'active') {
+      if (!messages.some((message) => message.role === 'assistant')) {
+        kickedOffRef.current = true;
+        void chat.kickoff();
+      }
+    }
+  }, [sessionQuery.data, chat]);
 
   const [pendingMove, setPendingMove] = useState<{ san: string; fen: string } | null>(null);
   const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -157,9 +184,20 @@ export function SessionPage(): ReactNode {
     }, UNDO_PILL_MS);
   }
 
+  function handleSendMessage(content: string): void {
+    if (boardState.mode === 'peek') {
+      const san = sanForPly(sanMoves, boardState.ply) ?? '';
+      void chat.sendMessage(encodePositionContext(boardState.ply, san, content));
+      boardState.anchorHere();
+      return;
+    }
+    void chat.sendMessage(content);
+  }
+
   function handleUndoMove(): void {
     if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
     setPendingMove(null);
+    boardState.clearPreview();
   }
 
   const orientation = gameQuery.data?.userColor ?? 'white';
@@ -174,6 +212,14 @@ export function SessionPage(): ReactNode {
         onBack={() => navigate('/games')}
       />
       <div className={isSideBySide ? 'session-body desktop' : 'session-body mobile'}>
+        {isDesktop && (
+          <MoveExplorer
+            sanMoves={sanMoves}
+            classifiedMoves={gameQuery.data?.classifiedMoves ?? []}
+            currentPly={boardState.ply}
+            onSelect={boardState.peekAt}
+          />
+        )}
         <div className="session-board-column">
           {showMiniBoard ? (
             <MiniBoard fen={boardState.fen} size={96} onExpand={boardState.expandDock} />
@@ -185,6 +231,7 @@ export function SessionPage(): ReactNode {
               arrows={boardState.arrows}
               highlights={boardState.highlights}
               onUserMove={handleUserMove}
+              onLocalMove={boardState.previewMove}
             />
           )}
           {pendingMove && (
@@ -203,8 +250,15 @@ export function SessionPage(): ReactNode {
               </button>
             </p>
           )}
-          <MoveStrip sanMoves={sanMoves} currentPly={boardState.ply} momentPlies={[]} onSelect={boardState.peekAt} />
-          <ExplorePanel fen={boardState.fen} onEnterPeekMode={() => boardState.setMode('peek')} engine={engine} />
+          {!isDesktop && (
+            <MoveStrip sanMoves={sanMoves} currentPly={boardState.ply} momentPlies={[]} onSelect={boardState.peekAt} />
+          )}
+          <ExplorePanel
+            fen={boardState.fen}
+            mode={boardState.mode}
+            onEnterPeekMode={() => boardState.setMode('peek')}
+            engine={engine}
+          />
         </div>
         {session.status === 'paused_no_credits' ? (
           <div className="session-paused-card">
@@ -218,8 +272,9 @@ export function SessionPage(): ReactNode {
             messages={chat.messages}
             activeToolName={chat.activeToolName}
             isThinking={chat.isThinking}
-            onSend={(content) => void chat.sendMessage(content)}
+            onSend={handleSendMessage}
             onScrollUp={boardState.collapseDock}
+            onSelectPly={boardState.peekAt}
           />
         )}
       </div>

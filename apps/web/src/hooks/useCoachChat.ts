@@ -1,6 +1,6 @@
 import { processDataStream } from 'ai';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { encodePositionDivider, sanForPly } from '../features/chat/positionDivider.js';
+import { encodeAnnotationNote, encodePositionDivider, sanForPly, type AnnotationNoteState } from '../features/chat/positionDivider.js';
 
 export interface CoachMessage {
   id: string;
@@ -38,6 +38,10 @@ export interface UseCoachChatResult {
    * turn (the empty assistant placeholder hasn't received any text yet). */
   isThinking: boolean;
   sendMessage: (content: string) => Promise<void>;
+  /** Resumes a turn on whatever's already pending in history (the
+   * [session_start] marker) without adding a new user-role message — how the
+   * coach opens a fresh session on its own. */
+  kickoff: () => Promise<void>;
 }
 
 /** Drives POST /api/sessions/:id/messages (architecture §7.2). Built on AI
@@ -96,6 +100,15 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
                 ]);
               }
             }
+            if (toolCall.toolName === 'annotate_board') {
+              const annotation = toolCall.args as AnnotationNoteState;
+              if (annotation.arrows.length > 0 || annotation.highlights.length > 0) {
+                setMessages((prev) => [
+                  ...prev,
+                  { id: crypto.randomUUID(), role: 'assistant', text: encodeAnnotationNote(annotation) }
+                ]);
+              }
+            }
             const result = options.onToolCall?.(toolCall);
             if (result !== undefined) {
               await postTurn({
@@ -124,7 +137,16 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
     [postTurn]
   );
 
+  const kickoff = useCallback(async () => {
+    setIsStreaming(true);
+    try {
+      await postTurn({});
+    } finally {
+      setIsStreaming(false);
+    }
+  }, [postTurn]);
+
   const isThinking = isStreaming && messages.at(-1)?.text === '';
 
-  return { messages, isStreaming, activeToolName, isThinking, sendMessage };
+  return { messages, isStreaming, activeToolName, isThinking, sendMessage, kickoff };
 }

@@ -81,7 +81,7 @@ describe('runAnalyzeGameJob', () => {
 
     const row = await db
       .selectFrom('analyses')
-      .select(['status', 'engineEvals', 'coachingPlan', 'error'])
+      .select(['status', 'engineEvals', 'coachingPlan', 'classifiedMoves', 'error'])
       .where('id', '=', analysisId)
       .executeTakeFirstOrThrow();
     expect(row.status).toBe('ready');
@@ -90,6 +90,10 @@ describe('runAnalyzeGameJob', () => {
     expect((row.engineEvals as EngineEval[]).length).toBeGreaterThan(0);
     expect((row.coachingPlan as { gameSummary: string }).gameSummary).toContain('Scholar');
     expect(callPlanner).toHaveBeenCalledTimes(1);
+
+    const classifiedMoves = row.classifiedMoves as Array<{ ply: number; moveSan: string; quality: string }>;
+    expect(classifiedMoves.length).toBeGreaterThan(0);
+    expect(classifiedMoves[0]).toMatchObject({ ply: 1, moveSan: 'e4' });
   });
 
   test('invalid planner JSON once, then valid -> retries once and succeeds', async () => {

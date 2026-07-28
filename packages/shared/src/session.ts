@@ -24,14 +24,14 @@ export const ClientToolResultSchema = z.object({
 });
 export type ClientToolResult = z.infer<typeof ClientToolResultSchema>;
 
-export const PostSessionMessageRequestSchema = z
-  .object({
-    content: z.string().min(1).optional(),
-    clientToolResult: ClientToolResultSchema.optional()
-  })
-  .refine((body) => body.content !== undefined || body.clientToolResult !== undefined, {
-    message: 'Either content or clientToolResult is required'
-  });
+/** An empty body is valid — it resumes the turn on whatever is already
+ * pending in the session's history (e.g. the [session_start] marker) rather
+ * than adding new input, mirroring startTurn's own content/clientToolResult
+ * being optional. */
+export const PostSessionMessageRequestSchema = z.object({
+  content: z.string().min(1).optional(),
+  clientToolResult: ClientToolResultSchema.optional()
+});
 export type PostSessionMessageRequest = z.infer<typeof PostSessionMessageRequestSchema>;
 
 export const ThreadSchema = z.object({

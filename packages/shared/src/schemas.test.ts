@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { AnalyzeGameRequestSchema, AnalyzePositionRequestSchema, EngineEvalSchema } from './analysis.js';
+import { AnalyzeGameRequestSchema, AnalyzePositionRequestSchema, ClassifiedMoveSchema, EngineEvalSchema } from './analysis.js';
 import { CoachingPlanSchema, type CoachingPlan } from './coaching-plan.js';
 import { CreditPackSchema } from './credits.js';
 import { DashboardResponseSchema } from './dashboard.js';
@@ -58,6 +58,30 @@ describe('EngineEvalSchema', () => {
   test('rejects a line missing moveSan', () => {
     const bad = { ...validEngineEval, lines: [{ moveUci: 'e2e4', cp: 10, mateIn: null }] };
     expect(EngineEvalSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('ClassifiedMoveSchema', () => {
+  const validMove = {
+    ply: 4,
+    moveSan: 'Qxf7#',
+    mover: 'white',
+    isUserMove: true,
+    cpLoss: 0,
+    quality: 'brilliant',
+    bestLineSan: ['Qxf7#'],
+    evalAfterCp: 1000
+  };
+  test('accepts a valid classified move', () => {
+    expect(ClassifiedMoveSchema.safeParse(validMove).success).toBe(true);
+  });
+  test('accepts every MOVE_QUALITIES tier', () => {
+    for (const quality of ['brilliant', 'good', 'interesting', 'dubious', 'mistake', 'blunder']) {
+      expect(ClassifiedMoveSchema.safeParse({ ...validMove, quality }).success).toBe(true);
+    }
+  });
+  test('rejects an unknown quality tier (e.g. the old "inaccuracy" name)', () => {
+    expect(ClassifiedMoveSchema.safeParse({ ...validMove, quality: 'inaccuracy' }).success).toBe(false);
   });
 });
 
@@ -186,8 +210,8 @@ describe('PostSessionMessageRequestSchema', () => {
     const body = { clientToolResult: { toolCallId: '1', toolName: 'show_position', result: { ply: 4 } } };
     expect(PostSessionMessageRequestSchema.safeParse(body).success).toBe(true);
   });
-  test('rejects a body with neither content nor clientToolResult', () => {
-    expect(PostSessionMessageRequestSchema.safeParse({}).success).toBe(false);
+  test('accepts an empty body — resumes the turn on whatever is already pending in history (e.g. session kickoff)', () => {
+    expect(PostSessionMessageRequestSchema.safeParse({}).success).toBe(true);
   });
 });
 

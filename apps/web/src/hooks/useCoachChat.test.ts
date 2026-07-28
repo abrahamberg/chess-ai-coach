@@ -71,6 +71,24 @@ describe('useCoachChat', () => {
     expect(result.current.isThinking).toBe(false);
   });
 
+  test('kickoff posts an empty body (resumes the pending [session_start] turn) without adding a user bubble', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(streamResponse([formatDataStreamPart('text', 'Welcome back!')]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1'));
+    await act(async () => {
+      await result.current.kickoff();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/sessions/session-1/messages',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({}) })
+    );
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]?.role).toBe('assistant');
+    expect(result.current.messages[0]?.text).toBe('Welcome back!');
+  });
+
   test('a client tool call invokes onToolCall and posts the result back to the same endpoint', async () => {
     const onToolCall = vi.fn().mockReturnValue({ ply: 4 });
     const fetchMock = vi
@@ -115,6 +133,57 @@ describe('useCoachChat', () => {
 
     const divider = result.current.messages.find((m) => m.text.startsWith('[position_divider]'));
     expect(divider?.text).toBe('[position_divider]|2|e5');
+  });
+
+  test('an annotate_board tool call inserts a persistent annotation-note message describing the arrows/highlights', async () => {
+    const onToolCall = vi.fn().mockReturnValue({ acknowledged: true });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        streamResponse([
+          formatDataStreamPart('tool_call', {
+            toolCallId: 'call-5',
+            toolName: 'annotate_board',
+            args: { arrows: [{ from: 'e2', to: 'e4', color: '#c9762a' }], highlights: [] }
+          })
+        ])
+      )
+      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
+    await act(async () => {
+      await result.current.sendMessage('show me the idea');
+    });
+
+    const note = result.current.messages.find((m) => m.text.startsWith('[annotation_note]'));
+    expect(note).toBeDefined();
+    expect(note?.text).toContain('e2');
+    expect(note?.text).toContain('e4');
+  });
+
+  test('an annotate_board tool call with no arrows/highlights (a clear) inserts no annotation note', async () => {
+    const onToolCall = vi.fn().mockReturnValue({ acknowledged: true });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        streamResponse([
+          formatDataStreamPart('tool_call', {
+            toolCallId: 'call-6',
+            toolName: 'annotate_board',
+            args: { arrows: [], highlights: [] }
+          })
+        ])
+      )
+      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
+    await act(async () => {
+      await result.current.sendMessage('clear it');
+    });
+
+    expect(result.current.messages.some((m) => m.text.startsWith('[annotation_note]'))).toBe(false);
   });
 
   test('design.md §5.3: activeToolName is set while a visible tool call is in flight, then cleared once text resumes', async () => {

@@ -1,6 +1,7 @@
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { buildApp } from '../app.js';
+import * as analysesRepo from '../db/repositories/analyses.js';
 import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
@@ -176,6 +177,39 @@ describe('POST/GET /api/games', () => {
     const detail = await app.inject({ method: 'GET', url: `/api/games/${gameId}`, headers });
     expect(detail.statusCode).toBe(200);
     expect(detail.json()).toMatchObject({ id: gameId, analysisStatus: 'queued' });
+  });
+
+  test('GET /api/games/:id includes the persisted per-move classification once analysis stored it', async () => {
+    const app = buildTestApp();
+    const headers = headersFor('classified@example.com', 'Classy');
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/api/games',
+      headers,
+      payload: { pgn: VALID_PGN, source: 'paste', userColor: 'white' }
+    });
+    const { gameId } = imported.json();
+    const analysis = await analysesRepo.findByGameId(db, gameId);
+    if (!analysis) throw new Error('expected an analysis row to exist for the imported game');
+    await analysesRepo.storeClassifiedMoves(db, analysis.id, [
+      {
+        ply: 1,
+        moveSan: 'e4',
+        mover: 'white',
+        isUserMove: true,
+        cpLoss: 0,
+        quality: 'good',
+        bestLineSan: ['e4'],
+        evalAfterCp: 20
+      }
+    ]);
+
+    const detail = await app.inject({ method: 'GET', url: `/api/games/${gameId}`, headers });
+
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().classifiedMoves).toEqual([
+      expect.objectContaining({ ply: 1, moveSan: 'e4', quality: 'good' })
+    ]);
   });
 
   test('GET /api/games/:id 404s for another user\'s game', async () => {

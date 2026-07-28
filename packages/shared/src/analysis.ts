@@ -25,8 +25,32 @@ export const EngineEvalSchema = z.object({
 });
 export type EngineEval = z.infer<typeof EngineEvalSchema>;
 
-export const MOVE_QUALITIES = ['good', 'inaccuracy', 'mistake', 'blunder'] as const;
+export const MOVE_QUALITIES = ['brilliant', 'good', 'interesting', 'dubious', 'mistake', 'blunder'] as const;
 export type MoveQuality = (typeof MOVE_QUALITIES)[number];
+
+/** Chess.com/lichess-style NAG symbols for each quality tier. */
+export const MOVE_QUALITY_SYMBOLS: Record<MoveQuality, string> = {
+  brilliant: '!!',
+  good: '!',
+  interesting: '!?',
+  dubious: '?!',
+  mistake: '?',
+  blunder: '??'
+};
+
+export const MoveQualitySchema = z.enum(MOVE_QUALITIES);
+
+export const ClassifiedMoveSchema = z.object({
+  ply: z.number().int().nonnegative(),
+  moveSan: z.string(),
+  mover: z.enum(['white', 'black']),
+  isUserMove: z.boolean(),
+  cpLoss: z.number().int().nonnegative(),
+  quality: MoveQualitySchema,
+  bestLineSan: z.array(z.string()),
+  evalAfterCp: z.number().int()
+});
+export type ClassifiedMoveDto = z.infer<typeof ClassifiedMoveSchema>;
 
 export const AnalyzeGameRequestSchema = z.object({
   fens: z.array(z.string()).min(1),

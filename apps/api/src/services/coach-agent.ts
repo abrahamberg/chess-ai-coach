@@ -14,11 +14,16 @@ import { getModelForUser, recordUsage, type GatewayConfig, type ModelResolution,
 import { buildCoachTools } from './coach-tools.js';
 import * as userProfileService from './user-profile.js';
 import { InsufficientCreditsError, NotFoundError } from '../lib/errors.js';
+import { createKeyedLock } from '../lib/keyedLock.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { createCreditsService, type CreditsService } from './credits.js';
 
 const MAX_STEPS = 8;
 const SESSION_START_CONTENT = '[session_start]';
+
+/** Serializes startTurn calls per session — see createKeyedLock's doc comment
+ * for why this is needed (the client-tool round-trip race). */
+const sessionLock = createKeyedLock();
 
 export type ModelResolver = (
   db: Kysely<Database>,
@@ -112,78 +117,99 @@ export async function startTurn(
   session: SessionRow,
   input: StartTurnInput
 ): Promise<StreamTextResult<ToolSet, never>> {
-  const resolveModel = deps.resolveModel ?? getModelForUser;
-  const resolution = await resolveModel(deps.db, deps.gatewayConfig, session.userId, 'standard');
+  // Held until onFinish below has persisted this turn's messages — a client
+  // tool-result arrives as a brand-new HTTP request the instant the tool-call
+  // streams to the browser, which can otherwise race this turn's own
+  // still-in-flight persistence and read the history before its own
+  // tool-call message exists (the tool-result then lands first, an ordering
+  // OpenAI rejects on every future replay of the session).
+  const release = await sessionLock.acquire(session.id);
+  let released = false;
+  const releaseOnce = (): void => {
+    if (released) return;
+    released = true;
+    release();
+  };
 
-  if (resolution.metered) {
-    const creditsService = deps.creditsService ?? createCreditsService(deps.db);
-    try {
-      await creditsService.assertCanSpend(session.userId);
-    } catch (error) {
-      await sessionsRepo.markPausedNoCredits(deps.db, session.id);
-      throw error instanceof InsufficientCreditsError
-        ? error
-        : new InsufficientCreditsError('Insufficient credits');
-    }
-  }
+  try {
+    const resolveModel = deps.resolveModel ?? getModelForUser;
+    const resolution = await resolveModel(deps.db, deps.gatewayConfig, session.userId, 'standard');
 
-  if (input.content !== undefined) {
-    await sessionMessagesRepo.insert(deps.db, session.id, 'user', input.content);
-  }
-  if (input.clientToolResult) {
-    await applyClientToolResult(deps.db, session, input.clientToolResult);
-  }
-
-  const { staticPart, dynamicPart } = await buildSystemPromptForSession(deps.db, session);
-  const priorMessages = await sessionMessagesRepo.listBySession(deps.db, session.id);
-  const messages = priorMessages.map(toCoreMessage);
-
-  const tools = buildCoachTools(
-    { userId: session.userId, sessionId: session.id, gameId: session.gameId },
-    {
-      db: deps.db,
-      jobQueue: deps.jobQueue,
-      analyzePosition: deps.analyzePosition,
-      callLightModel: deps.callLightModel
-    }
-  );
-
-  return streamText({
-    model: resolution.model,
-    system: `${staticPart}\n\n${dynamicPart}`,
-    messages,
-    tools,
-    maxSteps: MAX_STEPS,
-    onFinish: async (event) => {
-      // streamText's response has already been piped to the client by the
-      // time this runs (see routes/sessions.ts's reply.hijack()), so nothing
-      // downstream can catch a rejection here — an uncaught error would
-      // otherwise crash the whole process (seen live: a NaN token count from
-      // a provider quirk took down the entire API). Persisting the transcript
-      // and metering the call must never be able to do that.
+    if (resolution.metered) {
+      const creditsService = deps.creditsService ?? createCreditsService(deps.db);
       try {
-        for (const message of event.response.messages) {
-          await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content);
-        }
-        await recordUsage(deps.db, {
-          userId: session.userId,
-          sessionId: session.id,
-          provider: resolution.provider,
-          model: resolution.modelId,
-          tier: 'standard',
-          usage: {
-            inputTokens: event.usage.promptTokens,
-            outputTokens: event.usage.completionTokens,
-            cachedInputTokens: 0
-          },
-          purpose: 'coach_turn',
-          metered: resolution.metered
-        });
+        await creditsService.assertCanSpend(session.userId);
       } catch (error) {
-        console.error(`coach-agent onFinish failed for session ${session.id}:`, error);
+        await sessionsRepo.markPausedNoCredits(deps.db, session.id);
+        throw error instanceof InsufficientCreditsError
+          ? error
+          : new InsufficientCreditsError('Insufficient credits');
       }
     }
-  });
+
+    if (input.content !== undefined) {
+      await sessionMessagesRepo.insert(deps.db, session.id, 'user', input.content);
+    }
+    if (input.clientToolResult) {
+      await applyClientToolResult(deps.db, session, input.clientToolResult);
+    }
+
+    const { staticPart, dynamicPart } = await buildSystemPromptForSession(deps.db, session);
+    const priorMessages = await sessionMessagesRepo.listBySession(deps.db, session.id);
+    const messages = priorMessages.map(toCoreMessage);
+
+    const tools = buildCoachTools(
+      { userId: session.userId, sessionId: session.id, gameId: session.gameId },
+      {
+        db: deps.db,
+        jobQueue: deps.jobQueue,
+        analyzePosition: deps.analyzePosition,
+        callLightModel: deps.callLightModel
+      }
+    );
+
+    return streamText({
+      model: resolution.model,
+      system: `${staticPart}\n\n${dynamicPart}`,
+      messages,
+      tools,
+      maxSteps: MAX_STEPS,
+      onFinish: async (event) => {
+        // streamText's response has already been piped to the client by the
+        // time this runs (see routes/sessions.ts's reply.hijack()), so nothing
+        // downstream can catch a rejection here — an uncaught error would
+        // otherwise crash the whole process (seen live: a NaN token count from
+        // a provider quirk took down the entire API). Persisting the transcript
+        // and metering the call must never be able to do that.
+        try {
+          for (const message of event.response.messages) {
+            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content);
+          }
+          await recordUsage(deps.db, {
+            userId: session.userId,
+            sessionId: session.id,
+            provider: resolution.provider,
+            model: resolution.modelId,
+            tier: 'standard',
+            usage: {
+              inputTokens: event.usage.promptTokens,
+              outputTokens: event.usage.completionTokens,
+              cachedInputTokens: 0
+            },
+            purpose: 'coach_turn',
+            metered: resolution.metered
+          });
+        } catch (error) {
+          console.error(`coach-agent onFinish failed for session ${session.id}:`, error);
+        } finally {
+          releaseOnce();
+        }
+      }
+    });
+  } catch (error) {
+    releaseOnce();
+    throw error;
+  }
 }
 
 async function applyClientToolResult(

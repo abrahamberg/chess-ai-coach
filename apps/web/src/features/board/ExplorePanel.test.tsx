@@ -12,7 +12,7 @@ function makeEngine(overrides: Partial<UseWasmEngineResult> = {}): UseWasmEngine
 
 describe('ExplorePanel', () => {
   test('collapsed by default, showing only the "Explore on your own" toggle', () => {
-    render(<ExplorePanel fen={START_FEN} onEnterPeekMode={vi.fn()} engine={makeEngine()} />);
+    render(<ExplorePanel fen={START_FEN} mode="answer" onEnterPeekMode={vi.fn()} engine={makeEngine()} />);
 
     expect(screen.getByRole('button', { name: /explore on your own/i })).toBeInTheDocument();
     expect(screen.queryByText(/private exploration/i)).not.toBeInTheDocument();
@@ -23,7 +23,7 @@ describe('ExplorePanel', () => {
     const onEnterPeekMode = vi.fn();
     const user = userEvent.setup();
     render(
-      <ExplorePanel fen={START_FEN} onEnterPeekMode={onEnterPeekMode} engine={makeEngine({ analyze })} />
+      <ExplorePanel fen={START_FEN} mode="answer" onEnterPeekMode={onEnterPeekMode} engine={makeEngine({ analyze })} />
     );
 
     await user.click(screen.getByRole('button', { name: /explore on your own/i }));
@@ -38,6 +38,7 @@ describe('ExplorePanel', () => {
     render(
       <ExplorePanel
         fen={START_FEN}
+        mode="answer"
         onEnterPeekMode={vi.fn()}
         engine={makeEngine({ status: 'ready', evaluation: 'White is better' })}
       />
@@ -46,5 +47,21 @@ describe('ExplorePanel', () => {
     await user.click(screen.getByRole('button', { name: /explore on your own/i }));
 
     expect(screen.getByText('White is better')).toBeInTheDocument();
+  });
+
+  test('collapses back to the toggle once the board leaves peek mode (e.g. "back to coach")', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ExplorePanel fen={START_FEN} mode="answer" onEnterPeekMode={vi.fn()} engine={makeEngine()} />
+    );
+
+    await user.click(screen.getByRole('button', { name: /explore on your own/i }));
+    rerender(<ExplorePanel fen={START_FEN} mode="peek" onEnterPeekMode={vi.fn()} engine={makeEngine()} />);
+    expect(screen.getByText(/private exploration/i)).toBeInTheDocument();
+
+    rerender(<ExplorePanel fen={START_FEN} mode="answer" onEnterPeekMode={vi.fn()} engine={makeEngine()} />);
+
+    expect(screen.queryByText(/private exploration/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /explore on your own/i })).toBeInTheDocument();
   });
 });

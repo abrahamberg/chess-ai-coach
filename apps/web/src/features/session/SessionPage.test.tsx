@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { formatDataStreamPart } from 'ai';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -20,9 +20,9 @@ const { SessionPage } = await import('./SessionPage.js');
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const PGN = '[White "daniel"]\n[Black "Marta"]\n\n1. e4 e5 2. Nf3 *';
 
-function mockMatchMedia(matches: boolean) {
+function mockMatchMedia(defaultMatches: boolean, overrides: Record<string, boolean> = {}) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches,
+    matches: overrides[query] ?? defaultMatches,
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn()
@@ -45,7 +45,15 @@ interface SessionFixture {
   summary?: string | null;
   homework?: string | null;
   messages?: Array<{ id: string; role: 'user' | 'assistant' | 'tool'; content: unknown }>;
+  classifiedMoves?: unknown[] | null;
 }
+
+// Most tests aren't about the fresh-session kickoff behavior — default to a
+// session that already has an assistant turn so the auto-kickoff effect
+// (which POSTs to /messages on mount) doesn't fire and steal/duplicate the
+// fetch assertions those tests make. Tests exercising kickoff pass their own
+// `messages` fixture with no assistant entry.
+const ALREADY_STARTED_MESSAGES = [{ id: 'm0', role: 'assistant' as const, content: 'Hi there!' }];
 
 function mockFetch(session: SessionFixture = {}, extra: (path: string) => Response | undefined = () => undefined) {
   return vi.fn().mockImplementation((path: string) => {
@@ -62,7 +70,7 @@ function mockFetch(session: SessionFixture = {}, extra: (path: string) => Respon
             currentPly: 0,
             summary: session.summary ?? null,
             homework: session.homework ?? null,
-            messages: session.messages ?? []
+            messages: session.messages ?? ALREADY_STARTED_MESSAGES
           }),
           { status: 200, headers: { 'content-type': 'application/json' } }
         )
@@ -77,7 +85,8 @@ function mockFetch(session: SessionFixture = {}, extra: (path: string) => Respon
             userColor: 'black',
             whiteName: 'daniel',
             blackName: 'Marta',
-            result: '1-0'
+            result: '1-0',
+            classifiedMoves: session.classifiedMoves ?? null
           }),
           { status: 200, headers: { 'content-type': 'application/json' } }
         )
@@ -236,8 +245,112 @@ describe('SessionPage', () => {
     renderSessionPage();
 
     expect(await screen.findByText(/let's dive into your game|let me show you/i)).toBeInTheDocument();
-    const divider = screen.getByText(/move 2/).closest('.position-divider');
+    const divider = within(screen.getByTestId('message-list')).getByText(/move 1 \(black\)/i).closest('.position-divider');
     expect(divider).toHaveTextContent('e5');
+
+    const options = capturedOptions.at(-1);
+    expect(options?.position).toBe('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2');
+  });
+
+  test('a fresh session (only the internal [session_start] marker, no assistant reply yet) auto-kicks off the coach opening turn', async () => {
+    const fetchMock = mockFetch(
+      { messages: [{ id: 'm1', role: 'user', content: '[session_start]' }] },
+      (path) =>
+        path === '/api/sessions/session-1/messages'
+          ? streamResponse([formatDataStreamPart('text', 'Hi! Ready to dig into your game?')])
+          : undefined
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderSessionPage();
+
+    expect(await screen.findByText(/ready to dig into your game/i)).toBeInTheDocument();
+    const messagesCall = fetchMock.mock.calls.find((call) => call[0] === '/api/sessions/session-1/messages');
+    if (!messagesCall) throw new Error('expected a call to /api/sessions/session-1/messages');
+    expect((messagesCall[1] as RequestInit).body).toBe(JSON.stringify({}));
+  });
+
+  test('clicking a position-divider then sending a message anchors there and tells the coach (design.md §5.3)', async () => {
+    const fetchMock = mockFetch(
+      {
+        messages: [
+          { id: 'm1', role: 'user', content: '[session_start]' },
+          {
+            id: 'm2',
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'Let me show you.' },
+              { type: 'tool-call', toolName: 'show_position', args: { ply: 2 }, toolCallId: 'call-1' }
+            ]
+          }
+        ]
+      },
+      (path) => (path === '/api/sessions/session-1/messages' ? streamResponse([formatDataStreamPart('text', 'Sure.')]) : undefined)
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    expect(await screen.findByText(/let me show you/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /move 1 \(black\)/i }));
+
+    await user.type(screen.getByRole('textbox', { name: /reply/i }), 'what should I look at here?');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    const messagesCall = fetchMock.mock.calls
+      .filter((call) => call[0] === '/api/sessions/session-1/messages')
+      .at(-1);
+    if (!messagesCall) throw new Error('expected a call to /api/sessions/session-1/messages');
+    const body = JSON.parse((messagesCall[1] as RequestInit).body as string) as { content: string };
+    expect(body.content).toBe('[position_context] Back at move 1 (black), after e5: what should I look at here?');
+  });
+
+  test('reopening a session that already has an assistant reply does not re-kick-off the coach', async () => {
+    const fetchMock = mockFetch({
+      messages: [
+        { id: 'm1', role: 'user', content: '[session_start]' },
+        { id: 'm2', role: 'assistant', content: 'Hi there!' }
+      ]
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderSessionPage();
+
+    expect(await screen.findByText('Hi there!')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => call[0] === '/api/sessions/session-1/messages')).toBe(false);
+  });
+
+  test('on desktop (>=1080px), the move explorer panel renders with color-coded, NAG-annotated moves', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch({
+        classifiedMoves: [
+          { ply: 1, moveSan: 'e4', mover: 'white', isUserMove: false, cpLoss: 0, quality: 'good', bestLineSan: ['e4'], evalAfterCp: 20 },
+          {
+            ply: 3,
+            moveSan: 'Nf3',
+            mover: 'white',
+            isUserMove: false,
+            cpLoss: 60,
+            quality: 'dubious',
+            bestLineSan: ['Bc4'],
+            evalAfterCp: -40
+          }
+        ]
+      })
+    );
+    renderSessionPage();
+
+    expect(await screen.findByRole('button', { name: 'Nf3?!' })).toHaveClass('move-quality-dubious');
+    expect(document.querySelector('.move-strip')).not.toBeInTheDocument();
+  });
+
+  test('below the 1080px desktop breakpoint, the move explorer panel is absent (flat MoveStrip still shows)', async () => {
+    mockMatchMedia(true, { '(min-width: 1080px)': false });
+    vi.stubGlobal('fetch', mockFetch());
+    renderSessionPage();
+
+    await screen.findByTestId('mock-chessboard');
+    expect(document.querySelector('.move-explorer')).not.toBeInTheDocument();
+    expect(screen.getByText('e4')).toBeInTheDocument();
   });
 
   test('a paused_no_credits session shows the add-credits card instead of the chat input', async () => {

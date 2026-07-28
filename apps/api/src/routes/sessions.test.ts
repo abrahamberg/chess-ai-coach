@@ -360,6 +360,35 @@ describe('sessions routes', () => {
       expect(getResponse.json().status).toBe('paused_no_credits');
     }, 15000);
 
+    test('an empty body resumes the pending [session_start] turn — the coach opens on its own, no student input needed', async () => {
+      const { user, game } = await setupReadyGame('kickoff@example.com');
+      const { model, doStream } = textStreamModel('Hi! Ready to dig into your game?');
+      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/sessions',
+        headers: headersFor(user),
+        payload: { gameId: game.id }
+      });
+      const sessionId = created.json().id;
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/sessions/${sessionId}/messages`,
+        headers: headersFor(user),
+        payload: {}
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.payload).toContain('Hi! Ready to dig into your game?');
+      expect(doStream).toHaveBeenCalledOnce();
+
+      const messages = await sessionMessagesRepo.listBySession(db, sessionId);
+      expect(messages).toHaveLength(2);
+      expect(messages[0]?.content).toBe('[session_start]');
+      expect(JSON.stringify(messages[1]?.content)).toContain('Hi! Ready to dig into your game?');
+    }, 15000);
+
     test('messages persist verbatim and replay identically on the next turn (cache invariant)', async () => {
       const { user, game } = await setupReadyGame('replay@example.com');
       const { model } = textStreamModel('First reply.');

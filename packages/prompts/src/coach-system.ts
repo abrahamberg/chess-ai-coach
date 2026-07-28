@@ -128,7 +128,7 @@ function howYouRunTheSession(revealDepthPlies: number): string {
 function yourToolsAndWhenToUseThem(): string {
   return `## Your tools and when to use them
 
-- show_position: ALWAYS call this when moving to a new moment, before discussing it. The student must see the position you're talking about.
+- show_position: ALWAYS call this when moving to a new moment, before discussing it. The student must see the position you're talking about. When you say a move number out loud, use standard chess move-pair numbering ("move 18" meaning White's 18th move, or "move 18 for Black") — the transcript and move list both show real move numbers this way, not raw ply. But show_position itself still takes a ply (half-move count), NOT a move number — convert: White's move N is ply 2N-1, Black's move N is ply 2N (e.g. "move 18 for White" is ply 35: 2×18-1=35). Getting this backwards will show the student the wrong position. When in doubt, name the move by its SAN instead of a number.
 - annotate_board: use arrows/highlights when words alone are ambiguous (piece routes, weak squares, pins). Use sparingly — one idea per annotation.
 - get_engine_analysis: when the student proposes a move that is not covered in your preparation notes, check it before judging it — never evaluate an unfamiliar position from memory. Pass the fen AND a specific question ("is Nxd5 sound here, and what is the refutation if not?"); an assistant checks with the engine and answers your question in plain chess terms. You get at most 2 checks per reply, so ask precise questions and rely on your preparation notes for everything they already cover.
 - get_user_profile: call if you need more history than the summary above (e.g., "have we seen this mistake before?").

@@ -95,11 +95,45 @@ describe('MessageList', () => {
     expect(screen.queryByText(/position now/i)).not.toBeInTheDocument();
   });
 
-  test('design.md §5.3: renders a position-divider sentinel as "— move N, after SAN —"', () => {
+  test('design.md §5.3: renders a position-divider sentinel with standard move-pair numbering', () => {
     render(<MessageList messages={[{ id: '1', role: 'assistant', text: '[position_divider]|14|Bg4' }]} />);
 
-    expect(screen.getByText(/move 14/)).toBeInTheDocument();
+    // ply 14 is Black's 7th move (ceil(14/2)), not "move 14".
+    expect(screen.getByText(/move 7/)).toBeInTheDocument();
     expect(screen.getByText('Bg4')).toBeInTheDocument();
+  });
+
+  test('clicking a position-divider calls onSelectPly with its ply', () => {
+    const onSelectPly = vi.fn();
+    render(
+      <MessageList
+        messages={[{ id: '1', role: 'assistant', text: '[position_divider]|14|Bg4' }]}
+        onSelectPly={onSelectPly}
+      />
+    );
+
+    screen.getByRole('button').click();
+
+    expect(onSelectPly).toHaveBeenCalledWith(14);
+  });
+
+  test('renders a [position_context] sentinel as a "back to move N" note above the student message', () => {
+    render(
+      <MessageList
+        messages={[
+          {
+            id: '1',
+            role: 'user',
+            text: '[position_context] Back at move 9 (black), after bxc3: what should I look at here?'
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByText(/move 9 \(black\)/i)).toBeInTheDocument();
+    expect(screen.getByText('bxc3')).toBeInTheDocument();
+    expect(screen.getByText('what should I look at here?')).toBeInTheDocument();
+    expect(screen.queryByText(/\[position_context\]/)).not.toBeInTheDocument();
   });
 
   test('does not call onScrollUp while at the bottom', () => {

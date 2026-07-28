@@ -36,7 +36,8 @@ describe('CoachBoard', () => {
   test('peek mode: a legal move updates the board locally but never calls onUserMove', () => {
     capturedOptions.length = 0;
     const onUserMove = vi.fn();
-    render(<CoachBoard fen={START_FEN} orientation="white" mode="peek" onUserMove={onUserMove} />);
+    const onLocalMove = vi.fn();
+    render(<CoachBoard fen={START_FEN} orientation="white" mode="peek" onUserMove={onUserMove} onLocalMove={onLocalMove} />);
 
     const options = capturedOptions.at(-1);
     const accepted = options?.onPieceDrop?.({
@@ -47,6 +48,37 @@ describe('CoachBoard', () => {
 
     expect(accepted).toBe(true);
     expect(onUserMove).not.toHaveBeenCalled();
+    expect(onLocalMove).toHaveBeenCalledWith(expect.stringContaining('4P3'));
+  });
+
+  test('answer mode: a legal move also fires onLocalMove, so the drop is reflected immediately', () => {
+    capturedOptions.length = 0;
+    const onLocalMove = vi.fn();
+    render(<CoachBoard fen={START_FEN} orientation="white" mode="answer" onLocalMove={onLocalMove} />);
+
+    const options = capturedOptions.at(-1);
+    options?.onPieceDrop?.({
+      piece: { pieceType: 'wP' } as never,
+      sourceSquare: 'e2',
+      targetSquare: 'e4'
+    });
+
+    expect(onLocalMove).toHaveBeenCalledWith(expect.stringContaining('4P3'));
+  });
+
+  test('an illegal move never fires onLocalMove', () => {
+    capturedOptions.length = 0;
+    const onLocalMove = vi.fn();
+    render(<CoachBoard fen={START_FEN} orientation="white" mode="answer" onLocalMove={onLocalMove} />);
+
+    const options = capturedOptions.at(-1);
+    options?.onPieceDrop?.({
+      piece: { pieceType: 'wP' } as never,
+      sourceSquare: 'e2',
+      targetSquare: 'e5'
+    });
+
+    expect(onLocalMove).not.toHaveBeenCalled();
   });
 
   test('an illegal move is rejected (snaps back) and never calls onUserMove', () => {
@@ -63,6 +95,25 @@ describe('CoachBoard', () => {
 
     expect(accepted).toBe(false);
     expect(onUserMove).not.toHaveBeenCalled();
+  });
+
+  test('castling fires onLocalMove with a fen reflecting both the king and the rook moving', () => {
+    capturedOptions.length = 0;
+    const onLocalMove = vi.fn();
+    const CASTLE_READY_FEN = 'r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4';
+    render(<CoachBoard fen={CASTLE_READY_FEN} orientation="white" mode="answer" onLocalMove={onLocalMove} />);
+
+    const options = capturedOptions.at(-1);
+    const accepted = options?.onPieceDrop?.({
+      piece: { pieceType: 'wK' } as never,
+      sourceSquare: 'e1',
+      targetSquare: 'g1'
+    });
+
+    expect(accepted).toBe(true);
+    // rook jumps from h1 to f1 as part of the same move — onLocalMove's fen
+    // must show that too, not just the king's destination.
+    expect(onLocalMove).toHaveBeenCalledWith(expect.stringContaining('RNBQ1RK1'));
   });
 
   test('passes orientation and position through to the underlying board', () => {

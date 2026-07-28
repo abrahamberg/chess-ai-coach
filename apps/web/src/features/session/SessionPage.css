@@ -113,10 +113,45 @@
 }
 
 .session-body.desktop .session-board-column {
-  width: 640px;
-  max-width: 55%;
+  width: min(66vh, 640px);
+  max-width: 100%;
+  min-width: 0;
+  flex: 0 1 auto;
+  height: 100%;
   margin: 0 auto;
-  justify-content: center;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+/* The board is a fixed, non-growing square (never flex:1 on height) — sized
+ * from the column's width and capped by it, with aspect-ratio holding it
+ * square. A previous height-driven (flex:1 1 0) approach let the frame claim
+ * leftover vertical space, which both clipped it when the column was wide
+ * but short, and — worse — stretched it into a tall, non-square rectangle
+ * whenever the column narrowed (chat-pane's fixed width squeezing it on
+ * tablet-ish desktop widths). Fixed sizing avoids both failure modes and
+ * deliberately leaves empty space below the board for future widgets
+ * (progress chart, etc). */
+.session-body.desktop .coach-board-frame {
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.session-body.desktop .undo-pill,
+.session-body.desktop .peek-pill,
+.session-body.desktop .move-strip,
+.session-body.desktop .explore-panel-toggle,
+.session-body.desktop .explore-panel {
+  flex-shrink: 0;
+}
+
+/* The move explorer only ever renders when useIsDesktop() is true (>=1080px,
+ * a narrower gate than the 768px side-by-side breakpoint above) — there's no
+ * room for a third column on tablet, let alone mobile. */
+.session-body.desktop .move-explorer {
+  width: 300px;
+  flex: 0 0 300px;
+  height: 100%;
 }
 
 .session-body.desktop .chat-pane {

@@ -30,7 +30,7 @@ describe('findCandidateMoments', () => {
       move({ ply: 1, isUserMove: true, quality: 'mistake', cpLoss: 120 }),
       move({ ply: 2, isUserMove: true, quality: 'blunder', cpLoss: 400 }),
       move({ ply: 3, isUserMove: true, quality: 'good', cpLoss: 0 }),
-      move({ ply: 4, isUserMove: true, quality: 'inaccuracy', cpLoss: 60 })
+      move({ ply: 4, isUserMove: true, quality: 'dubious', cpLoss: 60 })
     ];
     const evals = [evalWithLines([line('e4', 0)])];
 
@@ -89,7 +89,7 @@ describe('findCandidateMoments', () => {
 
   test('does not flag missed_chance for a non-good quality move even with a big gap', () => {
     const moves = [
-      move({ ply: 1, isUserMove: true, quality: 'inaccuracy', moveSan: 'Be2', mover: 'white', evalAfterCp: 900 })
+      move({ ply: 1, isUserMove: true, quality: 'dubious', moveSan: 'Be2', mover: 'white', evalAfterCp: 900 })
     ];
     const evals = [evalWithLines([line('Nxf7', 900), line('Be2', 100)])];
 
