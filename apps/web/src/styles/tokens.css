@@ -1,0 +1,65 @@
+/* design.md §2.1 — CSS custom properties, light default with a dark override
+ * that follows prefers-color-scheme, plus a manual [data-theme] toggle for
+ * Settings that wins over the media query in either direction. */
+
+:root {
+  --bg: #faf9f7;
+  --surface: #ffffff;
+  --surface-2: #f1efe9;
+  --text: #26241e;
+  --text-muted: #6f6a5e;
+  --accent: #3d6b48;
+  --accent-contrast: #ffffff;
+  --warn: #a05a2c;
+  --board-light: #ede2c8;
+  --board-dark: #8ba173;
+  --annotate-1: #c9762a;
+  --annotate-2: #4a7fb5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15140f;
+    --surface: #1e1c16;
+    --surface-2: #282520;
+    --text: #e8e5dd;
+    --text-muted: #9a948a;
+    --accent: #7fb08a;
+    --accent-contrast: #15140f;
+    --warn: #d99a63;
+    --board-light: #bfb294;
+    --board-dark: #6e8258;
+    --annotate-1: #c9762a;
+    --annotate-2: #4a7fb5;
+  }
+}
+
+:root[data-theme='light'] {
+  --bg: #faf9f7;
+  --surface: #ffffff;
+  --surface-2: #f1efe9;
+  --text: #26241e;
+  --text-muted: #6f6a5e;
+  --accent: #3d6b48;
+  --accent-contrast: #ffffff;
+  --warn: #a05a2c;
+  --board-light: #ede2c8;
+  --board-dark: #8ba173;
+  --annotate-1: #c9762a;
+  --annotate-2: #4a7fb5;
+}
+
+:root[data-theme='dark'] {
+  --bg: #15140f;
+  --surface: #1e1c16;
+  --surface-2: #282520;
+  --text: #e8e5dd;
+  --text-muted: #9a948a;
+  --accent: #7fb08a;
+  --accent-contrast: #15140f;
+  --warn: #d99a63;
+  --board-light: #bfb294;
+  --board-dark: #6e8258;
+  --annotate-1: #c9762a;
+  --annotate-2: #4a7fb5;
+}

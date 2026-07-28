@@ -5,6 +5,7 @@
     { "path": "packages/chess-analysis" },
     { "path": "packages/prompts" },
     { "path": "services/engine" },
-    { "path": "apps/api" }
+    { "path": "apps/api" },
+    { "path": "apps/web" }
   ]
 }

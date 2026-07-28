@@ -363,7 +363,7 @@ behavior are specified there; do not invent visual design in code.
 **Files:**
 - Create: `apps/web` (Vite react-ts), `src/api/client.ts` (typed fetch using shared schemas), `src/App.tsx` routing (`/import`, `/games`, `/session/:id`, `/dashboard`, `/settings`), `src/components/AppShell.tsx` (design.md §3: bottom tab bar <1080 px, icon rail ≥1080 px), `src/styles/tokens.css` (design.md §2.1 tokens, light+dark), TanStack Query setup, tests (Vitest + Testing Library)
 
-- [ ] **Steps 1–5:** failing tests (client parses `/users/me` fixture with `UserProfileSchema`, unknown fields tolerated; AppShell renders tab bar vs rail per viewport — matchMedia mock; tokens.css defines every §2.1 variable in both themes) → implement → pass → commit `feat: web shell, design tokens, typed api client`.
+- [x] **Steps 1–5:** failing tests (client parses `/users/me` fixture with `UserProfileSchema`, unknown fields tolerated; AppShell renders tab bar vs rail per viewport — matchMedia mock; tokens.css defines every §2.1 variable in both themes) → implement → pass → commit `feat: web shell, design tokens, typed api client`.
 
 ### Task 6.2: Import flow + analysis progress
 
