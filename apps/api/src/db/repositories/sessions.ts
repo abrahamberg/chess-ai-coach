@@ -1,4 +1,5 @@
 import type { Kysely } from 'kysely';
+import type { Thread } from '@chess-coach/shared';
 import type { Database } from '../schema.js';
 
 export type SessionStatus = 'active' | 'completed' | 'paused_no_credits';
@@ -96,6 +97,20 @@ export function storeSummary(
     .where('id', '=', id)
     .execute()
     .then(() => undefined);
+}
+
+export function updateThreads(db: Kysely<Database>, id: string, threads: Thread[]): Promise<void> {
+  return db
+    .updateTable('sessions')
+    .set({ threads: JSON.stringify(threads) })
+    .where('id', '=', id)
+    .execute()
+    .then(() => undefined);
+}
+
+export async function getThreads(db: Kysely<Database>, id: string): Promise<Thread[]> {
+  const row = await db.selectFrom('sessions').select('threads').where('id', '=', id).executeTakeFirst();
+  return (row?.threads as Thread[] | undefined) ?? [];
 }
 
 export async function countByUser(db: Kysely<Database>, userId: string): Promise<number> {

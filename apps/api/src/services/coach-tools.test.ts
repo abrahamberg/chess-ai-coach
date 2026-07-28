@@ -178,4 +178,44 @@ describe('buildCoachTools', () => {
       expect((results[3] as { applied: boolean }).applied).toBe(false);
     });
   });
+
+  describe('update_threads', () => {
+    test('persists the ledger and returns it', async () => {
+      const ctx = await setupCtx();
+      const tools = buildCoachTools(ctx, makeDeps());
+      const threads = [
+        {
+          id: 1,
+          topic: 'branch 14.Nxd5',
+          status: 'parked' as const,
+          hypothesis: 'stops calculating after first capture',
+          anchorPly: 27,
+          anchorFen: null
+        }
+      ];
+
+      const result = await tools.update_threads?.execute?.({ threads }, { toolCallId: '1', messages: [] });
+
+      expect(result).toEqual(threads);
+      const row = await db
+        .selectFrom('sessions')
+        .select('threads')
+        .where('id', '=', ctx.sessionId)
+        .executeTakeFirstOrThrow();
+      expect(row.threads).toEqual(threads);
+    });
+
+    test('rejects 2 active threads with a ValidationError-shaped rejection', async () => {
+      const ctx = await setupCtx();
+      const tools = buildCoachTools(ctx, makeDeps());
+      const threads = [
+        { id: 1, topic: 'a', status: 'active' as const, hypothesis: null, anchorPly: null, anchorFen: null },
+        { id: 2, topic: 'b', status: 'active' as const, hypothesis: null, anchorPly: null, anchorFen: null }
+      ];
+
+      await expect(
+        tools.update_threads?.execute?.({ threads }, { toolCallId: '1', messages: [] })
+      ).rejects.toThrow();
+    });
+  });
 });

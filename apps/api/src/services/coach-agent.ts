@@ -64,7 +64,37 @@ export async function getSessionDetail(
   const session = await sessionsRepo.findByIdForUser(db, sessionId, userId);
   if (!session) return undefined;
   const messages = await sessionMessagesRepo.listBySession(db, sessionId);
-  return { ...session, messages };
+  return { ...session, messages: filterBackstageMessages(messages) };
+}
+
+const BACKSTAGE_TOOL_NAME = 'update_threads';
+
+/** architecture §7.1: the thread ledger is backstage — never rendered to the
+ * student. Strips update_threads tool-call/tool-result parts from each
+ * message's content (keeping any other parts, e.g. spoken text alongside the
+ * tool call), then drops any message left with no parts. */
+function filterBackstageMessages(messages: SessionMessageRow[]): SessionMessageRow[] {
+  return messages
+    .map((message) => ({ ...message, content: stripBackstageParts(message.content) }))
+    .filter((message) => !isEmptyContent(message.content));
+}
+
+function stripBackstageParts(content: unknown): unknown {
+  if (!Array.isArray(content)) return content;
+  return content.filter((part) => !isBackstageToolPart(part));
+}
+
+function isBackstageToolPart(part: unknown): boolean {
+  if (typeof part !== 'object' || part === null) return false;
+  const candidate = part as { type?: unknown; toolName?: unknown };
+  return (
+    (candidate.type === 'tool-call' || candidate.type === 'tool-result') &&
+    candidate.toolName === BACKSTAGE_TOOL_NAME
+  );
+}
+
+function isEmptyContent(content: unknown): boolean {
+  return Array.isArray(content) && content.length === 0;
 }
 
 export interface StartTurnInput {

@@ -11,12 +11,13 @@ import {
   showPositionParameters,
   updateThreadsParameters
 } from '@chess-coach/prompts';
-import type { EngineEval, EngineLine, Finding, FocusAreaUpdate } from '@chess-coach/shared';
+import type { EngineEval, EngineLine, Finding, FocusAreaUpdate, Thread } from '@chess-coach/shared';
 import { tool, type ToolSet } from 'ai';
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
 import * as progressService from './progress.js';
+import { createThreadsService } from './threads.js';
 import * as userProfileService from './user-profile.js';
 
 export interface CoachToolsContext {
@@ -91,11 +92,8 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
       description:
         "Backstage conversation-thread ledger. Call only when parking, resuming, or resolving a topic.",
       parameters: updateThreadsParameters,
-      // Stub for Task 5.1 — Task 5.5 wires this to services/threads.ts (validation,
-      // persistence to sessions.threads). Echoing input keeps the tool contract
-      // stable for the agent loop in the meantime.
-      execute: withTurnGuards(guardState, 'update_threads', (args: { threads: unknown[] }) =>
-        Promise.resolve({ threads: args.threads })
+      execute: withTurnGuards(guardState, 'update_threads', (args: { threads: Thread[] }) =>
+        createThreadsService(deps.db).replace(ctx.sessionId, args.threads)
       )
     }),
     end_session: tool({

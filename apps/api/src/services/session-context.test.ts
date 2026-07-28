@@ -90,4 +90,56 @@ describe('compact', () => {
     const [prompt] = summarize.mock.calls[0] as [{ system: string; user: string }];
     expect(prompt.user).toContain('hanging pieces');
   });
+
+  test('appends open/parked threads from an update_threads result verbatim; drops resolved ones', async () => {
+    const summarize = vi.fn().mockResolvedValue('LLM digest text');
+    const toFold: StoredMessage[] = [
+      ...messagesOfSize(2, 40),
+      {
+        id: '3',
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'update_threads',
+            result: [
+              {
+                id: 1,
+                topic: 'the h3 line',
+                status: 'parked',
+                hypothesis: 'stops calculating after first capture',
+                anchorPly: 27,
+                anchorFen: null
+              },
+              {
+                id: 2,
+                topic: 'endgame technique',
+                status: 'resolved',
+                hypothesis: null,
+                anchorPly: null,
+                anchorFen: null
+              }
+            ]
+          }
+        ]
+      }
+    ];
+
+    const digest = await compact(toFold, null, summarize);
+
+    expect(digest).toContain('LLM digest text');
+    expect(digest).toContain('the h3 line');
+    expect(digest).toContain('stops calculating after first capture');
+    expect(digest).not.toContain('endgame technique');
+  });
+
+  test('no update_threads result in the folded messages -> digest is just the LLM output', async () => {
+    const summarize = vi.fn().mockResolvedValue('LLM digest text');
+    const toFold: StoredMessage[] = messagesOfSize(2, 40);
+
+    const digest = await compact(toFold, null, summarize);
+
+    expect(digest).toBe('LLM digest text');
+  });
 });

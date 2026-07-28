@@ -346,9 +346,9 @@ test('rejects unknown category', () => {
 - Consumes: `ThreadSchema` (Task 0.2), `sessions.threads` column (in migration 0001, Task 3.2).
 - Produces: `threadsService: { replace(sessionId, threads: Thread[]): Promise<Thread[]> }` — validates via `ThreadSchema.array()`, enforces ≤8 threads and ≤1 `active` (else `ValidationError`); tool returns the stored ledger. `prepareContext` (Task 5.2) gains a rule: when compacting, open/parked thread entries are appended to the digest verbatim; resolved ones dropped.
 
-- [ ] **Step 1: Failing tests** — 2 `active` threads → ValidationError; 9 threads → ValidationError; valid replace → persisted and returned; compaction of a history containing an `update_threads` result → digest contains the parked thread's topic and hypothesis, not the resolved one; ledger absent from `GET /api/sessions/:id` client payload (backstage only — messages returned to the UI filter `update_threads` tool frames).
-- [ ] **Step 2: Run — fail.** **Step 3: Implement** (tool → service → repository; no SQL outside the repo). **Step 4: Run — pass.**
-- [ ] **Step 5: Commit** — `feat: conversation thread ledger`.
+- [x] **Step 1: Failing tests** — 2 `active` threads → ValidationError; 9 threads → ValidationError; valid replace → persisted and returned; compaction of a history containing an `update_threads` result → digest contains the parked thread's topic and hypothesis, not the resolved one; ledger absent from `GET /api/sessions/:id` client payload (backstage only — messages returned to the UI filter `update_threads` tool frames).
+- [x] **Step 2: Run — fail.** **Step 3: Implement** (tool → service → repository; no SQL outside the repo). **Step 4: Run — pass.**
+- [x] **Step 5: Commit** — `feat: conversation thread ledger`.
 
 ---
 

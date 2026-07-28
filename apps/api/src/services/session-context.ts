@@ -1,3 +1,5 @@
+import type { Thread } from '@chess-coach/shared';
+
 const CHARS_PER_TOKEN = 4;
 const COMPACTION_COOLDOWN_TURNS = 20;
 
@@ -51,8 +53,16 @@ export type SummarizeFn = (prompt: { system: string; user: string }) => Promise<
 const COMPACTOR_SYSTEM_PROMPT =
   'You compress old chess-coaching conversation turns into a rolling "session so far" digest of at most 300 tokens: positions covered, the student\'s answers, and findings recorded. Carry forward any open or parked conversation threads verbatim; resolved threads may be dropped. Output only the digest text.';
 
-/** Light-tier summarization (architecture §8.2); `summarize` is injected so this
- * is testable without the AI SDK or a real provider call. */
+/**
+ * Light-tier summarization (architecture §8.2); `summarize` is injected so this
+ * is testable without the AI SDK or a real provider call.
+ *
+ * Task 5.5: any `update_threads` tool result among the folded messages has its
+ * open/parked threads appended to the digest verbatim (not passed through the
+ * LLM) — the compactor carries the ledger forward exactly, resolved threads
+ * are dropped. Only the latest such result is used, since it supersedes
+ * earlier ones (update_threads is a full-replace).
+ */
 export async function compact(
   messagesToFold: StoredMessage[],
   previousDigest: string | null,
@@ -65,5 +75,42 @@ export async function compact(
     ? `PREVIOUS DIGEST\n${previousDigest}\n\nNEW TURNS TO FOLD IN\n${transcript}`
     : `TURNS TO SUMMARIZE\n${transcript}`;
 
-  return summarize({ system: COMPACTOR_SYSTEM_PROMPT, user });
+  const llmDigest = await summarize({ system: COMPACTOR_SYSTEM_PROMPT, user });
+
+  const openThreads = latestOpenThreads(messagesToFold);
+  if (openThreads.length === 0) return llmDigest;
+
+  return `${llmDigest}\n\nOPEN THREADS (carried forward verbatim):\n${renderThreads(openThreads)}`;
+}
+
+function latestOpenThreads(messages: StoredMessage[]): Thread[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const threads = extractUpdateThreadsResult(messages[i]);
+    if (threads) return threads.filter((thread) => thread.status !== 'resolved');
+  }
+  return [];
+}
+
+function extractUpdateThreadsResult(message: StoredMessage | undefined): Thread[] | null {
+  if (!message || message.role !== 'tool' || !Array.isArray(message.content)) return null;
+  for (const part of message.content) {
+    if (isUpdateThreadsResultPart(part)) return part.result;
+  }
+  return null;
+}
+
+function isUpdateThreadsResultPart(part: unknown): part is { result: Thread[] } {
+  if (typeof part !== 'object' || part === null) return false;
+  const candidate = part as { type?: unknown; toolName?: unknown; result?: unknown };
+  return (
+    candidate.type === 'tool-result' &&
+    candidate.toolName === 'update_threads' &&
+    Array.isArray(candidate.result)
+  );
+}
+
+function renderThreads(threads: Thread[]): string {
+  return threads
+    .map((thread) => `- ${thread.topic}${thread.hypothesis ? ` (hypothesis: ${thread.hypothesis})` : ''}`)
+    .join('\n');
 }

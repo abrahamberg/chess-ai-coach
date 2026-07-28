@@ -204,6 +204,40 @@ describe('sessions routes', () => {
     expect(response.json().messages).toHaveLength(1);
   });
 
+  test('GET /api/sessions/:id filters update_threads tool frames out of the client payload (backstage only)', async () => {
+    const { user, game } = await setupReadyGame('threads-backstage@example.com');
+    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: headersFor(user),
+      payload: { gameId: game.id }
+    });
+    const sessionId = created.json().id;
+
+    await sessionMessagesRepo.insert(db, sessionId, 'assistant', [
+      { type: 'text', text: 'Hold on, one sec.' },
+      { type: 'tool-call', toolCallId: 'call-1', toolName: 'update_threads', args: { threads: [] } }
+    ]);
+    await sessionMessagesRepo.insert(db, sessionId, 'tool', [
+      { type: 'tool-result', toolCallId: 'call-1', toolName: 'update_threads', result: [] }
+    ]);
+    await sessionMessagesRepo.insert(db, sessionId, 'assistant', 'Anyway, back to the game.');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/sessions/${sessionId}`,
+      headers: headersFor(user)
+    });
+
+    const messages = response.json().messages as Array<{ content: unknown }>;
+    expect(JSON.stringify(messages)).not.toContain('update_threads');
+    // session_start, the assistant's spoken text (tool-call part stripped),
+    // the final assistant text — the pure tool-result frame is dropped entirely.
+    expect(messages).toHaveLength(3);
+    expect(JSON.stringify(messages)).toContain('Hold on, one sec.');
+  });
+
   describe('POST /api/sessions/:id/messages', () => {
     test('the system prompt sent to the model contains the focus areas and the coaching plan', async () => {
       const { user, game } = await setupReadyGame('prompt@example.com');
