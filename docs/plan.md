@@ -384,7 +384,7 @@ behavior are specified there; do not invent visual design in code.
 - `MoveStrip {sanMoves, currentPly, momentPlies, onSelect}`: peek-mode navigation; snaps back on next coach `show_position`.
 - `useWasmEngine`: lazy-loads stockfish.js in a Web Worker for ExplorePanel; word-based evals only, labeled per design.md §5.6, never sent to server.
 
-- [ ] **Steps 1–5:** failing tests (mock SSE emitting show_position → board fen updates + tool-result POSTed + docked board expands; user drags a move in answer mode → undo pill then `[board_move]` sent, in peek mode → nothing sent; annotations clear on next show_position; auto-scroll suppressed when user is scrolled up; `update_threads` frame renders nothing) → implement → pass → commit `feat: coaching session ui`.
+- [x] **Steps 1–5:** failing tests (mock SSE emitting show_position → board fen updates + tool-result POSTed + docked board expands; user drags a move in answer mode → undo pill then `[board_move]` sent, in peek mode → nothing sent; annotations clear on next show_position; auto-scroll suppressed when user is scrolled up; `update_threads` frame renders nothing) → implement → pass → commit `feat: coaching session ui`.
 
 ### Task 6.4: Dashboard + settings
 

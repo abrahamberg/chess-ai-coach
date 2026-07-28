@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell.js';
 import { ImportPage } from './features/import/ImportPage.js';
+import { SessionPage } from './features/session/SessionPage.js';
 
 const queryClient = new QueryClient();
 
@@ -25,7 +26,7 @@ export function AppRoutes(): ReactNode {
         <Route path="/" element={<Navigate to="/games" replace />} />
         <Route path="/import" element={<ImportPage />} />
         <Route path="/games" element={<PlaceholderPage title="Games" />} />
-        <Route path="/session/:id" element={<PlaceholderPage title="Session" />} />
+        <Route path="/session/:id" element={<SessionPage />} />
         <Route path="/dashboard" element={<PlaceholderPage title="Progress" />} />
         <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
       </Routes>

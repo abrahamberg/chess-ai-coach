@@ -15,7 +15,7 @@ function mockMatchMedia(matches: boolean) {
 
 function renderAt(path: string) {
   mockMatchMedia(false);
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
@@ -29,12 +29,21 @@ describe('AppRoutes', () => {
   test.each([
     ['/import', /import/i],
     ['/games', /games/i],
-    ['/session/abc-123', /session/i],
     ['/dashboard', /progress/i],
     ['/settings', /settings/i]
   ])('renders the %s route', (path, expectedText) => {
     renderAt(path);
     expect(screen.getByRole('heading', { name: expectedText })).toBeInTheDocument();
+  });
+
+  test('renders the /session/:id route (SessionPage owns its own fetching)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new Error('network unavailable in this test'))
+    );
+    renderAt('/session/abc-123');
+    expect(await screen.findByText(/could not load this session/i)).toBeInTheDocument();
+    vi.unstubAllGlobals();
   });
 
   test('redirects the root path to /games', () => {
