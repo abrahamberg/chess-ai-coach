@@ -81,3 +81,14 @@ export function listActiveAndImproving(
     .orderBy('lastSeenAt', 'desc')
     .execute();
 }
+
+/** design.md §4.3: the dashboard's "Resolved ✓" history accordion. */
+export function listResolved(db: Kysely<Database>, userId: string): Promise<FocusAreaRow[]> {
+  return db
+    .selectFrom('focusAreas')
+    .selectAll()
+    .where('userId', '=', userId)
+    .where('status', '=', 'resolved')
+    .orderBy('lastSeenAt', 'desc')
+    .execute();
+}

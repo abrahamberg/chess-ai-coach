@@ -21,6 +21,7 @@ export type RatingBand = (typeof RATING_BANDS)[number];
 export * from './analysis.js';
 export * from './coaching-plan.js';
 export * from './credits.js';
+export * from './dashboard.js';
 export * from './finding.js';
 export * from './game.js';
 export * from './llm.js';

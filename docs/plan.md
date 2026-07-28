@@ -391,7 +391,7 @@ behavior are specified there; do not invent visual design in code.
 **Files:**
 - Create: `src/features/dashboard/{DashboardPage,FocusAreaCard,TrendChart,SessionHistory}.tsx`, `src/features/settings/{SettingsPage,ByokKeyForm,BandSelect,CreditBalance}.tsx`, api route `GET /api/users/me/dashboard` (+ service/repo methods), tests
 
-- [ ] **Steps 1–5:** failing tests (dashboard endpoint aggregates findings per category for last 20 games — SQL in repo only; ByokKeyForm never displays a saved key, only "saved ✓ / delete") → implement → pass → commit `feat: dashboard and settings`.
+- [x] **Steps 1–5:** failing tests (dashboard endpoint aggregates findings per category for last 20 games — SQL in repo only; ByokKeyForm never displays a saved key, only "saved ✓ / delete") → implement → pass → commit `feat: dashboard and settings`.
 
 ---
 

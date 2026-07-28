@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { UserProfileSchema } from '@chess-coach/shared';
-import { apiGet, ApiError } from './client.js';
+import { apiDelete, apiGet, apiPatch, apiPut, ApiError } from './client.js';
 
 const VALID_PROFILE = {
   id: '7d9f2a44-9a5f-4f6e-b1a1-0a4c1e2d3f4b',
@@ -69,5 +69,65 @@ describe('apiGet', () => {
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).body).toMatchObject({ missing: 'userColor' });
+  });
+});
+
+describe('apiPatch', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test('PATCHes the body and parses the JSON response', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(VALID_PROFILE), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const profile = await apiPatch('/api/users/me', { ratingBand: 'club' }, UserProfileSchema);
+
+    expect(profile).toEqual(VALID_PROFILE);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/users/me',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ ratingBand: 'club' }) })
+    );
+  });
+
+  test('throws ApiError on a non-2xx response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiPatch('/api/users/me', {}, UserProfileSchema)).rejects.toThrow(ApiError);
+  });
+});
+
+describe('apiPut / apiDelete', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test('apiPut sends the body and resolves on a 204 with no body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiPut('/api/users/me/llm-keys/anthropic', { apiKey: 'sk-1' })).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/users/me/llm-keys/anthropic',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ apiKey: 'sk-1' }) })
+    );
+  });
+
+  test('apiDelete resolves on a 204 with no body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiDelete('/api/users/me/llm-keys/anthropic')).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith('/api/users/me/llm-keys/anthropic', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  test('apiPut throws ApiError on a non-2xx response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiPut('/api/users/me/llm-keys/anthropic', { apiKey: 'x' })).rejects.toThrow(ApiError);
   });
 });

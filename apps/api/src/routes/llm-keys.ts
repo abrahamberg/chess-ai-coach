@@ -8,6 +8,12 @@ import { ValidationError } from '../lib/errors.js';
 import * as userProfileService from '../services/user-profile.js';
 
 export function registerLlmKeysRoutes(app: FastifyInstance, db: Kysely<Database>, keyVault: KeyVault): void {
+  app.get('/api/users/me/llm-keys', async (request) => {
+    const user = await userProfileService.getOrCreate(db, request.user);
+    const rows = await llmKeysRepo.findAllByUser(db, user.id);
+    return rows.map((row) => row.provider);
+  });
+
   app.put<{ Params: { provider: string } }>('/api/users/me/llm-keys/:provider', async (request, reply) => {
     const provider = parseProvider(request.params.provider);
     const parsed = SetLlmKeyRequestSchema.safeParse(request.body);

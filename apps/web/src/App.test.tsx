@@ -28,21 +28,20 @@ function renderAt(path: string) {
 describe('AppRoutes', () => {
   test.each([
     ['/import', /import/i],
-    ['/games', /games/i],
-    ['/dashboard', /progress/i],
-    ['/settings', /settings/i]
+    ['/games', /games/i]
   ])('renders the %s route', (path, expectedText) => {
     renderAt(path);
     expect(screen.getByRole('heading', { name: expectedText })).toBeInTheDocument();
   });
 
-  test('renders the /session/:id route (SessionPage owns its own fetching)', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockRejectedValue(new Error('network unavailable in this test'))
-    );
-    renderAt('/session/abc-123');
-    expect(await screen.findByText(/could not load this session/i)).toBeInTheDocument();
+  test.each([
+    ['/session/:id', '/session/abc-123'],
+    ['/dashboard', '/dashboard'],
+    ['/settings', '/settings']
+  ])('renders the %s route (page owns its own fetching, error state shown when unavailable)', async (_route, path) => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network unavailable in this test')));
+    renderAt(path);
+    expect(await screen.findByText(/could not load/i)).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 

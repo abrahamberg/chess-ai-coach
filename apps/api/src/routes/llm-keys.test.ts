@@ -102,4 +102,21 @@ describe('PUT/DELETE /api/users/me/llm-keys/:provider', () => {
       .executeTakeFirst();
     expect(row).toBeUndefined();
   });
+
+  test('GET lists which providers have a saved key, never the key itself', async () => {
+    const app = buildApp({ authMode: 'proxy', db, keyVault });
+    const listHeaders = { 'x-auth-request-email': 'byok-list@example.com', 'x-auth-request-user': 'ByokList' };
+    await app.inject({
+      method: 'PUT',
+      url: '/api/users/me/llm-keys/anthropic',
+      headers: listHeaders,
+      payload: { apiKey: 'sk-ant-real-secret' }
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/api/users/me/llm-keys', headers: listHeaders });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(['anthropic']);
+    expect(response.body).not.toContain('sk-ant-real-secret');
+  });
 });

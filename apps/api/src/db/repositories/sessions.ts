@@ -113,6 +113,46 @@ export async function getThreads(db: Kysely<Database>, id: string): Promise<Thre
   return (row?.threads as Thread[] | undefined) ?? [];
 }
 
+export interface CompletedSessionWithGame {
+  sessionId: string;
+  gameId: string;
+  startedAt: Date;
+  summary: string | null;
+  homework: string | null;
+  whiteName: string | null;
+  blackName: string | null;
+  userColor: 'white' | 'black';
+  result: string | null;
+}
+
+/** design.md §4.3: dashboard session-history list — SQL join lives here, not
+ * in the service (AGENTS.md rule: SQL in repositories only). */
+export function listCompletedWithGameByUser(
+  db: Kysely<Database>,
+  userId: string,
+  limit: number
+): Promise<CompletedSessionWithGame[]> {
+  return db
+    .selectFrom('sessions')
+    .innerJoin('games', 'games.id', 'sessions.gameId')
+    .select([
+      'sessions.id as sessionId',
+      'sessions.gameId',
+      'sessions.startedAt',
+      'sessions.summary',
+      'sessions.homework',
+      'games.whiteName',
+      'games.blackName',
+      'games.userColor',
+      'games.result'
+    ])
+    .where('sessions.userId', '=', userId)
+    .where('sessions.status', '=', 'completed')
+    .orderBy('sessions.startedAt', 'desc')
+    .limit(limit)
+    .execute();
+}
+
 export async function countByUser(db: Kysely<Database>, userId: string): Promise<number> {
   const result = await db
     .selectFrom('sessions')

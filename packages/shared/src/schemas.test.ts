@@ -2,9 +2,10 @@ import { describe, expect, test } from 'vitest';
 import { AnalyzeGameRequestSchema, AnalyzePositionRequestSchema, EngineEvalSchema } from './analysis.js';
 import { CoachingPlanSchema, type CoachingPlan } from './coaching-plan.js';
 import { CreditPackSchema } from './credits.js';
+import { DashboardResponseSchema } from './dashboard.js';
 import { FindingSchema } from './finding.js';
 import { ImportGameRequestSchema, ImportGameResponseSchema } from './game.js';
-import { LlmProviderSchema, SetLlmKeyRequestSchema } from './llm.js';
+import { LlmProviderSchema, SavedLlmProvidersResponseSchema, SetLlmKeyRequestSchema } from './llm.js';
 import {
   CreateSessionRequestSchema,
   PostSessionMessageRequestSchema,
@@ -266,6 +267,59 @@ describe('LlmProviderSchema / SetLlmKeyRequestSchema', () => {
   test('accepts a non-empty apiKey, rejects empty', () => {
     expect(SetLlmKeyRequestSchema.safeParse({ apiKey: 'sk-ant-123' }).success).toBe(true);
     expect(SetLlmKeyRequestSchema.safeParse({ apiKey: '' }).success).toBe(false);
+  });
+});
+
+describe('SavedLlmProvidersResponseSchema', () => {
+  test('accepts a list of known providers, rejects an unknown one', () => {
+    expect(SavedLlmProvidersResponseSchema.safeParse(['anthropic']).success).toBe(true);
+    expect(SavedLlmProvidersResponseSchema.safeParse([]).success).toBe(true);
+    expect(SavedLlmProvidersResponseSchema.safeParse(['cohere']).success).toBe(false);
+  });
+});
+
+describe('DashboardResponseSchema', () => {
+  const valid = {
+    focusAreas: {
+      active: [
+        {
+          category: 'king_safety',
+          status: 'active',
+          note: 'Delays castling under pressure.',
+          evidenceCount: 3,
+          lastSeenAt: '2026-07-20T10:00:00.000Z'
+        }
+      ],
+      resolved: []
+    },
+    mistakeTrends: [{ category: 'king_safety', last5: 1, last20: 3 }],
+    sessionHistory: [
+      {
+        sessionId: 's1',
+        gameId: 'g1',
+        startedAt: '2026-07-20T10:00:00.000Z',
+        whiteName: 'daniel',
+        blackName: 'Marta',
+        userColor: 'white',
+        result: '1-0',
+        summary: 'Worked on king safety.',
+        homework: 'Solve 10 puzzles.'
+      }
+    ]
+  };
+
+  test('accepts a valid dashboard response', () => {
+    expect(DashboardResponseSchema.safeParse(valid).success).toBe(true);
+  });
+
+  test('rejects an unknown focus-area status', () => {
+    const bad = { ...valid, focusAreas: { active: [{ ...valid.focusAreas.active[0], status: 'archived' }], resolved: [] } };
+    expect(DashboardResponseSchema.safeParse(bad).success).toBe(false);
+  });
+
+  test('rejects a negative trend count', () => {
+    const bad = { ...valid, mistakeTrends: [{ category: 'king_safety', last5: -1, last20: 3 }] };
+    expect(DashboardResponseSchema.safeParse(bad).success).toBe(false);
   });
 });
 
