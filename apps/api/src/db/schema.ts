@@ -58,6 +58,8 @@ export interface SessionsTable {
   threads: ColumnType<unknown, string | undefined, string>;
   contextDigest: string | null;
   digestThroughMessageId: string | null;
+  summary: string | null;
+  homework: string | null;
   startedAt: Generated<Date>;
   endedAt: Date | null;
 }

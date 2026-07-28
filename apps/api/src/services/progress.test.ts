@@ -1,12 +1,15 @@
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import type { Finding, FocusAreaUpdate } from '@chess-coach/shared';
+import type { Finding, FocusAreaUpdate, SessionOutcome } from '@chess-coach/shared';
+import * as findingsRepo from '../db/repositories/findings.js';
 import * as focusAreasRepo from '../db/repositories/focus-areas.js';
+import * as gamesRepo from '../db/repositories/games.js';
+import * as sessionsRepo from '../db/repositories/sessions.js';
 import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import { ValidationError } from '../lib/errors.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
-import { applyFocusAreaUpdate, recordFinding } from './progress.js';
+import { applyFocusAreaUpdate, applySessionOutcome, recordFinding } from './progress.js';
 
 describe('progress service', () => {
   let testDb: TestDb;
@@ -142,6 +145,138 @@ describe('progress service', () => {
       });
 
       expect(result.applied).toBe(false);
+    });
+  });
+
+  describe('applySessionOutcome', () => {
+    async function makeSession(email: string) {
+      const user = await usersRepo.insert(db, { email, displayName: email });
+      const game = await gamesRepo.insert(db, {
+        userId: user.id,
+        pgn: '1. e4 e5',
+        source: 'paste',
+        userColor: 'white',
+        whiteName: null,
+        blackName: null,
+        result: null,
+        timeControl: null,
+        eco: null,
+        playedAt: null
+      });
+      const session = await sessionsRepo.insert(db, { gameId: game.id, userId: user.id });
+      return { userId: user.id, gameId: game.id, sessionId: session.id };
+    }
+
+    function outcome(overrides: Partial<SessionOutcome> = {}): SessionOutcome {
+      return {
+        sessionSummary: 'You worked on king safety today.',
+        homework: 'Review two rook-endgame puzzles.',
+        findings: [],
+        focusAreaUpdates: [],
+        ...overrides
+      };
+    }
+
+    test('skips a finding already recorded live (same session, category, and ply)', async () => {
+      const ctx = await makeSession('dedup@example.com');
+      await recordFinding(db, ctx.userId, ctx.sessionId, ctx.gameId, {
+        category: 'hanging_piece',
+        severity: 'significant',
+        ply: 12,
+        description: 'Recorded live during the session.',
+        isPositive: false
+      });
+
+      await applySessionOutcome(
+        db,
+        ctx,
+        outcome({
+          findings: [
+            {
+              category: 'hanging_piece',
+              severity: 'significant',
+              ply: 12,
+              description: 'Summarizer re-noticed the same thing.',
+              isPositive: false
+            }
+          ]
+        })
+      );
+
+      const rows = await findingsRepo.listRecentByUser(db, ctx.userId, 10);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.description).toBe('Recorded live during the session.');
+    });
+
+    test('inserts a new finding not already recorded (different ply)', async () => {
+      const ctx = await makeSession('newfinding@example.com');
+
+      await applySessionOutcome(
+        db,
+        ctx,
+        outcome({
+          findings: [
+            {
+              category: 'hanging_piece',
+              severity: 'minor',
+              ply: 20,
+              description: 'Caught by the summarizer only.',
+              isPositive: false
+            }
+          ]
+        })
+      );
+
+      const rows = await findingsRepo.listRecentByUser(db, ctx.userId, 10);
+      expect(rows).toHaveLength(1);
+    });
+
+    test('applies a resolve focus-area update, moving state to resolved', async () => {
+      const ctx = await makeSession('outcome-resolve@example.com');
+      await applyFocusAreaUpdate(db, ctx.userId, { category: 'king_safety', action: 'create', note: 'n' });
+      await applyFocusAreaUpdate(db, ctx.userId, { category: 'king_safety', action: 'progress', note: 'n' });
+
+      await applySessionOutcome(
+        db,
+        ctx,
+        outcome({
+          focusAreaUpdates: [{ category: 'king_safety', action: 'resolve', note: 'consistently castling now' }]
+        })
+      );
+
+      const area = await focusAreasRepo.findByUserAndCategory(db, ctx.userId, 'king_safety');
+      expect(area?.status).toBe('resolved');
+    });
+
+    test('applies a regress focus-area update on a resolved area, moving it back to active', async () => {
+      const ctx = await makeSession('outcome-regress@example.com');
+      await applyFocusAreaUpdate(db, ctx.userId, { category: 'king_safety', action: 'create', note: 'n' });
+      await applyFocusAreaUpdate(db, ctx.userId, { category: 'king_safety', action: 'progress', note: 'n' });
+      await applyFocusAreaUpdate(db, ctx.userId, { category: 'king_safety', action: 'resolve', note: 'n' });
+
+      await applySessionOutcome(
+        db,
+        ctx,
+        outcome({
+          focusAreaUpdates: [{ category: 'king_safety', action: 'regress', note: 'left king in center again' }]
+        })
+      );
+
+      const area = await focusAreasRepo.findByUserAndCategory(db, ctx.userId, 'king_safety');
+      expect(area?.status).toBe('active');
+    });
+
+    test('stores the summary and homework on the session', async () => {
+      const ctx = await makeSession('outcome-summary@example.com');
+
+      await applySessionOutcome(
+        db,
+        ctx,
+        outcome({ sessionSummary: 'Great progress on tactics.', homework: 'Solve 10 puzzles.' })
+      );
+
+      const session = await sessionsRepo.findById(db, ctx.sessionId);
+      expect(session).toMatchObject({ summary: 'Great progress on tactics.', homework: 'Solve 10 puzzles.' });
     });
   });
 });

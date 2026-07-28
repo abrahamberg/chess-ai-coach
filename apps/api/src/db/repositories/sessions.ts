@@ -9,11 +9,23 @@ export interface SessionRow {
   userId: string;
   status: SessionStatus;
   currentPly: number;
+  summary: string | null;
+  homework: string | null;
   startedAt: Date;
   endedAt: Date | null;
 }
 
-const BASE_COLUMNS = ['id', 'gameId', 'userId', 'status', 'currentPly', 'startedAt', 'endedAt'] as const;
+const BASE_COLUMNS = [
+  'id',
+  'gameId',
+  'userId',
+  'status',
+  'currentPly',
+  'summary',
+  'homework',
+  'startedAt',
+  'endedAt'
+] as const;
 
 export interface NewSession {
   gameId: string;
@@ -67,6 +79,20 @@ export function updateCurrentPly(db: Kysely<Database>, id: string, ply: number):
   return db
     .updateTable('sessions')
     .set({ currentPly: ply })
+    .where('id', '=', id)
+    .execute()
+    .then(() => undefined);
+}
+
+export function storeSummary(
+  db: Kysely<Database>,
+  id: string,
+  summary: string,
+  homework: string | null
+): Promise<void> {
+  return db
+    .updateTable('sessions')
+    .set({ summary, homework })
     .where('id', '=', id)
     .execute()
     .then(() => undefined);

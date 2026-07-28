@@ -333,8 +333,8 @@ test('rejects unknown category', () => {
 - Consumes: `buildSummarizerMessages`, gateway light tier, `SessionOutcomeSchema`, `progressService`.
 - Produces: job reads transcript + recorded findings → validated `SessionOutcome` → `progressService.applySessionOutcome(sessionId, outcome)` (dedup same category+ply; focus-area state machine `active→improving→resolved`, regress path; summary+homework stored on session).
 
-- [ ] **Steps 1–4:** failing tests (dedup skips already-recorded finding; `resolve` action moves state; regress on resolved → active) → implement → pass.
-- [ ] **Step 5: Commit** — `feat: post-session progress summarizer`.
+- [x] **Steps 1–4:** failing tests (dedup skips already-recorded finding; `resolve` action moves state; regress on resolved → active) → implement → pass.
+- [x] **Step 5: Commit** — `feat: post-session progress summarizer`.
 
 ### Task 5.5: Conversation thread ledger
 

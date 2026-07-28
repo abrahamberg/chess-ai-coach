@@ -1,5 +1,5 @@
 import { MISTAKE_CATEGORIES } from '@chess-coach/shared';
-import type { Finding, FocusAreaUpdate, MistakeCategory } from '@chess-coach/shared';
+import type { Finding, FocusAreaUpdate, MistakeCategory, SessionOutcome } from '@chess-coach/shared';
 import type { Kysely } from 'kysely';
 import * as findingsRepo from '../db/repositories/findings.js';
 import * as focusAreasRepo from '../db/repositories/focus-areas.js';
@@ -33,6 +33,42 @@ export async function recordFinding(
     description: finding.description,
     isPositive: finding.isPositive
   });
+}
+
+export interface SessionOutcomeContext {
+  userId: string;
+  sessionId: string;
+  gameId: string;
+}
+
+/**
+ * Task 5.4: applies the progress-summarizer's validated output. Findings
+ * already recorded live during the session (same category + same ply) are
+ * skipped — the summarizer's job is to catch what the coach missed, not
+ * duplicate it. Focus-area updates reuse applyFocusAreaUpdate's state machine
+ * and max-3-active cap; summary/homework are stored on the session row.
+ */
+export async function applySessionOutcome(
+  db: Kysely<Database>,
+  ctx: SessionOutcomeContext,
+  outcome: SessionOutcome
+): Promise<void> {
+  for (const finding of outcome.findings) {
+    const alreadyRecorded = await findingsRepo.existsForSessionCategoryPly(
+      db,
+      ctx.sessionId,
+      finding.category,
+      finding.ply
+    );
+    if (alreadyRecorded) continue;
+    await recordFinding(db, ctx.userId, ctx.sessionId, ctx.gameId, finding);
+  }
+
+  for (const update of outcome.focusAreaUpdates) {
+    await applyFocusAreaUpdate(db, ctx.userId, update);
+  }
+
+  await sessionsRepo.storeSummary(db, ctx.sessionId, outcome.sessionSummary, outcome.homework);
 }
 
 export interface FocusAreaUpdateResult {

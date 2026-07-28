@@ -32,6 +32,23 @@ export function insert(db: Kysely<Database>, values: NewFinding): Promise<Findin
   return db.insertInto('findings').values(values).returningAll().executeTakeFirstOrThrow();
 }
 
+/** Task 5.4 summarizer dedup: same category + same ply within a session -> skip. */
+export async function existsForSessionCategoryPly(
+  db: Kysely<Database>,
+  sessionId: string,
+  category: MistakeCategory,
+  ply: number | null
+): Promise<boolean> {
+  const query = db
+    .selectFrom('findings')
+    .select('id')
+    .where('sessionId', '=', sessionId)
+    .where('category', '=', category);
+  const scoped = ply === null ? query.where('ply', 'is', null) : query.where('ply', '=', ply);
+  const row = await scoped.executeTakeFirst();
+  return row !== undefined;
+}
+
 export function listRecentByUser(
   db: Kysely<Database>,
   userId: string,

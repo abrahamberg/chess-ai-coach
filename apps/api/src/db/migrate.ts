@@ -1,8 +1,10 @@
 import { Migrator, type Kysely, type MigrationProvider } from 'kysely';
 import * as initial from './migrations/0001_initial.js';
+import * as sessionSummary from './migrations/0002_session_summary.js';
 
 const provider: MigrationProvider = {
-  getMigrations: () => Promise.resolve({ '0001_initial': initial })
+  getMigrations: () =>
+    Promise.resolve({ '0001_initial': initial, '0002_session_summary': sessionSummary })
 };
 
 /** Runs all not-yet-applied migrations, in order. Throws if any migration fails. */
