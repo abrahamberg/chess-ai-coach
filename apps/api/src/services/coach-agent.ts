@@ -155,23 +155,33 @@ export async function startTurn(
     tools,
     maxSteps: MAX_STEPS,
     onFinish: async (event) => {
-      for (const message of event.response.messages) {
-        await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content);
+      // streamText's response has already been piped to the client by the
+      // time this runs (see routes/sessions.ts's reply.hijack()), so nothing
+      // downstream can catch a rejection here — an uncaught error would
+      // otherwise crash the whole process (seen live: a NaN token count from
+      // a provider quirk took down the entire API). Persisting the transcript
+      // and metering the call must never be able to do that.
+      try {
+        for (const message of event.response.messages) {
+          await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content);
+        }
+        await recordUsage(deps.db, {
+          userId: session.userId,
+          sessionId: session.id,
+          provider: resolution.provider,
+          model: resolution.modelId,
+          tier: 'standard',
+          usage: {
+            inputTokens: event.usage.promptTokens,
+            outputTokens: event.usage.completionTokens,
+            cachedInputTokens: 0
+          },
+          purpose: 'coach_turn',
+          metered: resolution.metered
+        });
+      } catch (error) {
+        console.error(`coach-agent onFinish failed for session ${session.id}:`, error);
       }
-      await recordUsage(deps.db, {
-        userId: session.userId,
-        sessionId: session.id,
-        provider: resolution.provider,
-        model: resolution.modelId,
-        tier: 'standard',
-        usage: {
-          inputTokens: event.usage.promptTokens,
-          outputTokens: event.usage.completionTokens,
-          cachedInputTokens: 0
-        },
-        purpose: 'coach_turn',
-        metered: resolution.metered
-      });
     }
   });
 }

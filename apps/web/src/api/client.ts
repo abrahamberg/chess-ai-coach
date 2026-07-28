@@ -13,9 +13,14 @@ export class ApiError extends Error {
 
 /** Fetches `path`, parsing the JSON body against `schema`. Extra/unknown
  * response fields are tolerated (zod's default "strip" parsing), so the
- * client doesn't break when the API adds fields the UI doesn't use yet. */
-export async function apiGet<T>(path: string, schema: ZodType<T>): Promise<T> {
-  const response = await fetch(path, { credentials: 'include' });
+ * client doesn't break when the API adds fields the UI doesn't use yet.
+ *
+ * `signal` should be forwarded from React Query's queryFn context
+ * (`({signal}) => apiGet(path, schema, signal)`) — otherwise React 18
+ * StrictMode's dev-only double-mount cancels the first fetch without this
+ * function ever seeing it, leaving the query stuck pending/paused forever. */
+export async function apiGet<T>(path: string, schema: ZodType<T>, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { credentials: 'include', signal });
   if (!response.ok) {
     throw new ApiError(response.status, `GET ${path} failed with ${response.status}`, await safeJson(response));
   }

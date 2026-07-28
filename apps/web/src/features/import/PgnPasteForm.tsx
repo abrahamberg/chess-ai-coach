@@ -18,7 +18,7 @@ export function PgnPasteForm({ onSubmit }: PgnPasteFormProps): ReactNode {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form className="pgn-paste-form" onSubmit={handleSubmit}>
       <label htmlFor="pgn-paste-input">PGN</label>
       <textarea
         id="pgn-paste-input"
@@ -26,7 +26,9 @@ export function PgnPasteForm({ onSubmit }: PgnPasteFormProps): ReactNode {
         onChange={(event) => setPgn(event.target.value)}
         rows={10}
       />
-      <button type="submit">Import game</button>
+      <button type="submit" className="btn-primary">
+        Import game
+      </button>
     </form>
   );
 }

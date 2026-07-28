@@ -6,6 +6,7 @@ import { apiGet } from '../../api/client.js';
 import { FocusAreaCard } from './FocusAreaCard.js';
 import { SessionHistory } from './SessionHistory.js';
 import { TrendChart, type TrendRange } from './TrendChart.js';
+import './DashboardPage.css';
 
 /** design.md §4.3: Progress dashboard — focus areas, mistake trends, session
  * history. Owns fetching (AGENTS.md rule 7); every child is presentational. */
@@ -16,7 +17,7 @@ export function DashboardPage(): ReactNode {
 
   const dashboardQuery = useQuery({
     queryKey: ['dashboard'],
-    queryFn: () => apiGet('/api/users/me/dashboard', DashboardResponseSchema)
+    queryFn: ({ signal }) => apiGet('/api/users/me/dashboard', DashboardResponseSchema, signal)
   });
 
   if (dashboardQuery.isLoading) return <p>Loading…</p>;
@@ -29,7 +30,7 @@ export function DashboardPage(): ReactNode {
   function handleBarClick(): void {}
 
   return (
-    <div className="dashboard-page">
+    <div className="page dashboard-page">
       <section aria-label="Focus areas">
         {focusAreas.active.length === 0 ? (
           <p>No focus areas yet — they'll appear as the coach spots patterns.</p>

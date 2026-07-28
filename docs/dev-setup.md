@@ -32,7 +32,7 @@ This starts:
 | `web-dev`  | Vite dev server (`apps/web`)                      | 5173 |
 
 Open http://localhost:5173. `AUTH_MODE=dev-stub` (the default — see below)
-means every request is treated as a single fixed `dev@local` user; no login
+means every request is treated as a single fixed `dev@local.test` user; no login
 flow is needed.
 
 Tear down with `docker compose down` (add `-v` to also drop the Postgres

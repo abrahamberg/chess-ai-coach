@@ -171,7 +171,7 @@ describe('POST/GET /api/games', () => {
     expect(list.statusCode).toBe(200);
     const games = list.json();
     expect(games).toHaveLength(1);
-    expect(games[0].id).toBe(gameId);
+    expect(games[0]).toMatchObject({ id: gameId, analysisStatus: 'queued' });
 
     const detail = await app.inject({ method: 'GET', url: `/api/games/${gameId}`, headers });
     expect(detail.statusCode).toBe(200);

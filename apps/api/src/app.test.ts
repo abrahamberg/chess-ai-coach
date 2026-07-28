@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { z } from 'zod';
 import { buildApp } from './app.js';
 import {
   ConflictError,
@@ -54,14 +55,20 @@ describe('proxy auth headers', () => {
     expect(response.json()).toEqual({ user: { email: 'ann@example.com', displayName: 'Ann' } });
   });
 
-  test('dev-stub mode injects dev@local when headers are missing', async () => {
+  test('dev-stub mode injects a fixed dev identity when headers are missing, with a schema-valid email', async () => {
     const app = buildApp({ authMode: 'dev-stub' });
     app.get('/test-route', async (request) => ({ user: request.user }));
 
     const response = await app.inject({ method: 'GET', url: '/test-route' });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ user: { email: 'dev@local', displayName: 'dev@local' } });
+    const { user } = response.json();
+    // UserProfileSchema (packages/shared) requires z.string().email() — the
+    // frontend fetches this identity through /api/users/me on every page, so
+    // a non-email-shaped stub (e.g. the old 'dev@local', no TLD) breaks every
+    // screen that loads the profile.
+    expect(z.string().email().safeParse(user.email).success).toBe(true);
+    expect(user).toEqual({ email: user.email, displayName: user.email });
   });
 
   test('dev-stub mode still honors real headers when present', async () => {

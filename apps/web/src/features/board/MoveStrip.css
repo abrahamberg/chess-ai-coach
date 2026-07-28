@@ -1,0 +1,46 @@
+.move-strip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 8px 4px;
+  white-space: nowrap;
+}
+
+.move-strip .move-number {
+  color: var(--text-muted);
+  font-feature-settings: 'tnum';
+  font-size: 14px;
+  padding-left: 4px;
+}
+
+.move-strip button {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-height: 32px;
+  font-size: 14px;
+}
+
+.move-strip button[aria-current='true'] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.move-strip button.moment {
+  position: relative;
+}
+
+.move-strip button.moment::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--annotate-1);
+}

@@ -31,11 +31,13 @@ export function MessageList({ messages, onScrollUp }: MessageListProps): ReactNo
 
   return (
     <div ref={containerRef} onScroll={handleScroll} data-testid="message-list">
-      {messages.map((message) => (
-        <p key={message.id} data-role={message.role}>
-          {message.text}
-        </p>
-      ))}
+      {messages
+        .filter((message) => message.text.trim() !== '')
+        .map((message) => (
+          <p key={message.id} data-role={message.role}>
+            {message.text}
+          </p>
+        ))}
     </div>
   );
 }

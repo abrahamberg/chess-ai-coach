@@ -56,6 +56,18 @@ describe('apiGet', () => {
     await expect(apiGet('/api/users/me', UserProfileSchema)).rejects.toThrow();
   });
 
+  test('forwards an AbortSignal to fetch, so React Query can cancel a stale in-flight request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(VALID_PROFILE), { status: 200, headers: { 'content-type': 'application/json' } })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    await apiGet('/api/users/me', UserProfileSchema, controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/users/me', expect.objectContaining({ signal: controller.signal }));
+  });
+
   test('ApiError carries the parsed problem+json body (e.g. {missing: "userColor"})', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

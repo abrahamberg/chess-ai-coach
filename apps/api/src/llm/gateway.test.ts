@@ -145,5 +145,25 @@ describe('llm gateway', () => {
       expect(logs).toHaveLength(1);
       expect(logs[0]?.creditsMetered).toBe(0);
     });
+
+    test('non-finite token counts from a provider quirk are sanitized to 0 rather than crashing the insert', async () => {
+      const userId = await makeUser('nan-usage@example.com');
+      await creditsRepo.insertSignupGrant(db, userId);
+
+      await recordUsage(db, {
+        userId,
+        provider: 'openai',
+        model: 'gpt-standard',
+        tier: 'standard',
+        usage: { inputTokens: NaN, outputTokens: 1000, cachedInputTokens: 0 },
+        purpose: 'coach_turn',
+        metered: true
+      });
+
+      const logs = await db.selectFrom('llmCallLog').selectAll().where('userId', '=', userId).execute();
+      expect(logs).toHaveLength(1);
+      expect(logs[0]?.inputTokens).toBe(0);
+      expect(Number.isFinite(logs[0]?.creditsMetered)).toBe(true);
+    });
   });
 });

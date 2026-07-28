@@ -1,5 +1,5 @@
 import { processDataStream } from 'ai';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface CoachMessage {
   id: string;
@@ -18,6 +18,9 @@ export interface UseCoachChatOptions {
    * round-trip it back to the coach. Return undefined for server-executed
    * tools — their result already arrived in the same stream. */
   onToolCall?: (toolCall: CoachToolCall) => unknown;
+  /** Prior turns from GET /api/sessions/:id, so reopening an in-progress
+   * session shows its transcript instead of starting blank. */
+  initialMessages?: CoachMessage[];
 }
 
 export interface UseCoachChatResult {
@@ -33,6 +36,17 @@ export interface UseCoachChatResult {
 export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {}): UseCoachChatResult {
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+
+  // The session/game fetch (SessionPage) resolves after this hook's first
+  // render, so initialMessages arrives on a later render, not at mount —
+  // seed once when it shows up rather than via useState's lazy initializer.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!seededRef.current && options.initialMessages && options.initialMessages.length > 0) {
+      seededRef.current = true;
+      setMessages(options.initialMessages);
+    }
+  }, [options.initialMessages]);
 
   const postTurn = useCallback(
     async (body: { content?: string } | { clientToolResult: { toolCallId: string; toolName: string; result: unknown } }) => {

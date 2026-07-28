@@ -44,6 +44,7 @@ interface SessionFixture {
   status?: 'active' | 'completed' | 'paused_no_credits';
   summary?: string | null;
   homework?: string | null;
+  messages?: Array<{ id: string; role: 'user' | 'assistant' | 'tool'; content: unknown }>;
 }
 
 function mockFetch(session: SessionFixture = {}, extra: (path: string) => Response | undefined = () => undefined) {
@@ -60,7 +61,8 @@ function mockFetch(session: SessionFixture = {}, extra: (path: string) => Respon
             status: session.status ?? 'active',
             currentPly: 0,
             summary: session.summary ?? null,
-            homework: session.homework ?? null
+            homework: session.homework ?? null,
+            messages: session.messages ?? []
           }),
           { status: 200, headers: { 'content-type': 'application/json' } }
         )
@@ -187,6 +189,24 @@ describe('SessionPage', () => {
 
     await user.click(screen.getByRole('button', { name: /back to games/i }));
     expect(await screen.findByText('games-page-marker')).toBeInTheDocument();
+  });
+
+  test('reopening a session with prior turns shows the transcript, skipping the internal [session_start] marker', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch({
+        messages: [
+          { id: 'm1', role: 'user', content: '[session_start]' },
+          { id: 'm2', role: 'assistant', content: "Hi there! Let's dive into your game." },
+          { id: 'm3', role: 'user', content: 'Sounds good.' }
+        ]
+      })
+    );
+    renderSessionPage();
+
+    expect(await screen.findByText(/let's dive into your game/i)).toBeInTheDocument();
+    expect(screen.getByText('Sounds good.')).toBeInTheDocument();
+    expect(screen.queryByText('[session_start]')).not.toBeInTheDocument();
   });
 
   test('a paused_no_credits session shows the add-credits card instead of the chat input', async () => {

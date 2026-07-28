@@ -1,0 +1,60 @@
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 560px;
+}
+
+.settings-page section {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgb(0 0 0 / 8%);
+}
+
+.settings-page section[aria-label='Profile'] [role='radiogroup'] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-page section[aria-label='Profile'] label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-page section[aria-label='API keys'] button[aria-pressed],
+.settings-page section[aria-label='Appearance'] button {
+  border: 1px solid rgb(0 0 0 / 12%);
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 16px;
+  margin-right: 8px;
+}
+
+.settings-page section[aria-label='Appearance'] button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+}
+
+.byok-key-form + .byok-key-form {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgb(0 0 0 / 8%);
+}
+
+.byok-key-form form {
+  display: flex;
+  gap: 8px;
+}
+
+.byok-key-form input {
+  flex: 1;
+}
+
+.credit-balance {
+  font-size: 20px;
+}

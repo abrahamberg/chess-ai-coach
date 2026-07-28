@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AnalysisStatusSchema } from './analysis.js';
 
 export const GameSourceSchema = z.enum(['paste', 'upload', 'lichess']);
 export type GameSource = z.infer<typeof GameSourceSchema>;
@@ -34,3 +35,21 @@ export type LichessRecentGame = z.infer<typeof LichessRecentGameSchema>;
 
 export const LichessRecentGamesResponseSchema = z.array(LichessRecentGameSchema);
 export type LichessRecentGamesResponse = z.infer<typeof LichessRecentGamesResponseSchema>;
+
+/** design.md §4.1: Games (home) list row — enough to render players/result/status
+ * chip without a follow-up request per row. */
+export const GameListItemSchema = z.object({
+  id: z.string(),
+  userColor: PlayerColorSchema,
+  whiteName: z.string().nullable(),
+  blackName: z.string().nullable(),
+  result: z.string().nullable(),
+  timeControl: z.string().nullable(),
+  playedAt: z.string().nullable(),
+  createdAt: z.string(),
+  analysisStatus: AnalysisStatusSchema.nullable()
+});
+export type GameListItem = z.infer<typeof GameListItemSchema>;
+
+export const GameListResponseSchema = z.array(GameListItemSchema);
+export type GameListResponse = z.infer<typeof GameListResponseSchema>;

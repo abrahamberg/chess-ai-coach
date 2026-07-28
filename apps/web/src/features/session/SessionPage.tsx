@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { z } from 'zod';
 import { apiGet } from '../../api/client.js';
-import { useCoachChat } from '../../hooks/useCoachChat.js';
+import { useCoachChat, type CoachMessage } from '../../hooks/useCoachChat.js';
 import { useIsDesktop } from '../../hooks/useIsDesktop.js';
 import { useWasmEngine } from '../../hooks/useWasmEngine.js';
 import { CoachBoard } from '../board/CoachBoard.js';
@@ -14,16 +14,51 @@ import { MoveStrip } from '../board/MoveStrip.js';
 import { ChatPane } from '../chat/ChatPane.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
 import { useSessionBoardState } from './useSessionBoardState.js';
+import './SessionPage.css';
 
 const UNDO_PILL_MS = 2000;
+const SESSION_START_MARKER = '[session_start]';
+
+const SessionMessageSchema = z.object({
+  id: z.coerce.string(),
+  role: z.enum(['user', 'assistant', 'tool']),
+  content: z.unknown()
+});
 
 const SessionDetailSchema = z.object({
   id: z.string(),
   gameId: z.string(),
   status: z.enum(['active', 'completed', 'paused_no_credits']),
   summary: z.string().nullable(),
-  homework: z.string().nullable()
+  homework: z.string().nullable(),
+  messages: z.array(SessionMessageSchema)
 });
+
+/** A persisted message's `content` is either the AI SDK's parts array or (for
+ * plain user turns, e.g. the synthesized session-start marker) a bare string. */
+function extractText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part): part is { type: string; text: string } => {
+        return typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'text';
+      })
+      .map((part) => part.text)
+      .join('');
+  }
+  return '';
+}
+
+function toCoachMessages(messages: z.infer<typeof SessionMessageSchema>[]): CoachMessage[] {
+  return messages
+    .filter((message) => message.role !== 'tool')
+    .map((message) => ({
+      id: message.id,
+      role: message.role as 'user' | 'assistant',
+      text: extractText(message.content)
+    }))
+    .filter((message) => message.text.trim() !== '' && message.text !== SESSION_START_MARKER);
+}
 
 const GameDetailSchema = z.object({
   id: z.string(),
@@ -41,14 +76,14 @@ export function SessionPage(): ReactNode {
 
   const sessionQuery = useQuery({
     queryKey: ['session', sessionId],
-    queryFn: () => apiGet(`/api/sessions/${sessionId}`, SessionDetailSchema),
+    queryFn: ({ signal }) => apiGet(`/api/sessions/${sessionId}`, SessionDetailSchema, signal),
     enabled: sessionId !== ''
   });
 
   const gameId = sessionQuery.data?.gameId;
   const gameQuery = useQuery({
     queryKey: ['game', gameId],
-    queryFn: () => apiGet(`/api/games/${gameId}`, GameDetailSchema),
+    queryFn: ({ signal }) => apiGet(`/api/games/${gameId}`, GameDetailSchema, signal),
     enabled: gameId !== undefined
   });
 
@@ -57,7 +92,8 @@ export function SessionPage(): ReactNode {
 
   const boardState = useSessionBoardState(positions);
   const engine = useWasmEngine();
-  const chat = useCoachChat(sessionId, { onToolCall: boardState.handleToolCall });
+  const initialMessages = sessionQuery.data ? toCoachMessages(sessionQuery.data.messages) : undefined;
+  const chat = useCoachChat(sessionId, { onToolCall: boardState.handleToolCall, initialMessages });
 
   const [pendingMove, setPendingMove] = useState<{ san: string; fen: string } | null>(null);
   const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

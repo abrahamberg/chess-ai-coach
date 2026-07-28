@@ -14,6 +14,7 @@ import { useAnalysisStatus } from '../../hooks/useAnalysisStatus.js';
 import { ColorConfirm } from './ColorConfirm.js';
 import { LichessGamePicker } from './LichessGamePicker.js';
 import { PgnPasteForm } from './PgnPasteForm.js';
+import './ImportPage.css';
 
 const SessionSummarySchema = z.object({ id: z.string() });
 type ImportTab = 'paste' | 'lichess';
@@ -46,7 +47,7 @@ export function ImportPage(): ReactNode {
 
   const lichessQuery = useQuery({
     queryKey: ['lichess-recent-games'],
-    queryFn: () => apiGet('/api/lichess/recent-games', LichessRecentGamesResponseSchema),
+    queryFn: ({ signal }) => apiGet('/api/lichess/recent-games', LichessRecentGamesResponseSchema, signal),
     enabled: tab === 'lichess'
   });
   const lichessNotLinked = lichessQuery.error instanceof ApiError && lichessQuery.error.status === 404;
@@ -69,7 +70,7 @@ export function ImportPage(): ReactNode {
   }
 
   return (
-    <div>
+    <div className="page import-page">
       <h1>Import a game</h1>
       {missingColor && pendingPgn ? (
         <ColorConfirm onConfirm={(color) => importPgn(pendingPgn, 'paste', color)} />

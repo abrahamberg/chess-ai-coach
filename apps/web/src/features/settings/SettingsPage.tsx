@@ -5,6 +5,7 @@ import { apiDelete, apiGet, apiPatch, apiPut } from '../../api/client.js';
 import { BandSelect } from './BandSelect.js';
 import { ByokKeyForm } from './ByokKeyForm.js';
 import { CreditBalance } from './CreditBalance.js';
+import './SettingsPage.css';
 
 type Theme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'chess-coach-theme';
@@ -30,10 +31,13 @@ export function SettingsPage(): ReactNode {
     }
   }, [theme]);
 
-  const profileQuery = useQuery({ queryKey: ['profile'], queryFn: () => apiGet('/api/users/me', UserProfileSchema) });
+  const profileQuery = useQuery({
+    queryKey: ['profile'],
+    queryFn: ({ signal }) => apiGet('/api/users/me', UserProfileSchema, signal)
+  });
   const providersQuery = useQuery({
     queryKey: ['llm-keys'],
-    queryFn: () => apiGet('/api/users/me/llm-keys', SavedLlmProvidersResponseSchema)
+    queryFn: ({ signal }) => apiGet('/api/users/me/llm-keys', SavedLlmProvidersResponseSchema, signal)
   });
 
   const bandMutation = useMutation({
@@ -61,7 +65,7 @@ export function SettingsPage(): ReactNode {
   const savedProviders = new Set(providersQuery.data);
 
   return (
-    <div className="settings-page">
+    <div className="page settings-page">
       <section aria-label="Profile">
         <h2>Profile</h2>
         <p>{profile.displayName}</p>

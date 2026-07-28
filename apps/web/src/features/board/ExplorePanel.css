@@ -1,0 +1,29 @@
+.explore-panel-toggle {
+  background: none;
+  border: 1px dashed rgb(0 0 0 / 20%);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 14px;
+  width: 100%;
+  text-align: left;
+}
+
+.explore-panel {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid var(--annotate-2);
+}
+
+.explore-panel-caption {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.explore-panel-eval {
+  margin: 0;
+  font-weight: 600;
+}

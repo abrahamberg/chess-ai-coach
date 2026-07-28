@@ -39,7 +39,9 @@ export function ByokKeyForm({ provider, isSaved, onSave, onDelete }: ByokKeyForm
         <form onSubmit={handleSubmit}>
           <label htmlFor={`byok-${provider}`}>API key</label>
           <input id={`byok-${provider}`} value={draft} onChange={(event) => setDraft(event.target.value)} />
-          <button type="submit">Add key</button>
+          <button type="submit" className="btn-primary">
+            Add key
+          </button>
         </form>
       )}
     </div>

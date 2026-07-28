@@ -16,7 +16,10 @@ export interface AuthHeadersOptions {
   authMode: 'proxy' | 'dev-stub';
 }
 
-const DEV_STUB_USER: AuthUser = { email: 'dev@local', displayName: 'dev@local' };
+// UserProfileSchema requires a real-shaped email (z.string().email()) — 'dev@local'
+// has no TLD and fails that check on every frontend fetch of /api/users/me, so this
+// uses .test (the IANA-reserved TLD for testing) instead.
+const DEV_STUB_USER: AuthUser = { email: 'dev@local.test', displayName: 'dev@local.test' };
 
 /** Decorates `request.user` from oauth2-proxy's X-Auth-Request-* headers. Requests
  * without those headers get a dev-stub identity in dev-stub mode, or 401 otherwise. */

@@ -9,14 +9,16 @@ export interface ColorConfirmProps {
  * (422 {missing: 'userColor'}) — the student picks, and the import retries. */
 export function ColorConfirm({ onConfirm }: ColorConfirmProps): ReactNode {
   return (
-    <div>
+    <div className="color-confirm">
       <p>We couldn&rsquo;t tell which side you played. Which color were you?</p>
-      <button type="button" onClick={() => onConfirm('white')}>
-        White
-      </button>
-      <button type="button" onClick={() => onConfirm('black')}>
-        Black
-      </button>
+      <div className="color-confirm__options">
+        <button type="button" onClick={() => onConfirm('white')}>
+          I played White
+        </button>
+        <button type="button" onClick={() => onConfirm('black')}>
+          I played Black
+        </button>
+      </div>
     </div>
   );
 }

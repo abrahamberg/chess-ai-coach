@@ -8,6 +8,7 @@ import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import { importGame, MissingUserColorError } from '../services/game-import.js';
+import { listGamesForUser } from '../services/games.js';
 import * as userProfileService from '../services/user-profile.js';
 
 export function registerGamesRoutes(app: FastifyInstance, db: Kysely<Database>, jobQueue: JobQueue): void {
@@ -33,7 +34,7 @@ export function registerGamesRoutes(app: FastifyInstance, db: Kysely<Database>, 
 
   app.get('/api/games', async (request) => {
     const user = await userProfileService.getOrCreate(db, request.user);
-    return gamesRepo.listByUser(db, user.id);
+    return listGamesForUser(db, user.id);
   });
 
   app.get<{ Params: { id: string } }>('/api/games/:id', async (request) => {

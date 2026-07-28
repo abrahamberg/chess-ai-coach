@@ -1,0 +1,26 @@
+.games-page__cta {
+  display: block;
+  margin: 16px 0 24px;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 18px;
+  text-align: center;
+}
+
+.games-page__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgb(0 0 0 / 8%);
+}
+
+.games-page__empty {
+  color: var(--text-muted);
+  padding: 24px 0;
+}

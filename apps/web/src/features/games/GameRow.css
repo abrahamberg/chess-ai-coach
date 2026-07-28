@@ -1,0 +1,101 @@
+.game-row {
+  list-style: none;
+}
+
+.game-row button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid rgb(0 0 0 / 8%);
+  text-align: left;
+}
+
+.game-row__dot {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-contrast);
+  background: var(--text-muted);
+}
+
+.game-row__dot--win {
+  background: var(--accent);
+}
+
+.game-row__dot--loss {
+  background: var(--warn);
+}
+
+.game-row__players {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-row__you {
+  font-weight: 700;
+}
+
+.game-row__meta {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.game-row__chip {
+  flex: 0 0 auto;
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.game-row__chip--ready {
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+
+.game-row__chip--failed {
+  color: var(--accent-contrast);
+  background: var(--warn);
+}
+
+.game-row__chip--analyzing {
+  animation: game-row-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes game-row-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-row__chip--analyzing {
+    animation: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .game-row__meta {
+    display: none;
+  }
+}

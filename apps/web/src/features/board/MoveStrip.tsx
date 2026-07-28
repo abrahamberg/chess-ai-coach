@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import './MoveStrip.css';
 
 export interface MoveStripProps {
   sanMoves: string[];

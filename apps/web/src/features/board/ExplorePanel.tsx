@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import type { UseWasmEngineResult } from '../../hooks/useWasmEngine.js';
+import './ExplorePanel.css';
 
 export interface ExplorePanelProps {
   fen: string;

@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import type { CoachMessage } from '../../hooks/useCoachChat.js';
 import { MessageList } from './MessageList.js';
 import { ToolActivity } from './ToolActivity.js';
+import './ChatPane.css';
 
 export interface ChatPaneProps {
   messages: CoachMessage[];

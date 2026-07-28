@@ -81,12 +81,24 @@ export interface RecordUsageArgs {
 
 /** Writes the credit ledger debit (when metered) and the llm_call_log row in one
  * transaction — a call is either fully recorded or not recorded at all. */
+/** Providers occasionally report non-finite usage (seen with OpenAI on
+ * multi-step tool-calling turns) — every integer DB column downstream of this
+ * must never receive NaN/Infinity, so sanitize once at the boundary. */
+function toSafeCount(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
 export async function recordUsage(
   db: Kysely<Database>,
   args: RecordUsageArgs,
   tierMultipliers: Record<Tier, number> = DEFAULT_TIER_MULTIPLIERS
 ): Promise<void> {
-  const credits = args.metered ? computeCredits(args.usage, tierMultipliers[args.tier]) : 0;
+  const usage: UsageTokens = {
+    inputTokens: toSafeCount(args.usage.inputTokens),
+    outputTokens: toSafeCount(args.usage.outputTokens),
+    cachedInputTokens: toSafeCount(args.usage.cachedInputTokens)
+  };
+  const credits = args.metered ? computeCredits(usage, tierMultipliers[args.tier]) : 0;
 
   await db.transaction().execute(async (trx) => {
     if (args.metered && credits > 0) {
@@ -97,9 +109,9 @@ export async function recordUsage(
       sessionId: args.sessionId ?? null,
       provider: args.provider,
       model: args.model,
-      inputTokens: args.usage.inputTokens,
-      outputTokens: args.usage.outputTokens,
-      cachedInputTokens: args.usage.cachedInputTokens,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cachedInputTokens: usage.cachedInputTokens,
       creditsMetered: credits,
       purpose: args.purpose
     });

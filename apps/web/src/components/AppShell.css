@@ -1,0 +1,86 @@
+/* design.md §3: icon rail (desktop, >=1080px) / bottom tab bar (mobile, tablet). */
+
+.app-shell {
+  min-height: 100%;
+  display: flex;
+}
+
+.app-shell__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.icon-rail,
+.bottom-tab-bar {
+  display: flex;
+  background: var(--surface);
+  border-color: rgb(0 0 0 / 8%);
+}
+
+.icon-rail a,
+.bottom-tab-bar a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.icon-rail a.active,
+.bottom-tab-bar a.active {
+  color: var(--accent);
+}
+
+/* mobile/tablet: bottom tab bar */
+.app-shell[data-layout='mobile'] {
+  flex-direction: column;
+}
+
+.app-shell[data-layout='mobile'] .app-shell__content {
+  padding-bottom: 56px;
+}
+
+.bottom-tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  border-top: 1px solid rgb(0 0 0 / 8%);
+  justify-content: space-around;
+  align-items: center;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.bottom-tab-bar a {
+  flex: 1;
+  text-align: center;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* desktop: icon rail */
+.app-shell[data-layout='desktop'] .icon-rail {
+  flex-direction: column;
+  width: 64px;
+  min-height: 100vh;
+  border-right: 1px solid rgb(0 0 0 / 8%);
+  padding: 16px 0;
+  gap: 8px;
+  align-items: center;
+}
+
+.icon-rail a {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.icon-rail a:hover {
+  background: var(--surface-2);
+}

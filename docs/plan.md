@@ -187,7 +187,7 @@ test('rejects unknown category', () => {
 - Create: `apps/api/src/{app.ts,server.ts}`, `plugins/{auth-headers.ts,error-mapper.ts}`, `lib/errors.ts`, `apps/api/test/helpers/build-app.ts`, tests
 
 **Interfaces:**
-- Produces: `buildApp(opts): FastifyInstance`; `request.user: { email: string; displayName: string }` decorated from `X-Auth-Request-Email`/`X-Auth-Request-User` (401 problem+json if missing and `AUTH_MODE !== 'dev-stub'`; dev-stub injects `dev@local`). Error classes: `NotFoundError(404)`, `ValidationError(400)`, `InsufficientCreditsError(402)`, `ConflictError(409)` → problem+json via error-mapper. `GET /healthz` 200 always; `GET /readyz` 200 iff DB ping ok.
+- Produces: `buildApp(opts): FastifyInstance`; `request.user: { email: string; displayName: string }` decorated from `X-Auth-Request-Email`/`X-Auth-Request-User` (401 problem+json if missing and `AUTH_MODE !== 'dev-stub'`; dev-stub injects `dev@local.test`). Error classes: `NotFoundError(404)`, `ValidationError(400)`, `InsufficientCreditsError(402)`, `ConflictError(409)` → problem+json via error-mapper. `GET /healthz` 200 always; `GET /readyz` 200 iff DB ping ok.
 
 - [x] **Steps 1–4:** failing tests (no headers → 401; headers → echoed in a test route; thrown `NotFoundError` → `{status:404, title}`) → implement → pass.
 - [x] **Step 5: Commit** — `feat: api skeleton with proxy auth and problem+json errors`.
