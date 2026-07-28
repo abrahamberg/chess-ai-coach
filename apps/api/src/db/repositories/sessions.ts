@@ -15,14 +15,58 @@ export interface SessionRow {
 
 const BASE_COLUMNS = ['id', 'gameId', 'userId', 'status', 'currentPly', 'startedAt', 'endedAt'] as const;
 
+export interface NewSession {
+  gameId: string;
+  userId: string;
+}
+
+export function insert(db: Kysely<Database>, values: NewSession): Promise<SessionRow> {
+  return db
+    .insertInto('sessions')
+    .values({ ...values, status: 'active' })
+    .returning(BASE_COLUMNS)
+    .executeTakeFirstOrThrow();
+}
+
 export function findById(db: Kysely<Database>, id: string): Promise<SessionRow | undefined> {
   return db.selectFrom('sessions').select(BASE_COLUMNS).where('id', '=', id).executeTakeFirst();
+}
+
+export function findByIdForUser(
+  db: Kysely<Database>,
+  id: string,
+  userId: string
+): Promise<SessionRow | undefined> {
+  return db
+    .selectFrom('sessions')
+    .select(BASE_COLUMNS)
+    .where('id', '=', id)
+    .where('userId', '=', userId)
+    .executeTakeFirst();
 }
 
 export function markCompleted(db: Kysely<Database>, id: string): Promise<void> {
   return db
     .updateTable('sessions')
     .set({ status: 'completed', endedAt: new Date() })
+    .where('id', '=', id)
+    .execute()
+    .then(() => undefined);
+}
+
+export function markPausedNoCredits(db: Kysely<Database>, id: string): Promise<void> {
+  return db
+    .updateTable('sessions')
+    .set({ status: 'paused_no_credits' })
+    .where('id', '=', id)
+    .execute()
+    .then(() => undefined);
+}
+
+export function updateCurrentPly(db: Kysely<Database>, id: string, ply: number): Promise<void> {
+  return db
+    .updateTable('sessions')
+    .set({ currentPly: ply })
     .where('id', '=', id)
     .execute()
     .then(() => undefined);

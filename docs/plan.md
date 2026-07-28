@@ -321,8 +321,8 @@ test('rejects unknown category', () => {
   `POST /api/sessions/:id/messages {content}` → SSE stream: AI SDK `streamText({model, system: [staticPart(cache), dynamicPart(cache)], messages, tools, maxSteps: 8, onFinish})`; onFinish persists messages append-only + `recordUsage`; `assertCanSpend` before the call when metered (402 → session `paused_no_credits`).
   `end_session` tool → status `completed`, enqueue `summarize-session`.
 
-- [ ] **Steps 1–4:** failing tests with `MockLanguageModel` (session_start → system prompt contains focus areas + plan; model emits `show_position` client tool-call → appears in SSE stream and `current_ply` updates on client tool-result round-trip; tokens metered; balance 0 metered user → 402 + paused; messages persisted verbatim and replayed identically next turn — cache invariant) → implement → pass.
-- [ ] **Step 5: Commit** — `feat: coach agent session loop over sse`.
+- [x] **Steps 1–4:** failing tests with `MockLanguageModel` (session_start → system prompt contains focus areas + plan; model emits `show_position` client tool-call → appears in SSE stream and `current_ply` updates on client tool-result round-trip; tokens metered; balance 0 metered user → 402 + paused; messages persisted verbatim and replayed identically next turn — cache invariant) → implement → pass.
+- [x] **Step 5: Commit** — `feat: coach agent session loop over sse`.
 
 ### Task 5.4: summarize-session job
 

@@ -12,6 +12,28 @@ export const SessionOutcomeSchema = z.object({
 });
 export type SessionOutcome = z.infer<typeof SessionOutcomeSchema>;
 
+export const CreateSessionRequestSchema = z.object({
+  gameId: z.string().min(1)
+});
+export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
+
+export const ClientToolResultSchema = z.object({
+  toolCallId: z.string(),
+  toolName: z.string(),
+  result: z.unknown()
+});
+export type ClientToolResult = z.infer<typeof ClientToolResultSchema>;
+
+export const PostSessionMessageRequestSchema = z
+  .object({
+    content: z.string().min(1).optional(),
+    clientToolResult: ClientToolResultSchema.optional()
+  })
+  .refine((body) => body.content !== undefined || body.clientToolResult !== undefined, {
+    message: 'Either content or clientToolResult is required'
+  });
+export type PostSessionMessageRequest = z.infer<typeof PostSessionMessageRequestSchema>;
+
 export const ThreadSchema = z.object({
   id: z.number().int(),
   topic: z.string().max(200),

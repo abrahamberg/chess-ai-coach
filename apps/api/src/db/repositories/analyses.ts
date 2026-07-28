@@ -97,6 +97,19 @@ export function markReady(
     .then(() => undefined);
 }
 
+/** Reads back the stored coaching plan for a ready analysis (coach system prompt). */
+export function findCoachingPlanByGameId(
+  db: Kysely<Database>,
+  gameId: string
+): Promise<CoachingPlan | undefined> {
+  return db
+    .selectFrom('analyses')
+    .select('coachingPlan')
+    .where('gameId', '=', gameId)
+    .executeTakeFirst()
+    .then((row) => row?.coachingPlan as CoachingPlan | undefined);
+}
+
 export function markFailed(db: Kysely<Database>, id: string, error: string): Promise<void> {
   return db
     .updateTable('analyses')

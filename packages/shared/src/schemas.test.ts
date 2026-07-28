@@ -5,7 +5,12 @@ import { CreditPackSchema } from './credits.js';
 import { FindingSchema } from './finding.js';
 import { ImportGameRequestSchema } from './game.js';
 import { LlmProviderSchema, SetLlmKeyRequestSchema } from './llm.js';
-import { SessionOutcomeSchema, ThreadSchema } from './session.js';
+import {
+  CreateSessionRequestSchema,
+  PostSessionMessageRequestSchema,
+  SessionOutcomeSchema,
+  ThreadSchema
+} from './session.js';
 import { UpdateUserProfileRequestSchema, UserProfileSchema } from './user.js';
 
 const validEngineEval = {
@@ -160,6 +165,28 @@ describe('ThreadSchema', () => {
   });
   test('rejects invalid status', () => {
     expect(ThreadSchema.safeParse({ ...valid, status: 'open' }).success).toBe(false);
+  });
+});
+
+describe('CreateSessionRequestSchema', () => {
+  test('accepts a gameId', () => {
+    expect(CreateSessionRequestSchema.safeParse({ gameId: 'abc' }).success).toBe(true);
+  });
+  test('rejects a missing gameId', () => {
+    expect(CreateSessionRequestSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('PostSessionMessageRequestSchema', () => {
+  test('accepts content only', () => {
+    expect(PostSessionMessageRequestSchema.safeParse({ content: 'hello' }).success).toBe(true);
+  });
+  test('accepts a clientToolResult only', () => {
+    const body = { clientToolResult: { toolCallId: '1', toolName: 'show_position', result: { ply: 4 } } };
+    expect(PostSessionMessageRequestSchema.safeParse(body).success).toBe(true);
+  });
+  test('rejects a body with neither content nor clientToolResult', () => {
+    expect(PostSessionMessageRequestSchema.safeParse({}).success).toBe(false);
   });
 });
 

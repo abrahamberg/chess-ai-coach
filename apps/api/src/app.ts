@@ -5,11 +5,13 @@ import type { Database } from './db/schema.js';
 import { registerAnalysesRoutes } from './routes/analyses.js';
 import { registerGamesRoutes } from './routes/games.js';
 import { registerLlmKeysRoutes } from './routes/llm-keys.js';
+import { registerSessionsRoutes } from './routes/sessions.js';
 import { authHeadersPlugin, type AuthHeadersOptions } from './plugins/auth-headers.js';
 import { errorMapperPlugin } from './plugins/error-mapper.js';
 import { registerUsersRoutes } from './routes/users.js';
 import { noopJobQueue, type JobQueue } from './jobs/queue.js';
 import type { KeyVault } from './llm/key-vault.js';
+import type { CoachAgentDependencies } from './services/coach-agent.js';
 
 const DEFAULT_ANALYSES_POLL_INTERVAL_MS = 1000;
 
@@ -21,6 +23,8 @@ export interface BuildAppOptions {
   keyVault?: KeyVault;
   /** Poll interval for /api/analyses/:id/status SSE (architecture §9: 1s default). */
   analysesPollIntervalMs?: number;
+  /** Required to register /api/sessions/* routes. */
+  coachAgentDeps?: CoachAgentDependencies;
 }
 
 /** Builds the Fastify app: proxy-auth header decoration, problem+json error mapping,
@@ -58,6 +62,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     );
     if (options.keyVault) {
       registerLlmKeysRoutes(app, options.db, options.keyVault);
+    }
+    if (options.coachAgentDeps) {
+      registerSessionsRoutes(app, options.db, options.coachAgentDeps);
     }
   }
 
