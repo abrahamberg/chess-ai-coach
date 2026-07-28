@@ -430,9 +430,11 @@ implementation contract for the agent loop (details in §8.1–8.3):
 Human conversations interleave topics: open a branch, park it, jump to another,
 come back, cross-reference. The coach gets this behavior from two pieces:
 
-- **Prompt rules** (prompts.md §2, "Conversation threading"): short turns, one
-  topic per message, park out loud in human language, resume naturally, connect
-  threads when it teaches, let threads die honestly.
+- **Prompt rules** (prompts.md §2, "Conversation threading"): the default is
+  ordinary linear conversation with an empty ledger — threads exist only when a
+  topic is genuinely set aside, never as routine decomposition. Then: short
+  turns, one topic per message, park out loud in human language, resume
+  naturally, connect threads when it teaches, let threads die honestly.
 - **The thread ledger** (`update_threads` tool + `sessions.threads`): the coach's
   backstage inventory of open/parked/resolved threads, each with an optional
   hypothesis about the student's thinking and an optional board anchor so
