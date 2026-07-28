@@ -1,4 +1,8 @@
 {
   "files": [],
-  "references": [{ "path": "packages/shared" }, { "path": "packages/chess-analysis" }]
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/chess-analysis" },
+    { "path": "services/engine" }
+  ]
 }

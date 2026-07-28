@@ -162,9 +162,9 @@ test('rejects unknown category', () => {
 - Produces: `class UciEngine { analyze(fen, {depth, multiPv, timeoutMs}): Promise<EngineEval['lines']> }` (spawns `stockfish` binary path from `STOCKFISH_PATH`, default `/usr/games/stockfish`); `class EnginePool { constructor(size); withEngine<T>(fn): Promise<T> }` (simple queue).
 - Timeout returns best-so-far lines from the last `info` output; never rejects on timeout.
 
-- [ ] **Step 1: Failing tests** — against real stockfish (CI installs it): startpos depth 8 returns a line with `moveSan` in {e4,d4,Nf3,c4}; mate-in-1 FEN (`k7/8/1K6/8/8/8/8/1R6 w - - 0 1` → `Rb8#`? verify with engine in test) reports `mateIn: 1`; pool serializes >size concurrent calls.
-- [ ] **Steps 2–4:** fail → implement (line parser as its own pure function `parseInfoLine` with unit tests, incl. `score mate -3`) → pass.
-- [ ] **Step 5: Commit** — `feat: stockfish uci wrapper and pool`.
+- [x] **Step 1: Failing tests** — against real stockfish (CI installs it): startpos depth 8 returns a line with `moveSan` in {e4,d4,Nf3,c4}; mate-in-1 FEN (`k7/8/1K6/8/8/8/8/7R w - - 0 1` → `Rh8#` — corrected from the placeholder above, verified with the engine) reports `mateIn: 1`; pool serializes >size concurrent calls.
+- [x] **Steps 2–4:** fail → implement (line parser as its own pure function `parseInfoLine` with unit tests, incl. `score mate -3`) → pass.
+- [x] **Step 5: Commit** — `feat: stockfish uci wrapper and pool`.
 
 ### Task 2.2: HTTP server
 
