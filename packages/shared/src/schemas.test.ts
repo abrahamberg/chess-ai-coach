@@ -4,6 +4,7 @@ import { CoachingPlanSchema, type CoachingPlan } from './coaching-plan.js';
 import { CreditPackSchema } from './credits.js';
 import { FindingSchema } from './finding.js';
 import { ImportGameRequestSchema } from './game.js';
+import { LlmProviderSchema, SetLlmKeyRequestSchema } from './llm.js';
 import { SessionOutcomeSchema, ThreadSchema } from './session.js';
 import { UpdateUserProfileRequestSchema, UserProfileSchema } from './user.js';
 
@@ -216,6 +217,18 @@ describe('UpdateUserProfileRequestSchema', () => {
   test('accepts nullable lichessUsername/chesscomUsername/selfAssessment', () => {
     const patch = { lichessUsername: null, chesscomUsername: null, selfAssessment: null };
     expect(UpdateUserProfileRequestSchema.safeParse(patch).success).toBe(true);
+  });
+});
+
+describe('LlmProviderSchema / SetLlmKeyRequestSchema', () => {
+  test('accepts the 2 providers, rejects others', () => {
+    expect(LlmProviderSchema.safeParse('anthropic').success).toBe(true);
+    expect(LlmProviderSchema.safeParse('openai').success).toBe(true);
+    expect(LlmProviderSchema.safeParse('cohere').success).toBe(false);
+  });
+  test('accepts a non-empty apiKey, rejects empty', () => {
+    expect(SetLlmKeyRequestSchema.safeParse({ apiKey: 'sk-ant-123' }).success).toBe(true);
+    expect(SetLlmKeyRequestSchema.safeParse({ apiKey: '' }).success).toBe(false);
   });
 });
 

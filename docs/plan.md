@@ -236,8 +236,8 @@ test('rejects unknown category', () => {
 - Metering formula: `credits = ceil((inputTokens - cachedInputTokens + cachedInputTokens/4 + outputTokens) / 1000) * tierMultiplier`; multipliers from env `CREDIT_MULT_STANDARD=1`, `CREDIT_MULT_LIGHT=0.25` (result rounded up to int). Model ids from `LLM_STANDARD_MODEL`/`LLM_LIGHT_MODEL` per provider.
 - `PUT/DELETE /api/users/me/llm-keys/:provider` (PUT never echoes the key back).
 
-- [ ] **Steps 1–4:** failing tests (vault round-trips and produces distinct IVs; BYOK user → `metered:false` + their provider; no key → platform + `metered:true`; metering math incl. cached-token discount; balance 0 → `assertCanSpend` throws; ledger row + log row written atomically) → implement → pass. Providers via `@ai-sdk/anthropic` / `@ai-sdk/openai` `createAnthropic({apiKey})` etc.
-- [ ] **Step 5: Commit** — `feat: llm gateway, byok vault, credit metering`.
+- [x] **Steps 1–4:** failing tests (vault round-trips and produces distinct IVs; BYOK user → `metered:false` + their provider; no key → platform + `metered:true`; metering math incl. cached-token discount; balance 0 → `assertCanSpend` throws; ledger row + log row written atomically) → implement → pass. Providers via `@ai-sdk/anthropic` / `@ai-sdk/openai` `createAnthropic({apiKey})` etc.
+- [x] **Step 5: Commit** — `feat: llm gateway, byok vault, credit metering`.
 
 ---
 

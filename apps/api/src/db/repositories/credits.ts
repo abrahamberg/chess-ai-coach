@@ -17,3 +17,36 @@ export function insertSignupGrant(db: Kysely<Database>, userId: string): Promise
     .execute()
     .then(() => undefined);
 }
+
+export function insertUsageDebit(
+  db: Kysely<Database>,
+  userId: string,
+  sessionId: string | null,
+  credits: number
+): Promise<void> {
+  return db
+    .insertInto('creditLedger')
+    .values({ userId, delta: -credits, reason: 'session_usage', sessionId })
+    .execute()
+    .then(() => undefined);
+}
+
+export interface NewLlmCallLog {
+  userId: string;
+  sessionId: string | null;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  creditsMetered: number;
+  purpose: string;
+}
+
+export function insertCallLog(db: Kysely<Database>, values: NewLlmCallLog): Promise<void> {
+  return db
+    .insertInto('llmCallLog')
+    .values(values)
+    .execute()
+    .then(() => undefined);
+}
