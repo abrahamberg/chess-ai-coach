@@ -115,7 +115,7 @@ test('rejects unknown category', () => {
   (positions[0] = start, ply 0, null move). Throws `InvalidPgnError` (exported) on illegal/corrupt PGN.
 - Produces: `detectUserColor(headers, usernames: {lichess?: string; chesscom?: string; displayName: string}): 'white'|'black'|null` (case-insensitive match on White/Black headers).
 
-- [ ] **Step 1: Failing tests** — Scholar's mate PGN → 9 positions, last FEN contains `Qxf7#` result state; multi-game PGN → parses first game; garbage → `InvalidPgnError`; headers extracted; `detectUserColor` matches case-insensitively and returns null when no match.
+- [ ] **Step 1: Failing tests** — Scholar's mate PGN → 8 positions (7 plies + start); multi-game PGN → parses first game; garbage → `InvalidPgnError`; headers extracted; `detectUserColor` matches case-insensitively and returns null when no match.
 - [ ] **Step 2: Run — fail.**
 - [ ] **Step 3: Implement with `chess.js`** (`loadPgn`, walk `history({verbose:true})` replaying to collect FENs).
 - [ ] **Step 4: Run — pass.**
