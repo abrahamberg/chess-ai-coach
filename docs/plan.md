@@ -276,8 +276,8 @@ test('rejects unknown category', () => {
 - Consumes: engine HTTP (Task 2.2, base URL `ENGINE_URL`), `classifyMoves`/`findCandidateMoments` (Phase 1), `buildPlannerMessages` + gateway `light` tier.
 - Produces: job `analyze-game {gameId}` implementing architecture §5 steps 1–6 (statuses `queued→engine_running→planning→ready|failed`); zod-validate planner output with **one retry** appending the validation error; `GET /api/analyses/:id/status` SSE emitting `{status}` on change (poll DB 1s, end on terminal).
 
-- [ ] **Steps 1–4:** failing integration tests (mock engine HTTP + mock gateway model returning a valid plan → analysis `ready` with stored evals+plan; planner returns invalid JSON once then valid → retry succeeds; twice → `failed` with error; engine 500 → `failed`) → implement → pass.
-- [ ] **Step 5: Commit** — `feat: analysis pipeline worker`.
+- [x] **Steps 1–4:** failing integration tests (mock engine HTTP + mock gateway model returning a valid plan → analysis `ready` with stored evals+plan; planner returns invalid JSON once then valid → retry succeeds; twice → `failed` with error; engine 500 → `failed`) → implement → pass.
+- [x] **Step 5: Commit** — `feat: analysis pipeline worker`.
 
 ---
 

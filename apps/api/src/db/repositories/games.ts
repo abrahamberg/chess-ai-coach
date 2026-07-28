@@ -43,6 +43,11 @@ export function listByUser(db: Kysely<Database>, userId: string): Promise<GameRo
     .execute();
 }
 
+/** No user scoping — for worker/job code, which runs outside a request context. */
+export function findById(db: Kysely<Database>, id: string): Promise<GameRow | undefined> {
+  return db.selectFrom('games').selectAll().where('id', '=', id).executeTakeFirst();
+}
+
 export function findByIdForUser(
   db: Kysely<Database>,
   id: string,

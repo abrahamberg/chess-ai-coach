@@ -24,6 +24,7 @@ export interface ModelResolution {
   model: LanguageModel;
   metered: boolean;
   provider: LlmProvider;
+  modelId: string;
 }
 
 const DEFAULT_TIER_MULTIPLIERS: Record<Tier, number> = { standard: 1, light: 0.25 };
@@ -38,20 +39,24 @@ export async function getModelForUser(
 ): Promise<ModelResolution> {
   const byok = await resolveByokKey(db, config.keyVault, userId);
   if (byok) {
+    const modelId = config.modelIds[tier][byok.provider];
     return {
-      model: buildModel(byok.provider, byok.apiKey, config.modelIds[tier][byok.provider]),
+      model: buildModel(byok.provider, byok.apiKey, modelId),
       metered: false,
-      provider: byok.provider
+      provider: byok.provider,
+      modelId
     };
   }
 
   const provider = platformProviderFor(config);
   const apiKey = config.platformKeys[provider];
   if (!apiKey) throw new Error('No platform LLM key configured');
+  const modelId = config.modelIds[tier][provider];
   return {
-    model: buildModel(provider, apiKey, config.modelIds[tier][provider]),
+    model: buildModel(provider, apiKey, modelId),
     metered: true,
-    provider
+    provider,
+    modelId
   };
 }
 

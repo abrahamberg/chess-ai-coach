@@ -29,6 +29,10 @@ export function findByEmail(db: Kysely<Database>, email: string): Promise<UserRo
   return db.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst();
 }
 
+export function findById(db: Kysely<Database>, id: string): Promise<UserRow | undefined> {
+  return db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst();
+}
+
 export function insert(db: Kysely<Database>, values: NewUser): Promise<UserRow> {
   return db.insertInto('users').values(values).returningAll().executeTakeFirstOrThrow();
 }

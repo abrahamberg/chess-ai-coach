@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
 import { pingDb } from './db/index.js';
 import type { Database } from './db/schema.js';
+import { registerAnalysesRoutes } from './routes/analyses.js';
 import { registerGamesRoutes } from './routes/games.js';
 import { registerLlmKeysRoutes } from './routes/llm-keys.js';
 import { authHeadersPlugin, type AuthHeadersOptions } from './plugins/auth-headers.js';
@@ -10,12 +11,16 @@ import { registerUsersRoutes } from './routes/users.js';
 import { noopJobQueue, type JobQueue } from './jobs/queue.js';
 import type { KeyVault } from './llm/key-vault.js';
 
+const DEFAULT_ANALYSES_POLL_INTERVAL_MS = 1000;
+
 export interface BuildAppOptions {
   authMode?: AuthHeadersOptions['authMode'];
   checkReady?: () => Promise<boolean>;
   db?: Kysely<Database>;
   jobQueue?: JobQueue;
   keyVault?: KeyVault;
+  /** Poll interval for /api/analyses/:id/status SSE (architecture §9: 1s default). */
+  analysesPollIntervalMs?: number;
 }
 
 /** Builds the Fastify app: proxy-auth header decoration, problem+json error mapping,
@@ -46,6 +51,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   if (options.db) {
     registerUsersRoutes(app, options.db);
     registerGamesRoutes(app, options.db, options.jobQueue ?? noopJobQueue);
+    registerAnalysesRoutes(
+      app,
+      options.db,
+      options.analysesPollIntervalMs ?? DEFAULT_ANALYSES_POLL_INTERVAL_MS
+    );
     if (options.keyVault) {
       registerLlmKeysRoutes(app, options.db, options.keyVault);
     }

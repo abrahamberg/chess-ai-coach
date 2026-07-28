@@ -6,6 +6,7 @@ import type { Database } from '../../src/db/schema.js';
 
 export interface TestDb {
   db: Kysely<Database>;
+  connectionString: string;
   cleanup: () => Promise<void>;
 }
 
@@ -15,11 +16,13 @@ export async function createTestDb(): Promise<TestDb> {
   const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
     'postgres:16-alpine'
   ).start();
-  const db = createDb(container.getConnectionUri());
+  const connectionString = container.getConnectionUri();
+  const db = createDb(connectionString);
   await migrateToLatest(db);
 
   return {
     db,
+    connectionString,
     cleanup: async () => {
       await db.destroy();
       await container.stop();
