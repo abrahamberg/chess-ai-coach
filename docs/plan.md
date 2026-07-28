@@ -306,8 +306,8 @@ test('rejects unknown category', () => {
 - Produces: `prepareContext(messages: StoredMessage[], digest: string|null, budgetTokens: number): { digest: string|null; replayMessages: StoredMessage[]; needsCompaction: boolean }` (pure — estimation at 4 chars/token) and `compact(messagesToFold, previousDigest, lightModel): Promise<string>` (≤300-token digest via light tier).
 - Consumed by Task 5.3 before each `streamText` call; digest persisted to `sessions.context_digest` + `digest_through_message_id`.
 
-- [ ] **Steps 1–4:** failing tests (under budget → all messages, no compaction; over → oldest ~50% marked for folding, newest kept verbatim, digest injected as first message; compaction not re-triggered within 20 turns) → implement → pass.
-- [ ] **Step 5: Commit** — `feat: rolling session context compaction`.
+- [x] **Steps 1–4:** failing tests (under budget → all messages, no compaction; over → oldest ~50% marked for folding, newest kept verbatim, digest injected as first message; compaction not re-triggered within 20 turns) → implement → pass.
+- [x] **Step 5: Commit** — `feat: rolling session context compaction`.
 
 ### Task 5.3: Session routes + agent loop
 
