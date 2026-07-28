@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/shared" },
     { "path": "packages/chess-analysis" },
-    { "path": "services/engine" }
+    { "path": "services/engine" },
+    { "path": "apps/api" }
   ]
 }
