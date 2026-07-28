@@ -26,7 +26,7 @@ class MockEventSource {
 }
 
 function renderImportPage() {
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/import']}>
@@ -105,6 +105,52 @@ describe('ImportPage', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/sessions',
       expect.objectContaining({ body: JSON.stringify({ gameId: 'game-1' }) })
+    );
+  });
+
+  test('switching to the Lichess tab fetches and lists recent games; selecting one imports it as source lichess', async () => {
+    const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/lichess/recent-games') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              {
+                id: 'g1',
+                pgn: '1. e4 e5 1-0',
+                whiteName: 'daniel',
+                blackName: 'Marta',
+                result: '1-0',
+                timeControl: '600+0',
+                playedAt: '2026-07-20T10:00:00.000Z'
+              }
+            ]),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+        );
+      }
+      if (path === '/api/games' && init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ gameId: 'game-2', analysisId: 'analysis-2' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' }
+          })
+        );
+      }
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    renderImportPage();
+    await user.click(screen.getByRole('button', { name: /from lichess/i }));
+
+    await user.click(await screen.findByRole('button', { name: /daniel.*marta/is }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/games',
+        expect.objectContaining({ body: JSON.stringify({ pgn: '1. e4 e5 1-0', source: 'lichess' }) })
+      )
     );
   });
 });

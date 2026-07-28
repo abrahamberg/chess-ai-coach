@@ -405,7 +405,7 @@ behavior are specified there; do not invent visual design in code.
 **Interfaces:**
 - Produces: `GET /api/lichess/recent-games` → last 20 games for `users.lichess_username` via `GET https://lichess.org/api/games/user/{u}?max=20&pgnInJson=true` (ndjson parsed; 404 problem+json if no linked username). Frontend `LichessGamePicker` (6.2) consumes it.
 
-- [ ] **Steps 1–5:** failing tests (mocked lichess HTTP; ndjson → list; no username → 404) → implement → pass → commit `feat: lichess recent games import`.
+- [x] **Steps 1–5:** failing tests (mocked lichess HTTP; ndjson → list; no username → 404) → implement → pass → commit `feat: lichess recent games import`.
 
 ### Task 7.2: oauth2-proxy dev-parity config
 

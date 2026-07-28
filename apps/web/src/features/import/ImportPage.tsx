@@ -1,14 +1,22 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
-import { ImportGameRequestSchema, ImportGameResponseSchema, type ImportGameRequest, type PlayerColor } from '@chess-coach/shared';
-import { apiPost, ApiError } from '../../api/client.js';
+import {
+  ImportGameRequestSchema,
+  ImportGameResponseSchema,
+  LichessRecentGamesResponseSchema,
+  type ImportGameRequest,
+  type PlayerColor
+} from '@chess-coach/shared';
+import { apiGet, apiPost, ApiError } from '../../api/client.js';
 import { useAnalysisStatus } from '../../hooks/useAnalysisStatus.js';
 import { ColorConfirm } from './ColorConfirm.js';
+import { LichessGamePicker } from './LichessGamePicker.js';
 import { PgnPasteForm } from './PgnPasteForm.js';
 
 const SessionSummarySchema = z.object({ id: z.string() });
+type ImportTab = 'paste' | 'lichess';
 
 /** Import a game, watch its analysis (SSE), and hand off into a coaching
  * session once it's ready. Composes PgnPasteForm + ColorConfirm; no fetching
@@ -18,6 +26,7 @@ export function ImportPage(): ReactNode {
   const [pendingPgn, setPendingPgn] = useState<string | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
+  const [tab, setTab] = useState<ImportTab>('paste');
 
   const importMutation = useMutation({
     mutationFn: (body: ImportGameRequest) => apiPost('/api/games', body, ImportGameResponseSchema),
@@ -35,6 +44,13 @@ export function ImportPage(): ReactNode {
 
   const { status } = useAnalysisStatus(analysisId);
 
+  const lichessQuery = useQuery({
+    queryKey: ['lichess-recent-games'],
+    queryFn: () => apiGet('/api/lichess/recent-games', LichessRecentGamesResponseSchema),
+    enabled: tab === 'lichess'
+  });
+  const lichessNotLinked = lichessQuery.error instanceof ApiError && lichessQuery.error.status === 404;
+
   useEffect(() => {
     if (status === 'ready' && gameId && !sessionMutation.isPending && !sessionMutation.isSuccess) {
       sessionMutation.mutate(gameId);
@@ -46,8 +62,9 @@ export function ImportPage(): ReactNode {
     importMutation.error.status === 422 &&
     (importMutation.error.body as { missing?: string } | undefined)?.missing === 'userColor';
 
-  function importPgn(pgn: string, userColor?: PlayerColor): void {
-    const body = ImportGameRequestSchema.parse({ pgn, source: 'paste', userColor });
+  function importPgn(pgn: string, source: ImportGameRequest['source'] = 'paste', userColor?: PlayerColor): void {
+    const body = ImportGameRequestSchema.parse({ pgn, source, userColor });
+    setPendingPgn(pgn);
     importMutation.mutate(body);
   }
 
@@ -55,14 +72,28 @@ export function ImportPage(): ReactNode {
     <div>
       <h1>Import a game</h1>
       {missingColor && pendingPgn ? (
-        <ColorConfirm onConfirm={(color) => importPgn(pendingPgn, color)} />
+        <ColorConfirm onConfirm={(color) => importPgn(pendingPgn, 'paste', color)} />
       ) : (
-        <PgnPasteForm
-          onSubmit={(body) => {
-            setPendingPgn(body.pgn);
-            importMutation.mutate(body);
-          }}
-        />
+        <>
+          <div role="tablist">
+            <button type="button" aria-pressed={tab === 'paste'} onClick={() => setTab('paste')}>
+              Paste
+            </button>
+            <button type="button" aria-pressed={tab === 'lichess'} onClick={() => setTab('lichess')}>
+              From Lichess
+            </button>
+          </div>
+          {tab === 'paste' ? (
+            <PgnPasteForm onSubmit={(body) => importPgn(body.pgn, body.source, body.userColor)} />
+          ) : (
+            <LichessGamePicker
+              games={lichessQuery.data ?? []}
+              isLoading={lichessQuery.isLoading}
+              isLinked={!lichessNotLinked}
+              onSelect={(pgn) => importPgn(pgn, 'lichess')}
+            />
+          )}
+        </>
       )}
     </div>
   );
