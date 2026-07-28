@@ -24,3 +24,6 @@ export const EngineEvalSchema = z.object({
   lines: z.array(EngineLineSchema).min(1)
 });
 export type EngineEval = z.infer<typeof EngineEvalSchema>;
+
+export const MOVE_QUALITIES = ['good', 'inaccuracy', 'mistake', 'blunder'] as const;
+export type MoveQuality = (typeof MOVE_QUALITIES)[number];
