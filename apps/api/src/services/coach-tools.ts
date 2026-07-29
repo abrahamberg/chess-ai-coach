@@ -1,6 +1,7 @@
 import {
   annotateBoardParameters,
   buildInterpreterMessages,
+  checkPositionParameters,
   endSessionParameters,
   getEngineAnalysisParameters,
   getUserProfileParameters,
@@ -11,11 +12,13 @@ import {
   showPositionParameters,
   updateThreadsParameters
 } from '@chess-coach/prompts';
+import { moveRefToPly } from '@chess-coach/chess-analysis';
 import type { EngineEval, EngineLine, Finding, FocusAreaUpdate, Thread } from '@chess-coach/shared';
 import { tool, type ToolSet } from 'ai';
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
+import { getPositionAtPly } from './game-positions.js';
 import * as progressService from './progress.js';
 import { createThreadsService } from './threads.js';
 import * as userProfileService from './user-profile.js';
@@ -62,6 +65,14 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
     annotate_board: tool({
       description: 'Draw arrows/highlights on the board. Cleared on the next show_position.',
       parameters: annotateBoardParameters
+    }),
+    check_position: tool({
+      description:
+        "Silently look up the FEN for any move in THIS game, addressed the same way as show_position ({ moveNumber, color }; the game start is { moveNumber: 0, color: null }). Does not move the student's board. Use this to get a verified fen before calling get_engine_analysis, or to check a claim about the position before you say it out loud — never guess or reconstruct a FEN from memory.",
+      parameters: checkPositionParameters,
+      execute: withTurnGuards(guardState, 'check_position', (args: { moveNumber: number; color: 'white' | 'black' | null }) =>
+        checkPosition(deps, ctx, args)
+      )
     }),
     get_engine_analysis: tool({
       description:
@@ -149,6 +160,22 @@ async function getEngineAnalysis(
   });
   const text = await deps.callLightModel(messages);
   return { text: `[engine check] ${text}` };
+}
+
+interface CheckPositionArgs {
+  moveNumber: number;
+  color: 'white' | 'black' | null;
+}
+
+async function checkPosition(
+  deps: CoachToolsDependencies,
+  ctx: CoachToolsContext,
+  args: CheckPositionArgs
+): Promise<{ fen: string; moveSan: string | null } | { error: string }> {
+  const ply = moveRefToPly(args.moveNumber, args.color);
+  const position = await getPositionAtPly(deps.db, ctx.gameId, ply);
+  if (!position) return { error: 'that move does not exist in this game' };
+  return { fen: position.fen, moveSan: position.moveSan };
 }
 
 function renderEngineLines(lines: EngineLine[]): string {

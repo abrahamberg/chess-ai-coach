@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   annotateBoardParameters,
+  checkPositionParameters,
   endSessionParameters,
   getEngineAnalysisParameters,
   getUserProfileParameters,
@@ -20,6 +21,12 @@ describe('coach agent tool parameter schemas (architecture §7.1)', () => {
 
   test('show_position: moveNumber 0 with color null means the game start (ply 0)', () => {
     expect(showPositionParameters.safeParse({ moveNumber: 0, color: null }).success).toBe(true);
+  });
+
+  test('check_position: same address shape as show_position, { moveNumber, color }', () => {
+    expect(checkPositionParameters.safeParse({ moveNumber: 2, color: 'white' }).success).toBe(true);
+    expect(checkPositionParameters.safeParse({ moveNumber: 0, color: null }).success).toBe(true);
+    expect(checkPositionParameters.safeParse({ moveNumber: 0, color: 'white' }).success).toBe(false);
   });
 
   test('annotate_board: { arrows, highlights }', () => {

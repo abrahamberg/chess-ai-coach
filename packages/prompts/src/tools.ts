@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { FindingSchema, FocusAreaUpdateSchema, ThreadSchema } from '@chess-coach/shared';
 
-/** architecture §7.1 — parameter schemas for the coach agent's 8 tools. Pure
+/** architecture §7.1 — parameter schemas for the coach agent's 9 tools. Pure
  * (no execute functions here); apps/api/src/services/coach-tools.ts binds
  * these to real services to build the AI SDK ToolSet. */
 
@@ -20,6 +20,11 @@ export const showPositionParameters = z
   .refine((value) => (value.moveNumber === 0 ? value.color === null : value.color !== null), {
     message: 'color must be null only when moveNumber is 0 (the game start)'
   });
+
+/** check_position takes the same {moveNumber, color} address as
+ * show_position — it just answers with the FEN instead of moving the
+ * student's board. */
+export const checkPositionParameters = showPositionParameters;
 
 export const annotateBoardParameters = z.object({
   arrows: z.array(z.object({ from: z.string(), to: z.string(), color: z.string() })),

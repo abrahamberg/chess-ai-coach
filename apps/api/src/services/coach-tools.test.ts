@@ -27,11 +27,11 @@ describe('buildCoachTools', () => {
     await testDb.cleanup();
   });
 
-  async function setupCtx() {
+  async function setupCtx(pgn = '1. e4 e5') {
     const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
     const game = await gamesRepo.insert(db, {
       userId: user.id,
-      pgn: '1. e4 e5',
+      pgn,
       source: 'paste',
       userColor: 'white',
       whiteName: null,
@@ -58,13 +58,14 @@ describe('buildCoachTools', () => {
     };
   }
 
-  test('exposes all 8 architecture §7.1 tools', async () => {
+  test('exposes all 9 architecture §7.1 tools', async () => {
     const ctx = await setupCtx();
     const tools = buildCoachTools(ctx, makeDeps());
 
     expect(Object.keys(tools).sort()).toEqual(
       [
         'annotate_board',
+        'check_position',
         'end_session',
         'get_engine_analysis',
         'get_user_profile',
@@ -133,6 +134,35 @@ describe('buildCoachTools', () => {
       expect(second).toEqual(first);
       expect(deps.analyzePosition).toHaveBeenCalledTimes(1);
       expect(deps.callLightModel).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('check_position', () => {
+    test('returns the authoritative fen and moveSan for a move in the game, without touching the client board', async () => {
+      const ctx = await setupCtx('1. e4 e5 2. Nf3 Nc6');
+      const tools = buildCoachTools(ctx, makeDeps());
+
+      const result = await tools.check_position?.execute?.(
+        { moveNumber: 2, color: 'white' },
+        { toolCallId: '1', messages: [] }
+      );
+
+      expect(result).toEqual({
+        fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2',
+        moveSan: 'Nf3'
+      });
+    });
+
+    test('a move beyond the game length returns an error, not a guessed position', async () => {
+      const ctx = await setupCtx('1. e4 e5');
+      const tools = buildCoachTools(ctx, makeDeps());
+
+      const result = await tools.check_position?.execute?.(
+        { moveNumber: 20, color: 'white' },
+        { toolCallId: '1', messages: [] }
+      );
+
+      expect(result).toEqual({ error: 'that move does not exist in this game' });
     });
   });
 

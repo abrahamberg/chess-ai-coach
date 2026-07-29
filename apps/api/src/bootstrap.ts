@@ -71,11 +71,16 @@ function buildLightModel(gatewayConfig: GatewayConfig) {
   return buildModel(provider, apiKey, gatewayConfig.modelIds.light[provider]);
 }
 
+/** Requests 3 principal variations (the engine's default is 2) so the coach
+ * can answer "what are the best moves here?" with real candidates instead of
+ * just judging the one move the student proposed. */
+const COACH_ENGINE_MULTI_PV = 3;
+
 async function analyzePositionViaEngine(engineUrl: string, fen: string): Promise<EngineEval> {
   const response = await fetch(`${engineUrl}/analyze-position`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ fen })
+    body: JSON.stringify({ fen, multiPv: COACH_ENGINE_MULTI_PV })
   });
   if (!response.ok) throw new Error(`engine analyze-position failed: HTTP ${response.status}`);
   const body = (await response.json()) as { eval: EngineEval };

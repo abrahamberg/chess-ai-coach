@@ -12,8 +12,9 @@ import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import { getModelForUser, recordUsage, type GatewayConfig, type ModelResolution, type Tier } from '../llm/gateway.js';
 import { buildCoachTools } from './coach-tools.js';
+import { getPositionAtPly } from './game-positions.js';
 import * as userProfileService from './user-profile.js';
-import { InsufficientCreditsError, NotFoundError } from '../lib/errors.js';
+import { ConflictError, InsufficientCreditsError, NotFoundError } from '../lib/errors.js';
 import { createKeyedLock } from '../lib/keyedLock.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { createCreditsService, type CreditsService } from './credits.js';
@@ -55,6 +56,32 @@ export async function createSession(
   const session = await sessionsRepo.insert(db, { gameId: game.id, userId });
   await sessionMessagesRepo.insert(db, session.id, 'user', SESSION_START_CONTENT);
   return session;
+}
+
+/** The Games page's "start session" action: if the student already has an
+ * ongoing session for this game, link back into it instead of starting a
+ * second one over the same game. */
+export async function resumeOrCreateSession(
+  db: Kysely<Database>,
+  userId: string,
+  gameId: string
+): Promise<SessionRow> {
+  const existing = await sessionsRepo.findActiveByGameIdForUser(db, gameId, userId);
+  if (existing) return existing;
+  return createSession(db, userId, gameId);
+}
+
+/** Student-initiated "start over": abandons the current session and opens a
+ * fresh one for the same game. */
+export async function resetSession(db: Kysely<Database>, userId: string, sessionId: string): Promise<SessionRow> {
+  const session = await sessionsRepo.findByIdForUser(db, sessionId, userId);
+  if (!session) throw new NotFoundError('Session not found');
+  if (session.status === 'completed' || session.status === 'abandoned') {
+    throw new ConflictError('Session has already ended');
+  }
+
+  await sessionsRepo.markAbandoned(db, session.id);
+  return createSession(db, userId, session.gameId);
 }
 
 export interface SessionDetail extends SessionRow {
@@ -217,13 +244,36 @@ async function applyClientToolResult(
   session: SessionRow,
   toolResult: NonNullable<StartTurnInput['clientToolResult']>
 ): Promise<void> {
+  let result = toolResult.result;
   if (toolResult.toolName === 'show_position') {
     const { ply } = toolResult.result as { ply: number };
     await sessionsRepo.updateCurrentPly(db, session.id, ply);
+    result = await withAuthoritativeFen(db, session.gameId, ply, toolResult.result);
   }
   await sessionMessagesRepo.insert(db, session.id, 'tool', [
-    { type: 'tool-result', toolCallId: toolResult.toolCallId, toolName: toolResult.toolName, result: toolResult.result }
+    { type: 'tool-result', toolCallId: toolResult.toolCallId, toolName: toolResult.toolName, result }
   ]);
+}
+
+/**
+ * The client reports {moveNumber, color, ply} for a show_position round-trip
+ * but never a FEN — so, left alone, this tool-result is the coach's only
+ * per-move checkpoint in the whole conversation and it carries no ground
+ * truth about the actual position. Stamping the server-computed FEN onto it
+ * here means the coach receives a verified FEN through the same in-band,
+ * cache-safe channel the thread ledger uses (architecture §7.5), for every
+ * position it ever shows — instead of silently reconstructing one from
+ * memory when it later needs one for get_engine_analysis.
+ */
+async function withAuthoritativeFen(
+  db: Kysely<Database>,
+  gameId: string,
+  ply: number,
+  result: unknown
+): Promise<unknown> {
+  const position = await getPositionAtPly(db, gameId, ply);
+  if (!position) return result;
+  return { ...(result as object), fen: position.fen };
 }
 
 async function buildSystemPromptForSession(

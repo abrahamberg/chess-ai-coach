@@ -85,6 +85,19 @@ describe('buildCoachSystemPrompt', () => {
     expect(staticPart).not.toContain('ply 2N');
   });
 
+  test('staticPart requires the coach to state the best move and why before leaving a moment, and to ask before advancing to the next one', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain("make sure you've actually told them the best move and why");
+    expect(staticPart).toContain('ask if they\'re ready to move on');
+    expect(staticPart).toContain('never show_position to the next moment unprompted');
+  });
+
+  test('staticPart tells the coach show_position\'s result carries the real fen and never to invent one itself', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('check_position');
+    expect(staticPart).toContain('NEVER invent or reconstruct a FEN from memory');
+  });
+
   test('staticPart teaches the coach to read a student-drawn [e2-e4] arrow token as their proposed move, without ever quoting the bracket syntax to the student', () => {
     const { staticPart } = buildCoachSystemPrompt(baseInput());
     expect(staticPart).toContain('[e2-e4]');

@@ -104,7 +104,7 @@ describe('buildCoachAgentDependencies', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       'http://engine:4001/analyze-position',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ fen: 'some-fen' }) })
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ fen: 'some-fen', multiPv: 3 }) })
     );
     expect(result).toEqual({ ply: 0, fen: 'f', depth: 16, lines: [] });
   });

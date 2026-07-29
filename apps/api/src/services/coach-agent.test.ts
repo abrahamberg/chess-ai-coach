@@ -203,4 +203,45 @@ describe('coach-agent startTurn concurrency', () => {
     expect(toolCallIndex).toBeGreaterThanOrEqual(0);
     expect(toolResultIndex).toBeGreaterThan(toolCallIndex);
   }, 15000);
+
+  test('a show_position client tool-result is persisted with a server-verified fen, not just the client-reported ply — the coach\'s only ground truth for what it just showed', async () => {
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+    await creditsRepo.insertSignupGrant(db, user.id);
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '1-0',
+      timeControl: '10+0',
+      eco: null,
+      playedAt: null
+    });
+    const analysis = await analysesRepo.insertQueued(db, game.id);
+    await analysesRepo.markReady(db, analysis.id, PLAN);
+    const session = await coachAgent.createSession(db, user.id, game.id);
+
+    const turn = await coachAgent.startTurn(deps(instantTextModel('Got it.')), session, {
+      clientToolResult: {
+        toolCallId: 'call-fen-1',
+        toolName: 'show_position',
+        result: { moveNumber: 2, color: 'black', ply: 4 }
+      }
+    });
+    await drain(turn);
+
+    const messages = await sessionMessagesRepo.listBySession(db, session.id);
+    const toolResultMessage = messages.find(
+      (m) => m.role === 'tool' && JSON.stringify(m.content).includes('call-fen-1')
+    );
+    const content = toolResultMessage?.content as Array<{ result: unknown }>;
+    expect(content[0]?.result).toEqual({
+      moveNumber: 2,
+      color: 'black',
+      ply: 4,
+      fen: 'r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3'
+    });
+  }, 15000);
 });
