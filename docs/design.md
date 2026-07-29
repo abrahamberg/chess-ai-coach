@@ -48,6 +48,13 @@
 | `--board-dark` | `#8ba173` | `#6e8258` | dark squares |
 | `--annotate-1` | `#c9762a` | same | coach arrows/highlights (warm orange, distinct from both square colors) |
 | `--annotate-2` | `#4a7fb5` | same | secondary annotation color |
+| `--quality-brilliant` | `#2f7dc4` | same | move-quality badge/text |
+| `--quality-best` | `#5b9c6a` | same | move-quality badge/text |
+| `--quality-interesting` | `#2f9e8f` | same | move-quality badge/text |
+| `--quality-dubious` | `#c9a227` | same | move-quality badge/text |
+| `--quality-mistake` | `#d9622b` | same | move-quality badge/text |
+| `--quality-miss` | `#a8477a` | same | move-quality badge/text |
+| `--quality-blunder` | `#c0392b` | same | move-quality badge/text |
 
 Theme follows `prefers-color-scheme` with a manual toggle in Settings. All
 text/background pairs must meet WCAG AA (4.5:1); `--text-muted` on `--surface`
@@ -61,7 +68,8 @@ included.
   SAN inside chat text renders in a subtle `--surface-2` chip
   (`<code class="san">Nf3</code>`) so moves are scannable inside prose.
 - Scale: 24/20/16/14 px (page title / section / body / meta). Nothing smaller
-  than 14 px anywhere.
+  than 14 px anywhere. Exception: move-quality badge glyphs (§5.5) are icons,
+  not body text, and are exempt from this minimum.
 
 ### 2.3 Spacing, shape, elevation
 
@@ -285,7 +293,8 @@ neither ever shows raw numbers: the Explore panel speaks in words only
 | `AppShell` | `{nav, children}` | rail/tab bar switch at 768/1080 px |
 | `CoachBoard` | `{fen, orientation, arrows, highlights, mode:'answer'\|'peek', onUserMove}` | presentational; react-chessboard |
 | `MiniBoard` | `{fen, size}` | thumbnails (chat cards, collapsed board) |
-| `MoveStrip` | `{sanMoves, currentPly, momentPlies, onSelect}` | |
+| `MoveStrip` | `{sanMoves, classifiedMoves, currentPly, momentPlies, onSelect}` | |
+| `MoveQualityBadge` | `{quality, size}` | colored circle + glyph; shared by MoveExplorer/MoveStrip |
 | `ChatPane` | `{messages, streaming, onSend}` | virtualized ≥100 messages |
 | `MoveCard` / `PositionDivider` | `{san, fen}` / `{ply, san}` | chat message variants |
 | `ToolActivity` | `{label}` | italic spinner line |

@@ -16,7 +16,11 @@ export interface MoveStripProps {
  * 2026-07-29-move-quality-badges) — note ClassifiedMoveDto.ply is 1-based
  * while this component's own `ply` (the sanMoves array index, used for
  * onSelect/aria-current/moment — pre-existing convention) is 0-based, so the
- * quality lookup is offset by one. */
+ * quality lookup is offset by one. `isMoment` (from `momentPlies`), right
+ * next to that same quality lookup, is NOT offset — it's checked against the
+ * raw 0-based local `ply` — so a future caller wiring up `momentPlies` with
+ * real 1-based ply data will find the moment dot one chip off from the
+ * badge it should line up with. */
 export function MoveStrip({ sanMoves, classifiedMoves, currentPly, momentPlies, onSelect }: MoveStripProps): ReactNode {
   const momentSet = new Set(momentPlies);
   const qualityByPly = new Map(classifiedMoves.map((move) => [move.ply, move.quality]));

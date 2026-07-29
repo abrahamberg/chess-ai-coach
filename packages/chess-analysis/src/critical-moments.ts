@@ -60,7 +60,7 @@ function userMistakeMoments(moves: ClassifiedMove[]): CandidateMoment[] {
     .map((move): CandidateMoment => ({ ply: move.ply, kind: 'user_mistake', cpLoss: move.cpLoss }));
 }
 
-/** Rule (b): user's sound moves (not dubious/mistake/blunder) where a
+/** Rule (b): user's sound moves (not dubious/mistake/blunder/miss) where a
  * >=300cp better line existed per multiPv but wasn't played. */
 function missedChanceMoments(moves: ClassifiedMove[], evals: EngineEval[]): CandidateMoment[] {
   const moments: CandidateMoment[] = [];

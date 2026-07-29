@@ -121,7 +121,8 @@ function mateToCp(mateIn: number): number {
 /**
  * Bucket a non-negative centipawn loss (plus the sacrifice signal and the
  * mover-perspective eval of the position BEFORE the move) into a move
- * quality per the fixed thresholds.
+ * quality per the fixed thresholds. `cpLoss === 0` is `best`; 1–19 is `good`;
+ * a sacrifice anywhere in the 0–19 range outranks both as `brilliant`.
  *
  * `bestCpBeforeMoverPerspective` powers the `miss` tier: a move that would
  * otherwise be a `mistake`/`blunder` (cpLoss >= MISTAKE_THRESHOLD_CP)
