@@ -42,6 +42,13 @@ describe('findCandidateMoments', () => {
     ]);
   });
 
+  test('flags a user miss the same as mistake/blunder', () => {
+    const moves = [move({ ply: 1, isUserMove: true, quality: 'miss', cpLoss: 200 })];
+    const evals = [evalWithLines([line('e4', 0)])];
+
+    expect(findCandidateMoments(moves, evals)).toEqual([{ ply: 1, kind: 'user_mistake', cpLoss: 200 }]);
+  });
+
   test('does not flag an opponent mistake/blunder as user_mistake', () => {
     const moves = [move({ ply: 1, isUserMove: false, quality: 'blunder', cpLoss: 500 })];
     const evals = [evalWithLines([line('e4', 0)])];

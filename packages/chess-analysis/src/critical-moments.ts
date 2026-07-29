@@ -50,10 +50,13 @@ function addIfHigherPriority(byPly: Map<number, CandidateMoment>, moment: Candid
   byPly.set(moment.ply, moment);
 }
 
-/** Rule (a): every mistake/blunder the user played. */
+/** Rule (a): every mistake/blunder/miss the user played. */
 function userMistakeMoments(moves: ClassifiedMove[]): CandidateMoment[] {
   return moves
-    .filter((move) => move.isUserMove && (move.quality === 'mistake' || move.quality === 'blunder'))
+    .filter(
+      (move) =>
+        move.isUserMove && (move.quality === 'mistake' || move.quality === 'blunder' || move.quality === 'miss')
+    )
     .map((move): CandidateMoment => ({ ply: move.ply, kind: 'user_mistake', cpLoss: move.cpLoss }));
 }
 
