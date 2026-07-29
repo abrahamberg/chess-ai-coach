@@ -94,25 +94,21 @@
 }
 
 /* Quality color coding, brilliant (blue) through blunder (red) — Daniel's
- * requested gradient. Doesn't override the current-move highlight above.
- * Selectors are prefixed with `.move-explorer__list button` to out-specificity
- * that base rule's `color: var(--text)` above (a bare `.move-quality-*` class
- * selector loses to a class+element selector regardless of source order, so
- * the color never actually showed until this was added). */
-.move-explorer__list button.move-quality-brilliant {
+ * requested gradient. Doesn't override the current-move highlight above. */
+.move-quality-brilliant {
   color: var(--quality-brilliant);
   font-weight: 600;
 }
-.move-explorer__list button.move-quality-interesting {
+.move-quality-interesting {
   color: var(--quality-interesting);
 }
-.move-explorer__list button.move-quality-dubious {
+.move-quality-dubious {
   color: var(--quality-dubious);
 }
-.move-explorer__list button.move-quality-mistake {
+.move-quality-mistake {
   color: var(--quality-mistake);
 }
-.move-explorer__list button.move-quality-blunder {
+.move-quality-blunder {
   color: var(--quality-blunder);
   font-weight: 600;
 }
