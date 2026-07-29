@@ -33,14 +33,14 @@ function evalAt(fen: string, cp: number | null, mateIn: number | null = null): E
 }
 
 describe('classifyMoves', () => {
-  test('cpLoss 0 (played the engine-best move) classifies as good', () => {
+  test('cpLoss 0 (played the engine-best move) classifies as best', () => {
     const game = twoPlyGame();
     const evals = [evalAt(START_FEN, 30), evalAt(AFTER_E4_FEN, 30), evalAt(AFTER_E4_E5_FEN, 30)];
 
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
     expect(whiteMove?.cpLoss).toBe(0);
-    expect(whiteMove?.quality).toBe('good');
+    expect(whiteMove?.quality).toBe('best');
   });
 
   test('cpLoss 75 classifies as dubious', () => {
@@ -88,7 +88,7 @@ describe('classifyMoves', () => {
     expect(whiteMove?.quality).toBe('brilliant');
   });
 
-  test('the same non-capture move onto an undefended square stays good, not brilliant', () => {
+  test('the same non-capture move onto an undefended square stays best, not brilliant', () => {
     const beforeFen = '4k3/8/8/8/2B5/8/8/4K3 w - - 0 1';
     const afterFen = '4k3/8/4B3/8/8/8/8/4K3 b - - 1 1';
     const game: ParsedGame = {
@@ -102,7 +102,7 @@ describe('classifyMoves', () => {
 
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
-    expect(whiteMove?.quality).toBe('good');
+    expect(whiteMove?.quality).toBe('best');
   });
 
   test('a capture is never classified as brilliant, even onto a defended square with low cpLoss', () => {
@@ -123,7 +123,7 @@ describe('classifyMoves', () => {
 
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
-    expect(whiteMove?.quality).toBe('good');
+    expect(whiteMove?.quality).toBe('best');
   });
 
   test('cpLoss 150 classifies as mistake', () => {
@@ -200,7 +200,7 @@ describe('classifyMoves', () => {
     const blackMove = classifyMoves(game, evals, 'black').find((move) => move.ply === 2);
 
     expect(blackMove?.cpLoss).toBe(0);
-    expect(blackMove?.quality).toBe('good');
+    expect(blackMove?.quality).toBe('best');
   });
 
   test('black-to-move perspective flip: naive unflipped subtraction would give the wrong sign', () => {
@@ -225,7 +225,17 @@ describe('classifyMoves', () => {
     const blackMove = classifyMoves(game, evals, 'black').find((move) => move.ply === 2);
 
     expect(blackMove?.cpLoss).toBe(0);
-    expect(blackMove?.quality).toBe('good');
+    expect(blackMove?.quality).toBe('best');
+  });
+
+  test('cpLoss 5 (near best but not exact) stays good, not best', () => {
+    const game = twoPlyGame();
+    const evals = [evalAt(START_FEN, 100), evalAt(AFTER_E4_FEN, 95), evalAt(AFTER_E4_E5_FEN, 95)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.cpLoss).toBe(5);
+    expect(whiteMove?.quality).toBe('good');
   });
 
   test('isUserMove is true only for moves made by the given userColor', () => {
@@ -305,7 +315,7 @@ describe('classifyMoves', () => {
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
     expect(whiteMove?.cpLoss).toBe(0);
-    expect(whiteMove?.quality).toBe('good');
+    expect(whiteMove?.quality).toBe('best');
   });
 
   test('returns an empty array for a zero-move game', () => {

@@ -124,7 +124,8 @@ export function qualityFor(cpLoss: number, isSacrifice = false): MoveQuality {
   if (cpLoss >= MISTAKE_THRESHOLD_CP) return 'mistake';
   if (cpLoss >= DUBIOUS_THRESHOLD_CP) return 'dubious';
   if (cpLoss >= INTERESTING_THRESHOLD_CP) return 'interesting';
-  return isSacrifice ? 'brilliant' : 'good';
+  if (isSacrifice) return 'brilliant';
+  return cpLoss === 0 ? 'best' : 'good';
 }
 
 /** True for any tier that isn't an error (dubious/mistake/blunder) — the
