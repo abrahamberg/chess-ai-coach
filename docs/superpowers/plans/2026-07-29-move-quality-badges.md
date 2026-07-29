@@ -1005,15 +1005,25 @@ export function MoveStrip({ sanMoves, classifiedMoves, currentPly, momentPlies, 
 
 - [ ] **Step 5: Implement — update MoveStrip.css**
 
-Append to the end of `apps/web/src/features/board/MoveStrip.css`:
+First, merge two new properties into the file's *existing* `.move-strip button { ... }` rule (do not add a second, duplicate `.move-strip button` selector — find the current rule and add `display: inline-flex; align-items: center; gap: 2px;` to it):
 
 ```css
 .move-strip button {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-height: 32px;
+  font-size: 14px;
 }
+```
 
+Then append this new block to the end of the file:
+
+```css
 /* Quality color coding, mirrors MoveExplorer.css's approach (design spec
  * 2026-07-29-move-quality-badges) and the same specificity lesson: prefixed
  * with `.move-strip button` so these beat the base button rule, and the
@@ -1038,8 +1048,6 @@ Append to the end of `apps/web/src/features/board/MoveStrip.css`:
   color: var(--accent-contrast);
 }
 ```
-
-Note: this file already has a `.move-strip button { ... }` rule earlier (background/border/padding/etc.) — the new `display: inline-flex` block above is a **second, separate** `.move-strip button` rule appended at the end; CSS allows this (properties merge, `display`/`align-items`/`gap` are new properties not set by the earlier rule, so there's no override conflict either way).
 
 - [ ] **Step 6: Wire `classifiedMoves` through SessionPage**
 
