@@ -1,0 +1,33 @@
+.move-quality-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 700;
+  /* Fixed dark glyph color regardless of theme — contrast here is against
+   * the badge's own colored circle, not the page background, so it doesn't
+   * need a theme-aware token (same reasoning as --annotate-1/--annotate-2
+   * in tokens.css). */
+  color: #15140f;
+  flex-shrink: 0;
+}
+
+.move-quality-badge--md {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+
+.move-quality-badge--sm {
+  width: 12px;
+  height: 12px;
+  font-size: 7px;
+}
+
+.move-quality-badge--brilliant { background: var(--quality-brilliant); }
+.move-quality-badge--best { background: var(--quality-best); }
+.move-quality-badge--interesting { background: var(--quality-interesting); }
+.move-quality-badge--dubious { background: var(--quality-dubious); }
+.move-quality-badge--mistake { background: var(--quality-mistake); }
+.move-quality-badge--miss { background: var(--quality-miss); }
+.move-quality-badge--blunder { background: var(--quality-blunder); }
