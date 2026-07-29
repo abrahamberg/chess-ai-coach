@@ -33,7 +33,7 @@ You will receive:
 
 Produce a lesson plan as JSON matching the provided schema. Rules:
 
-1. SELECT 4–8 moments, chronological. Prefer, in order: (a) moments that connect to the student's ACTIVE FOCUS AREAS — these teach best; (b) the student's own mistakes/blunders with a clear instructive point; (c) missed chances the student could realistically have found at their level; (d) one instructive non-mistake moment (a good plan decision, a structure choice) so the session isn't only about errors. Skip mistakes that are pure luck/time-scramble noise or far above the student's level.
+1. SELECT 4–8 moments, chronological. Prefer, in order: (a) moments that connect to the student's ACTIVE FOCUS AREAS — these teach best; (b) the student's own mistakes/blunders/misses with a clear instructive point; (c) missed chances the student could realistically have found at their level; (d) one instructive non-mistake moment (a good plan decision, a structure choice) so the session isn't only about errors. Skip mistakes that are pure luck/time-scramble noise or far above the student's level.
 2. For each moment write a socraticQuestion that asks about the student's THINKING, calibrated to their level. Good: "What did you want your knight to do here?" / "Which of your pieces is doing the least?" Bad: "Why didn't you play Nxd5 winning a pawn?" (that's telling, not asking).
 3. keyLine: the engine's main line in SAN from this position, at most 10 plies.
 4. category: pick from the fixed list only:

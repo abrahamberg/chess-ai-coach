@@ -25,16 +25,18 @@ export const EngineEvalSchema = z.object({
 });
 export type EngineEval = z.infer<typeof EngineEvalSchema>;
 
-export const MOVE_QUALITIES = ['brilliant', 'good', 'interesting', 'dubious', 'mistake', 'blunder'] as const;
+export const MOVE_QUALITIES = ['brilliant', 'best', 'good', 'interesting', 'dubious', 'mistake', 'miss', 'blunder'] as const;
 export type MoveQuality = (typeof MOVE_QUALITIES)[number];
 
 /** Chess.com/lichess-style NAG symbols for each quality tier. */
 export const MOVE_QUALITY_SYMBOLS: Record<MoveQuality, string> = {
   brilliant: '!!',
+  best: '★',
   good: '!',
   interesting: '!?',
   dubious: '?!',
   mistake: '?',
+  miss: '✕',
   blunder: '??'
 };
 

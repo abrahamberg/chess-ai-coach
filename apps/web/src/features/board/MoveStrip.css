@@ -15,6 +15,9 @@
 }
 
 .move-strip button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   background: none;
   border: none;
   border-radius: 6px;
@@ -43,4 +46,28 @@
   height: 4px;
   border-radius: 50%;
   background: var(--annotate-1);
+}
+
+/* Quality color coding, mirrors MoveExplorer.css's approach (design spec
+ * 2026-07-29-move-quality-badges) and the same specificity lesson: prefixed
+ * with `.move-strip button` so these beat the base button rule, and the
+ * [aria-current='true'] combo block below is needed to win the specificity
+ * tie against these plain rules (same selector weight, so source order
+ * alone isn't reliable). */
+.move-strip button.move-quality-brilliant { color: var(--quality-brilliant); font-weight: 600; }
+.move-strip button.move-quality-best { color: var(--quality-best); font-weight: 600; }
+.move-strip button.move-quality-interesting { color: var(--quality-interesting); }
+.move-strip button.move-quality-dubious { color: var(--quality-dubious); }
+.move-strip button.move-quality-mistake { color: var(--quality-mistake); }
+.move-strip button.move-quality-miss { color: var(--quality-miss); }
+.move-strip button.move-quality-blunder { color: var(--quality-blunder); font-weight: 600; }
+
+.move-strip button[aria-current='true'].move-quality-brilliant,
+.move-strip button[aria-current='true'].move-quality-best,
+.move-strip button[aria-current='true'].move-quality-interesting,
+.move-strip button[aria-current='true'].move-quality-dubious,
+.move-strip button[aria-current='true'].move-quality-mistake,
+.move-strip button[aria-current='true'].move-quality-miss,
+.move-strip button[aria-current='true'].move-quality-blunder {
+  color: var(--accent-contrast);
 }

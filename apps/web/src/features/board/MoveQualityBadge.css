@@ -1,0 +1,39 @@
+.move-quality-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 700;
+  /* Fixed dark glyph color regardless of theme — contrast here is against
+   * the badge's own colored circle, not the page background, so it doesn't
+   * need a theme-aware token (same reasoning as --annotate-1/--annotate-2
+   * in tokens.css). */
+  color: #15140f;
+  flex-shrink: 0;
+}
+
+.move-quality-badge--md {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+
+.move-quality-badge--sm {
+  width: 12px;
+  height: 12px;
+  font-size: 7px;
+}
+
+/* Per-tier glyph color: WCAG AA (4.5:1) is checked against each tier's own
+ * background (see design.md §2.1). The shared base rule's #15140f passes for
+ * best/interesting/dubious/mistake; brilliant/miss/blunder override to #fff,
+ * which measures higher contrast on those three backgrounds. brilliant is a
+ * known residual: neither #15140f (~4.26:1) nor #fff (~4.33:1) reaches 4.5:1
+ * against #2f7dc4 — #fff is used as the closer of the two. */
+.move-quality-badge--brilliant { background: var(--quality-brilliant); color: #fff; }
+.move-quality-badge--best { background: var(--quality-best); }
+.move-quality-badge--interesting { background: var(--quality-interesting); }
+.move-quality-badge--dubious { background: var(--quality-dubious); }
+.move-quality-badge--mistake { background: var(--quality-mistake); }
+.move-quality-badge--miss { background: var(--quality-miss); color: #fff; }
+.move-quality-badge--blunder { background: var(--quality-blunder); color: #fff; }

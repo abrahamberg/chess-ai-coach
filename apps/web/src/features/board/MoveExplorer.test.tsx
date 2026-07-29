@@ -54,7 +54,7 @@ describe('MoveExplorer', () => {
     ];
     render(<MoveExplorer sanMoves={SAN_MOVES} classifiedMoves={classifiedMoves} currentPly={0} onSelect={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'Qh5?!' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '?!Qh5' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'e4' })).toBeInTheDocument();
   });
 
@@ -65,8 +65,8 @@ describe('MoveExplorer', () => {
     ];
     render(<MoveExplorer sanMoves={SAN_MOVES} classifiedMoves={classifiedMoves} currentPly={0} onSelect={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'Qxf7#??' })).toHaveClass('move-quality-blunder');
-    expect(screen.getByRole('button', { name: 'Qh5!!' })).toHaveClass('move-quality-brilliant');
+    expect(screen.getByRole('button', { name: '??Qxf7#' })).toHaveClass('move-quality-blunder');
+    expect(screen.getByRole('button', { name: '!!Qh5' })).toHaveClass('move-quality-brilliant');
   });
 
   test('nav pills step to first/prev/next/last move', async () => {
@@ -97,5 +97,29 @@ describe('MoveExplorer', () => {
     await user.click(screen.getByRole('button', { name: /show notes/i }));
 
     expect(screen.getByText(/better was nf3/i)).toBeInTheDocument();
+  });
+
+  test('renders a star badge for a best move', () => {
+    const classifiedMoves = [classifiedMove({ ply: 1, moveSan: 'e4', quality: 'best' })];
+    render(<MoveExplorer sanMoves={SAN_MOVES} classifiedMoves={classifiedMoves} currentPly={0} onSelect={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: '★e4' })).toHaveClass('move-quality-best');
+  });
+
+  test('renders an X badge for a miss', () => {
+    const classifiedMoves = [classifiedMove({ ply: 3, moveSan: 'Qh5', quality: 'miss' })];
+    render(<MoveExplorer sanMoves={SAN_MOVES} classifiedMoves={classifiedMoves} currentPly={0} onSelect={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: '✕Qh5' })).toHaveClass('move-quality-miss');
+  });
+
+  test('the "show notes" panel does not show a "better was" note for a best move (nothing to improve on)', async () => {
+    const user = userEvent.setup();
+    const classifiedMoves = [classifiedMove({ ply: 1, moveSan: 'e4', quality: 'best', bestLineSan: ['e4'] })];
+    render(<MoveExplorer sanMoves={SAN_MOVES} classifiedMoves={classifiedMoves} currentPly={1} onSelect={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /show notes/i }));
+
+    expect(screen.queryByText(/better was/i)).not.toBeInTheDocument();
   });
 });

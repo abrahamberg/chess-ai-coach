@@ -8,9 +8,12 @@
 ## 1. Design principles
 
 1. **A quiet study room, not a dashboard.** The user is here to think. Minimal
-   chrome, generous whitespace, no badges/gamification noise, nothing blinking
-   for attention. The two protagonists on screen are the **board** and the
-   **conversation** — everything else recedes.
+   chrome, generous whitespace, no gamification noise (streaks, achievement
+   badges, notification dots), nothing blinking for attention. Move-quality
+   badges (§5.5) are a narrow, deliberate exception — they're analysis of
+   the move itself, not app-level gamification. The two protagonists on
+   screen are the **board** and the **conversation** — everything else
+   recedes.
 2. **Conversation-first.** This is a coaching session, not an analysis viewer.
    The chat is never squeezed into a sidebar afterthought; on every screen size
    the current coach message is readable without scrolling gymnastics.
@@ -20,7 +23,9 @@
    but never disorienting (no teleporting mid-read).
 4. **Engine invisible.** No eval bars, no centipawn numbers, no engine lines in
    the primary UI. The one exception: the opt-in Explore panel (§5.6), clearly
-   labeled as exploration.
+   labeled as exploration. Move-quality badges (§5.5) are a deliberate,
+   narrower exception too — they show a qualitative tier (a colored icon:
+   best/miss/blunder/etc.), never a raw number.
 5. **Mobile is a first-class citizen.** Every flow works one-handed on a 360 px
    phone. Desktop is not "mobile stretched": it uses the space for side-by-side
    composition.
@@ -43,6 +48,13 @@
 | `--board-dark` | `#8ba173` | `#6e8258` | dark squares |
 | `--annotate-1` | `#c9762a` | same | coach arrows/highlights (warm orange, distinct from both square colors) |
 | `--annotate-2` | `#4a7fb5` | same | secondary annotation color |
+| `--quality-brilliant` | `#2f7dc4` | same | move-quality badge/text |
+| `--quality-best` | `#5b9c6a` | same | move-quality badge/text |
+| `--quality-interesting` | `#2f9e8f` | same | move-quality badge/text |
+| `--quality-dubious` | `#c9a227` | same | move-quality badge/text |
+| `--quality-mistake` | `#d9622b` | same | move-quality badge/text |
+| `--quality-miss` | `#a8477a` | same | move-quality badge/text |
+| `--quality-blunder` | `#c0392b` | same | move-quality badge/text |
 
 Theme follows `prefers-color-scheme` with a manual toggle in Settings. All
 text/background pairs must meet WCAG AA (4.5:1); `--text-muted` on `--surface`
@@ -56,7 +68,8 @@ included.
   SAN inside chat text renders in a subtle `--surface-2` chip
   (`<code class="san">Nf3</code>`) so moves are scannable inside prose.
 - Scale: 24/20/16/14 px (page title / section / body / meta). Nothing smaller
-  than 14 px anywhere.
+  than 14 px anywhere. Exception: move-quality badge glyphs (§5.5) are icons,
+  not body text, and are exempt from this minimum.
 
 ### 2.3 Spacing, shape, elevation
 
@@ -241,21 +254,27 @@ and see the position; chat-overlay-on-board hides the position mid-thought.
   draw with a 150 ms sweep; cleared on next `show_position`.
 - Auto-flip: board oriented to the user's color, always.
 
-### 5.5 Move strip
+### 5.5 Move strip / move explorer
 
-Horizontal chip list `1. e4 e5 2. ♘f3 …`; current ply filled `--accent`; moves
-at coaching-plan moments get a small dot under them (no color-coded
-good/bad markers — the coach reveals judgments in conversation, the UI doesn't
-spoil). Keyboard ←/→ on desktop; swipe left/right on the board on mobile.
+Horizontal chip list on mobile (`1. e4 e5 2. ♘f3 …`) / paired move list on
+desktop; current ply filled `--accent`; moves at coaching-plan moments get a
+small dot under them. Every move also carries a quality badge — a small
+colored circle + glyph (★ best, !! brilliant, !? interesting, ?! dubious,
+? mistake, ✕ miss, ?? blunder; plain "good" moves get no badge) — computed
+from the game's engine analysis, matching between mobile and desktop (see
+`docs/superpowers/specs/2026-07-29-move-quality-badges-design.md`). Keyboard
+←/→ on desktop; swipe left/right on the board on mobile.
 
 ### 5.6 Explore panel (WASM engine)
 
 Collapsed by default under the board (desktop) / behind the ⋯ menu (mobile):
 "Explore on your own". Expands to: eval in words + best-move arrow from the
 in-browser engine, clearly captioned "your private exploration — the coach
-isn't watching". Opening it enters peek mode. This is the only place any
-engine output is visible, and it never shows numbers either — words only
-("White is clearly better").
+isn't watching". Opening it enters peek mode. Together with the move-quality
+badges (§5.5), this is the only other place engine output surfaces — and
+neither ever shows raw numbers: the Explore panel speaks in words only
+("White is clearly better"), and the badges show a qualitative tier
+(colored icon), never a centipawn value.
 
 ### 5.7 Session states
 
@@ -274,7 +293,8 @@ engine output is visible, and it never shows numbers either — words only
 | `AppShell` | `{nav, children}` | rail/tab bar switch at 768/1080 px |
 | `CoachBoard` | `{fen, orientation, arrows, highlights, mode:'answer'\|'peek', onUserMove}` | presentational; react-chessboard |
 | `MiniBoard` | `{fen, size}` | thumbnails (chat cards, collapsed board) |
-| `MoveStrip` | `{sanMoves, currentPly, momentPlies, onSelect}` | |
+| `MoveStrip` | `{sanMoves, classifiedMoves, currentPly, momentPlies, onSelect}` | |
+| `MoveQualityBadge` | `{quality, size}` | colored circle + glyph; shared by MoveExplorer/MoveStrip |
 | `ChatPane` | `{messages, streaming, onSend}` | virtualized ≥100 messages |
 | `MoveCard` / `PositionDivider` | `{san, fen}` / `{ply, san}` | chat message variants |
 | `ToolActivity` | `{label}` | italic spinner line |

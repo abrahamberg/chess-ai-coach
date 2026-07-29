@@ -376,7 +376,7 @@ describe('SessionPage', () => {
     );
     renderSessionPage();
 
-    expect(await screen.findByRole('button', { name: 'Nf3?!' })).toHaveClass('move-quality-dubious');
+    expect(await screen.findByRole('button', { name: '?!Nf3' })).toHaveClass('move-quality-dubious');
     expect(document.querySelector('.move-strip')).not.toBeInTheDocument();
   });
 
