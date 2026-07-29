@@ -30,7 +30,7 @@ export function registerSessionsRoutes(
       throw new ConflictError('Analysis is not ready yet');
     }
 
-    return coachAgent.createSession(db, user.id, game.id);
+    return coachAgent.resumeOrCreateSession(db, user.id, game.id);
   });
 
   app.get<{ Params: { id: string } }>('/api/sessions/:id', async (request) => {
@@ -38,6 +38,11 @@ export function registerSessionsRoutes(
     const detail = await coachAgent.getSessionDetail(db, request.params.id, user.id);
     if (!detail) throw new NotFoundError('Session not found');
     return detail;
+  });
+
+  app.post<{ Params: { id: string } }>('/api/sessions/:id/reset', async (request) => {
+    const user = await userProfileService.getOrCreate(db, request.user);
+    return coachAgent.resetSession(db, user.id, request.params.id);
   });
 
   app.post<{ Params: { id: string } }>('/api/sessions/:id/messages', async (request, reply) => {

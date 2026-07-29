@@ -7,6 +7,7 @@ import * as analysesRepo from '../db/repositories/analyses.js';
 import * as creditsRepo from '../db/repositories/credits.js';
 import * as gamesRepo from '../db/repositories/games.js';
 import * as sessionMessagesRepo from '../db/repositories/session-messages.js';
+import * as sessionsRepo from '../db/repositories/sessions.js';
 import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import { createKeyVault } from '../llm/key-vault.js';
@@ -180,6 +181,88 @@ describe('sessions routes', () => {
     const messages = await sessionMessagesRepo.listBySession(db, body.id);
     expect(messages).toHaveLength(1);
     expect(messages[0]?.content).toBe('[session_start]');
+  });
+
+  test('POST /api/sessions returns the same session on a second call instead of creating another one', async () => {
+    const { user, game } = await setupReadyGame('resume@example.com');
+    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: headersFor(user),
+      payload: { gameId: game.id }
+    });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: headersFor(user),
+      payload: { gameId: game.id }
+    });
+
+    expect(second.statusCode).toBe(200);
+    expect(second.json().id).toBe(first.json().id);
+  });
+
+  test('POST /api/sessions/:id/reset abandons the current session and starts a new one for the same game', async () => {
+    const { user, game } = await setupReadyGame('reset@example.com');
+    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: headersFor(user),
+      payload: { gameId: game.id }
+    });
+    const originalId = created.json().id;
+
+    const resetResponse = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${originalId}/reset`,
+      headers: headersFor(user)
+    });
+
+    expect(resetResponse.statusCode).toBe(200);
+    const freshId = resetResponse.json().id;
+    expect(freshId).not.toBe(originalId);
+    expect(resetResponse.json().status).toBe('active');
+
+    const original = await app.inject({
+      method: 'GET',
+      url: `/api/sessions/${originalId}`,
+      headers: headersFor(user)
+    });
+    expect(original.json().status).toBe('abandoned');
+
+    // POST /api/sessions now resumes the fresh session, not the abandoned one.
+    const resumed = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: headersFor(user),
+      payload: { gameId: game.id }
+    });
+    expect(resumed.json().id).toBe(freshId);
+  });
+
+  test('POST /api/sessions/:id/reset 409s on an already-completed session', async () => {
+    const { user, game } = await setupReadyGame('reset-completed@example.com');
+    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: headersFor(user),
+      payload: { gameId: game.id }
+    });
+    const sessionId = created.json().id;
+    await sessionsRepo.markCompleted(db, sessionId);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${sessionId}/reset`,
+      headers: headersFor(user)
+    });
+
+    expect(response.statusCode).toBe(409);
   });
 
   test('GET /api/sessions/:id returns messages and currentPly', async () => {

@@ -1,10 +1,10 @@
 import { moveRefToPly, parsePgn } from '@chess-coach/chess-analysis';
 import { ClassifiedMoveSchema } from '@chess-coach/shared';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { z } from 'zod';
-import { apiGet } from '../../api/client.js';
+import { apiGet, apiPost } from '../../api/client.js';
 import { useCoachChat, type CoachMessage } from '../../hooks/useCoachChat.js';
 import { useIsBoardSideBySide } from '../../hooks/useIsBoardSideBySide.js';
 import { useIsDesktop } from '../../hooks/useIsDesktop.js';
@@ -34,11 +34,13 @@ const SessionMessageSchema = z.object({
 const SessionDetailSchema = z.object({
   id: z.string(),
   gameId: z.string(),
-  status: z.enum(['active', 'completed', 'paused_no_credits']),
+  status: z.enum(['active', 'completed', 'paused_no_credits', 'abandoned']),
   summary: z.string().nullable(),
   homework: z.string().nullable(),
   messages: z.array(SessionMessageSchema)
 });
+
+const ResetSessionResponseSchema = z.object({ id: z.string() });
 
 /** A persisted message's `content` is either the AI SDK's parts array or (for
  * plain user turns, e.g. the synthesized session-start marker) a bare string. */
@@ -172,6 +174,17 @@ export function SessionPage(): ReactNode {
   const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [boardArrows, setBoardArrows] = useState<ArrowRef[]>([]);
 
+  const resetMutation = useMutation({
+    mutationFn: () => apiPost(`/api/sessions/${sessionId}/reset`, {}, ResetSessionResponseSchema),
+    onSuccess: (freshSession) => navigate(`/session/${freshSession.id}`)
+  });
+
+  function handleReset(): void {
+    if (window.confirm('Reset this session? This ends the current conversation and starts a fresh one for this game.')) {
+      resetMutation.mutate();
+    }
+  }
+
   if (sessionQuery.isLoading || gameQuery.isLoading) return <p>Loading…</p>;
   if (sessionQuery.isError || !sessionQuery.data) return <p>Could not load this session.</p>;
 
@@ -185,6 +198,17 @@ export function SessionPage(): ReactNode {
         onBackToGames={() => navigate('/games')}
         onViewProgress={() => navigate('/dashboard')}
       />
+    );
+  }
+
+  if (session.status === 'abandoned') {
+    return (
+      <div className="session-summary-card">
+        <p>This session was reset.</p>
+        <button type="button" onClick={() => navigate('/games')}>
+          Back to Games
+        </button>
+      </div>
     );
   }
 
@@ -222,6 +246,7 @@ export function SessionPage(): ReactNode {
         blackName={gameQuery.data?.blackName ?? null}
         result={gameQuery.data?.result ?? null}
         onBack={() => navigate('/games')}
+        onReset={handleReset}
       />
       <div className={isSideBySide ? 'session-body desktop' : 'session-body mobile'}>
         {isDesktop && (

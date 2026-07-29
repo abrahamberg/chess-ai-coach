@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { FindingSchema, FocusAreaUpdateSchema } from './finding.js';
 
-export const SessionStatusSchema = z.enum(['active', 'completed', 'paused_no_credits']);
+export const SessionStatusSchema = z.enum(['active', 'completed', 'paused_no_credits', 'abandoned']);
 export type SessionStatus = z.infer<typeof SessionStatusSchema>;
 
 export const SessionOutcomeSchema = z.object({

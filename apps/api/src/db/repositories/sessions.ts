@@ -2,7 +2,7 @@ import type { Kysely } from 'kysely';
 import type { Thread } from '@chess-coach/shared';
 import type { Database } from '../schema.js';
 
-export type SessionStatus = 'active' | 'completed' | 'paused_no_credits';
+export type SessionStatus = 'active' | 'completed' | 'paused_no_credits' | 'abandoned';
 
 export interface SessionRow {
   id: string;
@@ -58,10 +58,40 @@ export function findByIdForUser(
     .executeTakeFirst();
 }
 
+/** The most recent still-resumable session for a game — 'active' or
+ * 'paused_no_credits', never 'completed'/'abandoned'. Used to make the Games
+ * page link back into an ongoing session instead of starting a new one. */
+export function findActiveByGameIdForUser(
+  db: Kysely<Database>,
+  gameId: string,
+  userId: string
+): Promise<SessionRow | undefined> {
+  return db
+    .selectFrom('sessions')
+    .select(BASE_COLUMNS)
+    .where('gameId', '=', gameId)
+    .where('userId', '=', userId)
+    .where('status', 'in', ['active', 'paused_no_credits'])
+    .orderBy('startedAt', 'desc')
+    .limit(1)
+    .executeTakeFirst();
+}
+
 export function markCompleted(db: Kysely<Database>, id: string): Promise<void> {
   return db
     .updateTable('sessions')
     .set({ status: 'completed', endedAt: new Date() })
+    .where('id', '=', id)
+    .execute()
+    .then(() => undefined);
+}
+
+/** Student-initiated reset (as opposed to the coach's own end_session) — see
+ * migration 0004_session_abandoned_status. */
+export function markAbandoned(db: Kysely<Database>, id: string): Promise<void> {
+  return db
+    .updateTable('sessions')
+    .set({ status: 'abandoned', endedAt: new Date() })
     .where('id', '=', id)
     .execute()
     .then(() => undefined);

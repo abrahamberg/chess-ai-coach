@@ -397,4 +397,59 @@ describe('SessionPage', () => {
     expect(await screen.findByText(/session is saved/i)).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /reply/i })).not.toBeInTheDocument();
   });
+
+  test('resetting a session confirms, POSTs /reset, and navigates to the fresh session it returns', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+    const fetchMock = mockFetch({}, (path) => {
+      if (path === '/api/sessions/session-1/reset') {
+        return new Response(JSON.stringify({ id: 'session-2' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (path === '/api/sessions/session-2') {
+        return new Response(
+          JSON.stringify({
+            id: 'session-2',
+            gameId: 'game-1',
+            status: 'active',
+            currentPly: 0,
+            summary: null,
+            homework: null,
+            messages: ALREADY_STARTED_MESSAGES
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+      return undefined;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await screen.findByTestId('mock-chessboard');
+    await user.click(screen.getByRole('button', { name: /reset session/i }));
+
+    expect(window.confirm).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => call[0] === '/api/sessions/session-1/reset')).toBe(true)
+    );
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => call[0] === '/api/sessions/session-2')).toBe(true)
+    );
+  });
+
+  test('declining the reset confirmation does not call the reset endpoint', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false));
+    const fetchMock = mockFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await screen.findByTestId('mock-chessboard');
+    await user.click(screen.getByRole('button', { name: /reset session/i }));
+
+    expect(window.confirm).toHaveBeenCalled();
+    expect(fetchMock.mock.calls.some((call) => call[0] === '/api/sessions/session-1/reset')).toBe(false);
+  });
 });

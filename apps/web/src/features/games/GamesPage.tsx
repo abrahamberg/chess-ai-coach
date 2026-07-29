@@ -11,9 +11,10 @@ const SessionSummarySchema = z.object({ id: z.string() });
 
 /** design.md §4.1: Games (home) — "Analyze a game" CTA, the game list, and
  * a no-dummy-data empty state. Owns fetching (AGENTS.md rule 7); GameRow is
- * presentational. A ready row starts a session (mirrors ImportPage's
- * post-analysis handoff) rather than looking one up, since no per-game
- * session lookup endpoint exists yet. */
+ * presentational. A ready row hits POST /api/sessions (mirrors ImportPage's
+ * post-analysis handoff) — the endpoint itself is find-or-create
+ * (coachAgent.resumeOrCreateSession), so an existing active/paused session
+ * for the game is linked back into rather than shadowed by a new one. */
 export function GamesPage(): ReactNode {
   const navigate = useNavigate();
 

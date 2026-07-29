@@ -54,7 +54,7 @@ export interface SessionsTable {
   id: Generated<string>;
   gameId: string;
   userId: string;
-  status: 'active' | 'completed' | 'paused_no_credits';
+  status: 'active' | 'completed' | 'paused_no_credits' | 'abandoned';
   currentPly: Generated<number>;
   threads: ColumnType<unknown, string | undefined, string>;
   contextDigest: string | null;
