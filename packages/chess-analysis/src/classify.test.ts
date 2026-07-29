@@ -1,7 +1,7 @@
 import type { EngineEval } from '@chess-coach/shared';
 import { describe, expect, test } from 'vitest';
 import type { ParsedGame } from './pgn.js';
-import { classifyMoves } from './classify.js';
+import { classifyMoves, isSoundQuality } from './classify.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4_FEN = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -165,14 +165,15 @@ describe('classifyMoves', () => {
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
     expect(whiteMove?.cpLoss).toBe(1000);
-    expect(whiteMove?.quality).toBe('blunder');
+    expect(whiteMove?.quality).toBe('miss');
   });
 
-  test('missing an available mate maps the miss to 1000 cpLoss', () => {
+  test('missing an available mate reclassifies a would-be blunder as miss', () => {
     const game = twoPlyGame();
     // White had mate-in-3 available (mateIn: 3 -> +1000cp, white perspective,
     // mover is white so no flip) but instead played a move leaving a roughly
-    // equal position (0 cp) at ply 1.
+    // equal position (0 cp) at ply 1. Having a forced mate available counts
+    // as "clearly winning" for the miss heuristic.
     const evals = [
       evalAt(START_FEN, null, 3),
       evalAt(AFTER_E4_FEN, 0, null),
@@ -182,7 +183,7 @@ describe('classifyMoves', () => {
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
     expect(whiteMove?.cpLoss).toBe(1000);
-    expect(whiteMove?.quality).toBe('blunder');
+    expect(whiteMove?.quality).toBe('miss');
   });
 
   test('black-to-move perspective flip: black finds the objectively-best move, no cp loss', () => {
@@ -326,5 +327,47 @@ describe('classifyMoves', () => {
     const evals = [evalAt(START_FEN, 0)];
 
     expect(classifyMoves(game, evals, 'white')).toEqual([]);
+  });
+
+  test('a mistake-range cpLoss from an already-winning position (bestCp >= 300) classifies as miss', () => {
+    const game = twoPlyGame();
+    // White was +300 before the move (exactly at the winning threshold), and
+    // gives back 150cp (mistake-range on its own) — reclassified as miss.
+    const evals = [evalAt(START_FEN, 300), evalAt(AFTER_E4_FEN, 150), evalAt(AFTER_E4_E5_FEN, 150)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.cpLoss).toBe(150);
+    expect(whiteMove?.quality).toBe('miss');
+  });
+
+  test('the same mistake-range cpLoss stays mistake when the position was NOT already winning (bestCp just below 300)', () => {
+    const game = twoPlyGame();
+    const evals = [evalAt(START_FEN, 299), evalAt(AFTER_E4_FEN, 149), evalAt(AFTER_E4_E5_FEN, 149)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.cpLoss).toBe(150);
+    expect(whiteMove?.quality).toBe('mistake');
+  });
+
+  test('a blunder-range cpLoss from an already-winning position classifies as miss, not blunder', () => {
+    const game = twoPlyGame();
+    const evals = [evalAt(START_FEN, 500), evalAt(AFTER_E4_FEN, 50), evalAt(AFTER_E4_E5_FEN, 50)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.cpLoss).toBe(450);
+    expect(whiteMove?.quality).toBe('miss');
+  });
+});
+
+describe('isSoundQuality', () => {
+  test('miss is not sound (it is a real error, just from a winning position)', () => {
+    expect(isSoundQuality('miss')).toBe(false);
+  });
+
+  test('best is sound', () => {
+    expect(isSoundQuality('best')).toBe(true);
   });
 });

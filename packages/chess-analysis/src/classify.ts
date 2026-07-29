@@ -7,6 +7,7 @@ const INTERESTING_THRESHOLD_CP = 20;
 const DUBIOUS_THRESHOLD_CP = 50;
 const MISTAKE_THRESHOLD_CP = 100;
 const BLUNDER_THRESHOLD_CP = 300;
+const WINNING_POSITION_CP = 300;
 
 /** Static piece values for the sacrifice heuristic — not engine-precise, just
  * enough to tell "gave up more than it's worth" from "traded evenly". */
@@ -70,7 +71,7 @@ function classifyMove(
     mover,
     isUserMove: mover === userColor,
     cpLoss,
-    quality: qualityFor(cpLoss, sacrifice),
+    quality: qualityFor(cpLoss, sacrifice, bestCp),
     bestLineSan: bestLineSan(evalBefore),
     evalAfterCp: whitePerspectiveCp(bestLine(evalAfter))
   };
@@ -117,22 +118,35 @@ function mateToCp(mateIn: number): number {
   return mateIn > 0 ? MATE_CP : -MATE_CP;
 }
 
-/** Bucket a non-negative centipawn loss (plus the sacrifice signal) into a
- * move quality per the fixed thresholds. */
-export function qualityFor(cpLoss: number, isSacrifice = false): MoveQuality {
-  if (cpLoss >= BLUNDER_THRESHOLD_CP) return 'blunder';
-  if (cpLoss >= MISTAKE_THRESHOLD_CP) return 'mistake';
+/**
+ * Bucket a non-negative centipawn loss (plus the sacrifice signal and the
+ * mover-perspective eval of the position BEFORE the move) into a move
+ * quality per the fixed thresholds.
+ *
+ * `bestCpBeforeMoverPerspective` powers the `miss` tier: a move that would
+ * otherwise be a `mistake`/`blunder` (cpLoss >= MISTAKE_THRESHOLD_CP)
+ * reclassifies to `miss` when the mover was already clearly winning
+ * (>= WINNING_POSITION_CP) before playing it — "you were winning big and
+ * gave a lot of it back". This is an approximation, not true chess.com-style
+ * detection (which compares the engine's top-2 lines) — see
+ * docs/superpowers/specs/2026-07-29-move-quality-badges-design.md.
+ */
+export function qualityFor(cpLoss: number, isSacrifice = false, bestCpBeforeMoverPerspective = 0): MoveQuality {
+  const wasWinningBig = bestCpBeforeMoverPerspective >= WINNING_POSITION_CP;
+  if (cpLoss >= BLUNDER_THRESHOLD_CP) return wasWinningBig ? 'miss' : 'blunder';
+  if (cpLoss >= MISTAKE_THRESHOLD_CP) return wasWinningBig ? 'miss' : 'mistake';
   if (cpLoss >= DUBIOUS_THRESHOLD_CP) return 'dubious';
   if (cpLoss >= INTERESTING_THRESHOLD_CP) return 'interesting';
   if (isSacrifice) return 'brilliant';
   return cpLoss === 0 ? 'best' : 'good';
 }
 
-/** True for any tier that isn't an error (dubious/mistake/blunder) — the
- * "this move was fine" check used by callers that only cared about the old
- * two-way good/bad split before quality grew brilliant/interesting tiers. */
+/** True for any tier that isn't an error (dubious/mistake/miss/blunder) —
+ * the "this move was fine" check used by callers that only cared about the
+ * old two-way good/bad split before quality grew brilliant/interesting/
+ * best/miss tiers. */
 export function isSoundQuality(quality: MoveQuality): boolean {
-  return quality !== 'dubious' && quality !== 'mistake' && quality !== 'blunder';
+  return quality !== 'dubious' && quality !== 'mistake' && quality !== 'blunder' && quality !== 'miss';
 }
 
 function clamp(value: number, min: number, max: number): number {
