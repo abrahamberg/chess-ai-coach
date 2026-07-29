@@ -8,9 +8,12 @@
 ## 1. Design principles
 
 1. **A quiet study room, not a dashboard.** The user is here to think. Minimal
-   chrome, generous whitespace, no badges/gamification noise, nothing blinking
-   for attention. The two protagonists on screen are the **board** and the
-   **conversation** — everything else recedes.
+   chrome, generous whitespace, no gamification noise (streaks, achievement
+   badges, notification dots), nothing blinking for attention. Move-quality
+   badges (§5.5) are a narrow, deliberate exception — they're analysis of
+   the move itself, not app-level gamification. The two protagonists on
+   screen are the **board** and the **conversation** — everything else
+   recedes.
 2. **Conversation-first.** This is a coaching session, not an analysis viewer.
    The chat is never squeezed into a sidebar afterthought; on every screen size
    the current coach message is readable without scrolling gymnastics.
@@ -259,9 +262,11 @@ from the game's engine analysis, matching between mobile and desktop (see
 Collapsed by default under the board (desktop) / behind the ⋯ menu (mobile):
 "Explore on your own". Expands to: eval in words + best-move arrow from the
 in-browser engine, clearly captioned "your private exploration — the coach
-isn't watching". Opening it enters peek mode. This is the only place any
-engine output is visible, and it never shows numbers either — words only
-("White is clearly better").
+isn't watching". Opening it enters peek mode. Together with the move-quality
+badges (§5.5), this is the only other place engine output surfaces — and
+neither ever shows raw numbers: the Explore panel speaks in words only
+("White is clearly better"), and the badges show a qualitative tier
+(colored icon), never a centipawn value.
 
 ### 5.7 Session states
 
