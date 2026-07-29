@@ -264,7 +264,13 @@ export function SessionPage(): ReactNode {
             </p>
           )}
           {!isDesktop && (
-            <MoveStrip sanMoves={sanMoves} currentPly={boardState.ply} momentPlies={[]} onSelect={boardState.peekAt} />
+            <MoveStrip
+              sanMoves={sanMoves}
+              classifiedMoves={gameQuery.data?.classifiedMoves ?? []}
+              currentPly={boardState.ply}
+              momentPlies={[]}
+              onSelect={boardState.peekAt}
+            />
           )}
           <ExplorePanel
             fen={boardState.fen}
