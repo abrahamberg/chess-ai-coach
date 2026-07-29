@@ -146,11 +146,11 @@ sessions (
   id          uuid PK,
   game_id     uuid FK→games NOT NULL,
   user_id     uuid FK→users NOT NULL,
-  status      text NOT NULL CHECK (status IN ('active','completed','paused_no_credits')),
+  status      text NOT NULL CHECK (status IN ('active','completed','paused_no_credits','abandoned')),
   current_ply int  NOT NULL DEFAULT 0,         -- last board position shown
   threads     jsonb NOT NULL DEFAULT '[]',     -- Thread[] — conversation ledger, §6.5
   started_at  timestamptz NOT NULL DEFAULT now(),
-  ended_at    timestamptz
+  ended_at    timestamptz                      -- set on 'completed' and 'abandoned', §7.3a
 )
 
 session_messages (
@@ -345,9 +345,10 @@ Model          = via llm/gateway.ts → user's BYOK provider, else platform key 
 
 | Tool | Parameters | Effect |
 |------|-----------|--------|
-| `show_position` | `{ ply: number }` | Client tool: board animates to that ply. Also updates `sessions.current_ply`. |
+| `show_position` | `{ moveNumber: number, color: 'white' \| 'black' \| null }` | Client tool: board animates to that move (game start is `{ moveNumber: 0, color: null }`). Also updates `sessions.current_ply`. The persisted tool-result is stamped server-side with the position's authoritative `fen` (`services/game-positions.ts`, replayed straight from the game's PGN) before it re-enters the coach's context — this is the coach's only verified ground truth for a position, delivered in-band and cache-safe the same way the thread ledger is (§7.5), never trusted from the client or reconstructed by the model. |
+| `check_position` | `{ moveNumber: number, color: 'white' \| 'black' \| null }` | Server tool, same address shape as `show_position`: returns `{ fen, moveSan }` for any move in the game without moving the student's board. Lets the coach get a verified `fen` (e.g. for `get_engine_analysis`) or double-check a claim before making it, instead of guessing. |
 | `annotate_board` | `{ arrows: {from,to,color}[], highlights: {square,color}[] }` | Client tool: draw on the board. Cleared on next `show_position`. |
-| `get_engine_analysis` | `{ fen: string, question: string }` | Server tool backed by a **light-model subagent**: calls the engine, then the engine-interpreter subagent (prompts.md §4) digests the raw lines into ≤80 words answering the coach's `question`. Raw UCI/multiPV output never enters the coach's context. |
+| `get_engine_analysis` | `{ fen: string, question: string }` | Server tool backed by a **light-model subagent**: calls the engine (requesting 3 principal variations — `COACH_ENGINE_MULTI_PV`), then the engine-interpreter subagent (prompts.md §4) digests the raw lines into ≤80 words answering the coach's `question`. Raw UCI/multiPV output never enters the coach's context. The coach is instructed to source `fen` from `show_position`/`check_position` only, never to reconstruct one itself, and can ask for top candidate moves directly ("what are the best moves here?"). |
 | `get_user_profile` | `{}` | Server tool: focus areas + last 15 findings + per-category counts (last 20 games) + session count. |
 | `record_finding` | `Finding` (schema §6.4) | Server tool: insert into `findings`. |
 | `propose_focus_area_update` | `FocusAreaUpdate` (§6.4) | Server tool: applied by `progress.ts` service (enforces max-3-active). |
@@ -385,6 +386,21 @@ user message (text | board_move)
 When a session is created, the server synthesizes the first "user" message:
 `{type:"session_start"}`. The system prompt instructs the coach how to open (greet,
 connect to history, show starting position, begin walkthrough) — see prompts.md §2.4.
+
+### 7.3a Resuming and resetting a session
+
+`POST /api/sessions` is find-or-create (`coachAgent.resumeOrCreateSession`): if the user
+already has a session in `'active'` or `'paused_no_credits'` status for that game, it is
+returned as-is rather than creating a second session over the same game. This is what
+lets the Games page treat a "ready" row's click as "open my ongoing session" instead of
+always starting a new one — no separate lookup endpoint or frontend branching needed.
+
+`POST /api/sessions/:id/reset` (`coachAgent.resetSession`) lets the student explicitly
+abandon the current session and start over: it sets the session's status to
+`'abandoned'` (`sessionsRepo.markAbandoned` — endedAt stamped, distinct from `'completed'`
+so the dashboard's completed-session history, which expects a real coach summary, never
+picks up a reset) and creates a fresh session for the same game. 409s if the session is
+already `'completed'`/`'abandoned'`. The "Reset session" control lives in `SessionHeader`.
 
 ### 7.4 Coach-agent runtime management (cost ⇄ effectiveness)
 
