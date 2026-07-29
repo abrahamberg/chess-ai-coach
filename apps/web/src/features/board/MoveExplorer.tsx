@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { MOVE_QUALITY_SYMBOLS, type ClassifiedMoveDto } from '@chess-coach/shared';
+import type { ClassifiedMoveDto } from '@chess-coach/shared';
+import { MoveQualityBadge } from './MoveQualityBadge.js';
 import './MoveExplorer.css';
 
 export interface MoveExplorerProps {
@@ -84,11 +85,15 @@ export function MoveExplorer({ sanMoves, classifiedMoves, currentPly, onSelect }
           </li>
         ))}
       </ol>
-      {notesVisible && currentMove && currentMove.quality !== 'good' && currentMove.bestLineSan.length > 0 && (
-        <p className="move-explorer__note">
-          {currentMove.quality}: better was {currentMove.bestLineSan.join(' ')}
-        </p>
-      )}
+      {notesVisible &&
+        currentMove &&
+        currentMove.quality !== 'good' &&
+        currentMove.quality !== 'best' &&
+        currentMove.bestLineSan.length > 0 && (
+          <p className="move-explorer__note">
+            {currentMove.quality}: better was {currentMove.bestLineSan.join(' ')}
+          </p>
+        )}
     </div>
   );
 }
@@ -102,7 +107,6 @@ interface MoveCellProps {
 }
 
 function MoveCell({ ply, san, quality, isCurrent, onSelect }: MoveCellProps): ReactNode {
-  const symbol = quality && quality !== 'good' ? MOVE_QUALITY_SYMBOLS[quality] : '';
   return (
     <button
       type="button"
@@ -110,8 +114,8 @@ function MoveCell({ ply, san, quality, isCurrent, onSelect }: MoveCellProps): Re
       aria-current={isCurrent ? 'true' : undefined}
       onClick={() => onSelect(ply)}
     >
+      <MoveQualityBadge quality={quality} size="md" />
       {san}
-      {symbol}
     </button>
   );
 }
