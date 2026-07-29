@@ -257,6 +257,33 @@ describe('SessionPage', () => {
     expect(options?.position).toBe('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2');
   });
 
+  test('a persisted show_position tool-call in the OLD {ply} shape (pre-move-number-fix data) still reopens correctly, not as NaN', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch({
+        messages: [
+          { id: 'm1', role: 'user', content: '[session_start]' },
+          {
+            id: 'm2',
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'Let me show you.' },
+              { type: 'tool-call', toolName: 'show_position', args: { ply: 2 }, toolCallId: 'call-1' }
+            ]
+          }
+        ]
+      })
+    );
+    renderSessionPage();
+
+    expect(await screen.findByText(/let's dive into your game|let me show you/i)).toBeInTheDocument();
+    const divider = within(screen.getByTestId('message-list')).getByText(/move 1 \(black\)/i).closest('.position-divider');
+    expect(divider).toHaveTextContent('e5');
+
+    const options = capturedOptions.at(-1);
+    expect(options?.position).toBe('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2');
+  });
+
   test('a fresh session (only the internal [session_start] marker, no assistant reply yet) auto-kicks off the coach opening turn', async () => {
     const fetchMock = mockFetch(
       { messages: [{ id: 'm1', role: 'user', content: '[session_start]' }] },
