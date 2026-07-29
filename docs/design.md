@@ -20,7 +20,9 @@
    but never disorienting (no teleporting mid-read).
 4. **Engine invisible.** No eval bars, no centipawn numbers, no engine lines in
    the primary UI. The one exception: the opt-in Explore panel (§5.6), clearly
-   labeled as exploration.
+   labeled as exploration. Move-quality badges (§5.5) are a deliberate,
+   narrower exception too — they show a qualitative tier (a colored icon:
+   best/miss/blunder/etc.), never a raw number.
 5. **Mobile is a first-class citizen.** Every flow works one-handed on a 360 px
    phone. Desktop is not "mobile stretched": it uses the space for side-by-side
    composition.
@@ -241,12 +243,16 @@ and see the position; chat-overlay-on-board hides the position mid-thought.
   draw with a 150 ms sweep; cleared on next `show_position`.
 - Auto-flip: board oriented to the user's color, always.
 
-### 5.5 Move strip
+### 5.5 Move strip / move explorer
 
-Horizontal chip list `1. e4 e5 2. ♘f3 …`; current ply filled `--accent`; moves
-at coaching-plan moments get a small dot under them (no color-coded
-good/bad markers — the coach reveals judgments in conversation, the UI doesn't
-spoil). Keyboard ←/→ on desktop; swipe left/right on the board on mobile.
+Horizontal chip list on mobile (`1. e4 e5 2. ♘f3 …`) / paired move list on
+desktop; current ply filled `--accent`; moves at coaching-plan moments get a
+small dot under them. Every move also carries a quality badge — a small
+colored circle + glyph (★ best, !! brilliant, !? interesting, ?! dubious,
+? mistake, ✕ miss, ?? blunder; plain "good" moves get no badge) — computed
+from the game's engine analysis, matching between mobile and desktop (see
+`docs/superpowers/specs/2026-07-29-move-quality-badges-design.md`). Keyboard
+←/→ on desktop; swipe left/right on the board on mobile.
 
 ### 5.6 Explore panel (WASM engine)
 
