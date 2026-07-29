@@ -140,18 +140,6 @@
   border-top: 1px solid rgb(0 0 0 / 8%);
 }
 
-.chat-pane form label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
-.chat-pane form input {
-  flex: 1;
-}
-
 .chat-pane form button {
   background: var(--accent);
   color: var(--accent-contrast);
@@ -159,4 +147,52 @@
   border-radius: 8px;
   padding: 0 18px;
   font-weight: 600;
+}
+
+.chip-reply-input {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip-reply-input input {
+  flex: 1;
+  min-width: 60px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+
+.chip-reply-input input:focus {
+  outline: none;
+}
+
+.arrow-chip,
+.arrow-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.arrow-chip {
+  cursor: grab;
+}
+
+.arrow-chip button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0 0 0 4px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
 }

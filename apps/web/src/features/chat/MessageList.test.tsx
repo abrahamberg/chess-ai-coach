@@ -136,6 +136,15 @@ describe('MessageList', () => {
     expect(screen.queryByText(/\[position_context\]/)).not.toBeInTheDocument();
   });
 
+  test('design.md §5.7: renders an inline [e2-e4] arrow token within a plain message as a badge, not raw brackets', () => {
+    render(<MessageList messages={[{ id: '1', role: 'user', text: 'I think [e2-e4] is a good option' }]} />);
+
+    expect(screen.getByText('I think', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('e2')).toBeInTheDocument();
+    expect(screen.getByText('e4')).toBeInTheDocument();
+    expect(screen.queryByText(/\[e2-e4\]/)).not.toBeInTheDocument();
+  });
+
   test('does not call onScrollUp while at the bottom', () => {
     const onScrollUp = vi.fn();
     render(<MessageList messages={[msg('1', 'hi')]} onScrollUp={onScrollUp} />);

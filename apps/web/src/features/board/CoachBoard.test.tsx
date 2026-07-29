@@ -151,4 +151,30 @@ describe('CoachBoard', () => {
     render(<CoachBoard fen={START_FEN} orientation="white" mode="answer" />);
     expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument();
   });
+
+  test('allows drawing arrows and reports the student-drawn set through onArrowsChange, distinct from the coach-controlled arrows prop', () => {
+    capturedOptions.length = 0;
+    const onArrowsChange = vi.fn();
+    render(
+      <CoachBoard
+        fen={START_FEN}
+        orientation="white"
+        mode="answer"
+        arrows={[{ from: 'e2', to: 'e4', color: '#c9762a' }]}
+        onArrowsChange={onArrowsChange}
+      />
+    );
+
+    const options = capturedOptions.at(-1);
+    expect(options?.allowDrawingArrows).toBe(true);
+    options?.onArrowsChange?.({ arrows: [{ startSquare: 'g8', endSquare: 'f6', color: 'green' }] });
+
+    expect(onArrowsChange).toHaveBeenCalledWith([{ from: 'g8', to: 'f6', color: 'green' }]);
+  });
+
+  test('clears drawn arrows automatically when the position changes (design.md §5.4-style auto-clear)', () => {
+    capturedOptions.length = 0;
+    render(<CoachBoard fen={START_FEN} orientation="white" mode="answer" />);
+    expect(capturedOptions.at(-1)?.clearArrowsOnPositionChange).toBe(true);
+  });
 });

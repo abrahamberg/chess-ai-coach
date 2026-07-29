@@ -59,4 +59,37 @@ describe('ChatPane', () => {
     render(<ChatPane messages={[]} activeToolName="get_engine_analysis" onSend={vi.fn()} />);
     expect(screen.getByText(/checking a line/i)).toBeInTheDocument();
   });
+
+  test('design.md §5.7: a board-drawn arrow appears as a chip in the reply box, and sending it includes the bracketed token', async () => {
+    const onSend = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(<ChatPane messages={[]} activeToolName={null} onSend={onSend} boardArrows={[]} />);
+
+    rerender(
+      <ChatPane messages={[]} activeToolName={null} onSend={onSend} boardArrows={[{ from: 'e2', to: 'e4' }]} />
+    );
+
+    expect(screen.getByTestId('arrow-chip')).toBeInTheDocument();
+
+    await user.type(screen.getAllByRole('textbox', { name: /reply/i }).at(-1) as HTMLElement, 'looks strong');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    expect(onSend).toHaveBeenCalledWith('[e2-e4]looks strong');
+  });
+
+  test('erasing a drawn arrow (board reports it gone) removes its chip from the reply box', () => {
+    const { rerender } = render(
+      <ChatPane
+        messages={[]}
+        activeToolName={null}
+        onSend={vi.fn()}
+        boardArrows={[{ from: 'e2', to: 'e4' }]}
+      />
+    );
+    expect(screen.getByTestId('arrow-chip')).toBeInTheDocument();
+
+    rerender(<ChatPane messages={[]} activeToolName={null} onSend={vi.fn()} boardArrows={[]} />);
+
+    expect(screen.queryByTestId('arrow-chip')).not.toBeInTheDocument();
+  });
 });

@@ -14,6 +14,7 @@ import { ExplorePanel } from '../board/ExplorePanel.js';
 import { MiniBoard } from '../board/MiniBoard.js';
 import { MoveExplorer } from '../board/MoveExplorer.js';
 import { MoveStrip } from '../board/MoveStrip.js';
+import type { ArrowRef } from '../chat/arrowToken.js';
 import { ChatPane } from '../chat/ChatPane.js';
 import { encodePositionContext, encodePositionDivider, sanForPly } from '../chat/positionDivider.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
@@ -162,6 +163,7 @@ export function SessionPage(): ReactNode {
 
   const [pendingMove, setPendingMove] = useState<{ san: string; fen: string } | null>(null);
   const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [boardArrows, setBoardArrows] = useState<ArrowRef[]>([]);
 
   if (sessionQuery.isLoading || gameQuery.isLoading) return <p>Loading…</p>;
   if (sessionQuery.isError || !sessionQuery.data) return <p>Could not load this session.</p>;
@@ -235,6 +237,7 @@ export function SessionPage(): ReactNode {
               highlights={boardState.highlights}
               onUserMove={handleUserMove}
               onLocalMove={boardState.previewMove}
+              onArrowsChange={setBoardArrows}
             />
           )}
           {pendingMove && (
@@ -278,6 +281,7 @@ export function SessionPage(): ReactNode {
             onSend={handleSendMessage}
             onScrollUp={boardState.collapseDock}
             onSelectPly={boardState.peekAt}
+            boardArrows={boardArrows}
           />
         )}
       </div>

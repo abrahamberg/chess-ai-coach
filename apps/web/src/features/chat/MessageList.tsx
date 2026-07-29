@@ -1,10 +1,24 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, type ReactNode } from 'react';
 import type { CoachMessage } from '../../hooks/useCoachChat.js';
 import { AnnotationNote } from './AnnotationNote.js';
+import { ArrowToken } from './ArrowToken.js';
+import { splitArrowTokens } from './arrowToken.js';
 import { MoveCard } from './MoveCard.js';
 import { PositionContextMessage } from './PositionContextMessage.js';
 import { decodeAnnotationNote, decodePositionContext, decodePositionDivider } from './positionDivider.js';
 import { PositionDivider } from './PositionDivider.js';
+
+/** design.md §5.7: renders a plain message's text with any inline
+ * `[e2-e4]`-style arrow references shown as badges, not raw brackets. */
+function renderMessageText(text: string): ReactNode {
+  return splitArrowTokens(text).map((segment, index) =>
+    segment.type === 'text' ? (
+      <Fragment key={index}>{segment.value}</Fragment>
+    ) : (
+      <ArrowToken key={index} from={segment.from} to={segment.to} />
+    )
+  );
+}
 
 const BOARD_MOVE_PATTERN = /^\[board_move\] I played (\S+) \(position now: (.+)\)$/;
 
@@ -79,7 +93,7 @@ export function MessageList({ messages, onScrollUp, onSelectPly }: MessageListPr
                   ♞
                 </span>
               )}
-              {message.text}
+              {renderMessageText(message.text)}
             </p>
           );
         })}

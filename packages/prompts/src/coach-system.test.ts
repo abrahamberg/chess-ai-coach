@@ -85,6 +85,12 @@ describe('buildCoachSystemPrompt', () => {
     expect(staticPart).not.toContain('ply 2N');
   });
 
+  test('staticPart teaches the coach to read a student-drawn [e2-e4] arrow token as their proposed move, without ever quoting the bracket syntax to the student', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('[e2-e4]');
+    expect(staticPart).toContain('never mention the bracket syntax');
+  });
+
   test('staticPart never contains user-identifying data', () => {
     const { staticPart } = buildCoachSystemPrompt(
       baseInput({ user: { displayName: 'VeryUniqueName42', selfAssessment: 'x', sessionCount: 1 } })

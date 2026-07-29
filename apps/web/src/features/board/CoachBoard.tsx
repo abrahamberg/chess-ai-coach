@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 import type { ReactNode } from 'react';
-import { Chessboard, type ChessboardOptions, type PieceDropHandlerArgs } from 'react-chessboard';
+import { Chessboard, type Arrow, type ChessboardOptions, type PieceDropHandlerArgs } from 'react-chessboard';
 import './CoachBoard.css';
 
 export interface BoardArrow {
@@ -23,6 +23,11 @@ export interface CoachBoardProps {
   arrows?: BoardArrow[];
   highlights?: BoardHighlight[];
   onUserMove?: (san: string, fen: string) => void;
+  /** Fired with the student's own right-click-drawn arrows (react-chessboard's
+   * built-in drawing, separate from the coach-controlled `arrows` prop) —
+   * design.md §5.4/§5.7: lets the composer turn a drawn arrow into an inline
+   * chip the student can send. */
+  onArrowsChange?: (arrows: BoardArrow[]) => void;
   /** Fired for every legal drop regardless of mode — keeps the displayed
    * position in sync with the drag immediately. react-chessboard is a fully
    * controlled component: its own internal position only updates via an
@@ -44,7 +49,8 @@ export function CoachBoard({
   arrows = [],
   highlights = [],
   onUserMove,
-  onLocalMove
+  onLocalMove,
+  onArrowsChange
 }: CoachBoardProps): ReactNode {
   function handlePieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
     if (!targetSquare) return false;
@@ -72,7 +78,12 @@ export function CoachBoard({
     arrows: arrows.map((arrow) => ({ startSquare: arrow.from, endSquare: arrow.to, color: arrow.color })),
     squareStyles: Object.fromEntries(
       highlights.map((highlight) => [highlight.square, { backgroundColor: highlight.color }])
-    )
+    ),
+    allowDrawingArrows: true,
+    clearArrowsOnPositionChange: true,
+    onArrowsChange: ({ arrows: drawn }: { arrows: Arrow[] }) => {
+      onArrowsChange?.(drawn.map((arrow) => ({ from: arrow.startSquare, to: arrow.endSquare, color: arrow.color })));
+    }
   };
 
   return (
