@@ -76,7 +76,7 @@ describe('ClassifiedMoveSchema', () => {
     expect(ClassifiedMoveSchema.safeParse(validMove).success).toBe(true);
   });
   test('accepts every MOVE_QUALITIES tier', () => {
-    for (const quality of ['brilliant', 'good', 'interesting', 'dubious', 'mistake', 'blunder']) {
+    for (const quality of ['brilliant', 'best', 'good', 'interesting', 'dubious', 'mistake', 'miss', 'blunder']) {
       expect(ClassifiedMoveSchema.safeParse({ ...validMove, quality }).success).toBe(true);
     }
   });
