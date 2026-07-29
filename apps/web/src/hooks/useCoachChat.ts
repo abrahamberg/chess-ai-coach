@@ -1,3 +1,4 @@
+import { moveRefToPly } from '@chess-coach/chess-analysis';
 import { processDataStream } from 'ai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { encodeAnnotationNote, encodePositionDivider, sanForPly, type AnnotationNoteState } from '../features/chat/positionDivider.js';
@@ -91,7 +92,8 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
           onToolCallPart: async (toolCall) => {
             setActiveToolName(toolCall.toolName);
             if (toolCall.toolName === 'show_position') {
-              const { ply } = toolCall.args as { ply: number };
+              const { moveNumber, color } = toolCall.args as { moveNumber: number; color: 'white' | 'black' | null };
+              const ply = moveRefToPly(moveNumber, color);
               const san = sanForPly(options.sanMoves ?? [], ply);
               if (san) {
                 setMessages((prev) => [

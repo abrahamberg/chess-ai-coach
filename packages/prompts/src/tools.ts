@@ -5,9 +5,21 @@ import { FindingSchema, FocusAreaUpdateSchema, ThreadSchema } from '@chess-coach
  * (no execute functions here); apps/api/src/services/coach-tools.ts binds
  * these to real services to build the AI SDK ToolSet. */
 
-export const showPositionParameters = z.object({
-  ply: z.number().int().nonnegative()
-});
+/**
+ * Standard chess move-pair terminology ("White's move 2", "Black's move
+ * 2") instead of a bare ply — a bare ply number is not how PGN moves are
+ * named, and asking the model to convert ply <-> move-pair itself in prose
+ * ("White's move N is ply 2N-1") reliably produced miscounted navigation.
+ * moveNumber 0 with color null addresses the game's starting position.
+ */
+export const showPositionParameters = z
+  .object({
+    moveNumber: z.number().int().nonnegative(),
+    color: z.enum(['white', 'black']).nullable()
+  })
+  .refine((value) => (value.moveNumber === 0 ? value.color === null : value.color !== null), {
+    message: 'color must be null only when moveNumber is 0 (the game start)'
+  });
 
 export const annotateBoardParameters = z.object({
   arrows: z.array(z.object({ from: z.string(), to: z.string(), color: z.string() })),

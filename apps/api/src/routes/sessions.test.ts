@@ -271,7 +271,7 @@ describe('sessions routes', () => {
       const { model } = textStreamModel('Let me show you.', {
         toolCallId: 'call-1',
         toolName: 'show_position',
-        args: { ply: 4 }
+        args: { moveNumber: 2, color: 'black' }
       });
       const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
       const created = await app.inject({

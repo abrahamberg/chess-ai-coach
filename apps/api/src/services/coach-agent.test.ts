@@ -154,7 +154,7 @@ describe('coach-agent startTurn concurrency', () => {
     const { model, finish } = controllableStreamModel('Let me show you.', {
       toolCallId: 'call-race-1',
       toolName: 'show_position',
-      args: { ply: 4 }
+      args: { moveNumber: 2, color: 'black' }
     });
 
     // Gate turn 1's onFinish persistence of its own assistant/tool-call

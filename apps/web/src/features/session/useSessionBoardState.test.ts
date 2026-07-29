@@ -84,13 +84,17 @@ describe('useSessionBoardState', () => {
 
     let toolResult: unknown;
     act(() => {
-      toolResult = result.current.handleToolCall({ toolCallId: '1', toolName: 'show_position', args: { ply: 4 } });
+      toolResult = result.current.handleToolCall({
+        toolCallId: '1',
+        toolName: 'show_position',
+        args: { moveNumber: 2, color: 'black' }
+      });
     });
 
     expect(result.current.fen).toBe(POSITIONS[1]?.fen);
     expect(result.current.arrows).toEqual([]);
     expect(result.current.isDocked).toBe(false);
-    expect(toolResult).toEqual({ ply: 4 });
+    expect(toolResult).toEqual({ moveNumber: 2, color: 'black', ply: 4 });
   });
 
   test('an annotate_board tool call sets arrows/highlights and returns a result (client tool round-trip)', () => {
@@ -135,7 +139,11 @@ describe('useSessionBoardState', () => {
     const { result } = renderHook(() => useSessionBoardState(POSITIONS));
 
     act(() => {
-      result.current.handleToolCall({ toolCallId: '5', toolName: 'show_position', args: { ply: 0 } });
+      result.current.handleToolCall({
+        toolCallId: '5',
+        toolName: 'show_position',
+        args: { moveNumber: 0, color: null }
+      });
     });
     act(() => {
       result.current.peekAt(4);
@@ -183,7 +191,11 @@ describe('useSessionBoardState', () => {
       result.current.previewMove('some-preview-fen');
     });
     act(() => {
-      result.current.handleToolCall({ toolCallId: '7', toolName: 'show_position', args: { ply: 4 } });
+      result.current.handleToolCall({
+        toolCallId: '7',
+        toolName: 'show_position',
+        args: { moveNumber: 2, color: 'black' }
+      });
     });
 
     expect(result.current.fen).toBe(POSITIONS[1]?.fen);
@@ -235,7 +247,11 @@ describe('useSessionBoardState', () => {
       result.current.peekAt(4);
     });
     act(() => {
-      result.current.handleToolCall({ toolCallId: '4', toolName: 'show_position', args: { ply: 0 } });
+      result.current.handleToolCall({
+        toolCallId: '4',
+        toolName: 'show_position',
+        args: { moveNumber: 0, color: null }
+      });
     });
 
     expect(result.current.fen).toBe(POSITIONS[0]?.fen);

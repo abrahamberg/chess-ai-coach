@@ -11,9 +11,15 @@ import {
 } from './tools.js';
 
 describe('coach agent tool parameter schemas (architecture §7.1)', () => {
-  test('show_position: { ply }', () => {
-    expect(showPositionParameters.safeParse({ ply: 12 }).success).toBe(true);
-    expect(showPositionParameters.safeParse({ ply: -1 }).success).toBe(false);
+  test('show_position: { moveNumber, color } — never a bare ply, which is not standard PGN terminology and is what caused the coach to compute the wrong position', () => {
+    expect(showPositionParameters.safeParse({ moveNumber: 2, color: 'white' }).success).toBe(true);
+    expect(showPositionParameters.safeParse({ moveNumber: 0, color: 'white' }).success).toBe(false);
+    expect(showPositionParameters.safeParse({ moveNumber: 2, color: 'purple' }).success).toBe(false);
+    expect(showPositionParameters.safeParse({ ply: 12 }).success).toBe(false);
+  });
+
+  test('show_position: moveNumber 0 with color null means the game start (ply 0)', () => {
+    expect(showPositionParameters.safeParse({ moveNumber: 0, color: null }).success).toBe(true);
   });
 
   test('annotate_board: { arrows, highlights }', () => {

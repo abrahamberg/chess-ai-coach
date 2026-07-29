@@ -1,4 +1,4 @@
-import { parsePgn } from '@chess-coach/chess-analysis';
+import { moveRefToPly, parsePgn } from '@chess-coach/chess-analysis';
 import { ClassifiedMoveSchema } from '@chess-coach/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -71,7 +71,10 @@ function showPositionPlies(content: unknown): number[] {
   return content
     .filter(isToolCallPart)
     .filter((part) => part.toolName === 'show_position')
-    .map((part) => (part.args as { ply: number }).ply);
+    .map((part) => {
+      const { moveNumber, color } = part.args as { moveNumber: number; color: 'white' | 'black' | null };
+      return moveRefToPly(moveNumber, color);
+    });
 }
 
 /** Reopening a session should show the board where the coach last left it,

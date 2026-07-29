@@ -236,7 +236,12 @@ describe('SessionPage', () => {
             role: 'assistant',
             content: [
               { type: 'text', text: 'Let me show you.' },
-              { type: 'tool-call', toolName: 'show_position', args: { ply: 2 }, toolCallId: 'call-1' }
+              {
+                type: 'tool-call',
+                toolName: 'show_position',
+                args: { moveNumber: 1, color: 'black' },
+                toolCallId: 'call-1'
+              }
             ]
           }
         ]
@@ -279,7 +284,12 @@ describe('SessionPage', () => {
             role: 'assistant',
             content: [
               { type: 'text', text: 'Let me show you.' },
-              { type: 'tool-call', toolName: 'show_position', args: { ply: 2 }, toolCallId: 'call-1' }
+              {
+                type: 'tool-call',
+                toolName: 'show_position',
+                args: { moveNumber: 1, color: 'black' },
+                toolCallId: 'call-1'
+              }
             ]
           }
         ]

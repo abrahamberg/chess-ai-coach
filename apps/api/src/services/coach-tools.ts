@@ -56,7 +56,7 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
   return {
     show_position: tool({
       description:
-        "Move the student's board to a given ply. Always call this before discussing a new position.",
+        "Move the student's board to a given position, addressed by move number and color (e.g. White's move 12 is { moveNumber: 12, color: 'white' }; the game start is { moveNumber: 0, color: null }). Always call this before discussing a new position.",
       parameters: showPositionParameters
     }),
     annotate_board: tool({

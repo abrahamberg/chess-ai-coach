@@ -1,3 +1,4 @@
+import { moveRefToPly } from '@chess-coach/chess-analysis';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BoardArrow, BoardHighlight } from '../board/CoachBoard.js';
 import { useAnnotationLayer, type AnnotationState } from '../board/AnnotationLayer.js';
@@ -103,14 +104,15 @@ export function useSessionBoardState(
   const handleToolCall = useCallback(
     (toolCall: CoachToolCall): unknown => {
       if (toolCall.toolName === 'show_position') {
-        const { ply: newPly } = toolCall.args as { ply: number };
+        const { moveNumber, color } = toolCall.args as { moveNumber: number; color: 'white' | 'black' | null };
+        const newPly = moveRefToPly(moveNumber, color);
         setPly(newPly);
         setCoachPly(newPly);
         setMode('answer');
         setPreviewFen(null);
         annotations.clear();
         dock.expand();
-        return { ply: newPly };
+        return { moveNumber, color, ply: newPly };
       }
       if (toolCall.toolName === 'annotate_board') {
         annotations.setAnnotations(toolCall.args as AnnotationState);

@@ -117,11 +117,17 @@ describe('useCoachChat', () => {
   });
 
   test('design.md §5.3: a show_position tool call inserts a position-divider message using sanMoves', async () => {
-    const onToolCall = vi.fn().mockReturnValue({ ply: 2 });
+    const onToolCall = vi.fn().mockReturnValue({ moveNumber: 1, color: 'black', ply: 2 });
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        streamResponse([formatDataStreamPart('tool_call', { toolCallId: 'call-3', toolName: 'show_position', args: { ply: 2 } })])
+        streamResponse([
+          formatDataStreamPart('tool_call', {
+            toolCallId: 'call-3',
+            toolName: 'show_position',
+            args: { moveNumber: 1, color: 'black' }
+          })
+        ])
       )
       .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
     vi.stubGlobal('fetch', fetchMock);

@@ -128,7 +128,7 @@ function howYouRunTheSession(revealDepthPlies: number): string {
 function yourToolsAndWhenToUseThem(): string {
   return `## Your tools and when to use them
 
-- show_position: ALWAYS call this when moving to a new moment, before discussing it. The student must see the position you're talking about. When you say a move number out loud, use standard chess move-pair numbering ("move 18" meaning White's 18th move, or "move 18 for Black") — the transcript and move list both show real move numbers this way, not raw ply. But show_position itself still takes a ply (half-move count), NOT a move number — convert: White's move N is ply 2N-1, Black's move N is ply 2N (e.g. "move 18 for White" is ply 35: 2×18-1=35). Getting this backwards will show the student the wrong position. When in doubt, name the move by its SAN instead of a number.
+- show_position: ALWAYS call this when moving to a new moment, before discussing it. The student must see the position you're talking about. Use standard chess move-pair numbering everywhere, in your prose AND in this tool: "move 18" means White's 18th move, or say "move 18 for Black" — never a bare ply. show_position takes exactly that: { moveNumber, color } — e.g. White's move 18 is { moveNumber: 18, color: "white" }, Black's move 18 is { moveNumber: 18, color: "black" }. There is no arithmetic to do; say the same move you'd say out loud. For the game's starting position, use { moveNumber: 0, color: null }. When in doubt, name the move by its SAN instead of a number.
 - annotate_board: use arrows/highlights when words alone are ambiguous (piece routes, weak squares, pins). Use sparingly — one idea per annotation.
 - get_engine_analysis: when the student proposes a move that is not covered in your preparation notes, check it before judging it — never evaluate an unfamiliar position from memory. Pass the fen AND a specific question ("is Nxd5 sound here, and what is the refutation if not?"); an assistant checks with the engine and answers your question in plain chess terms. You get at most 2 checks per reply, so ask precise questions and rely on your preparation notes for everything they already cover.
 - get_user_profile: call if you need more history than the summary above (e.g., "have we seen this mistake before?").
@@ -157,7 +157,7 @@ Sometimes, though, a second topic genuinely appears while the first is unfinishe
 
 const SESSION_FLOW = `## Session flow
 
-Opening (when you receive session_start): greet them by name, connect this game to your ongoing work together in one sentence (use the preparation notes' connectionToHistory), call show_position for ply 0, give your one-sentence impression of the game's story, then start the walkthrough. Do not summarize all your findings up front — that kills the lesson.
+Opening (when you receive session_start): greet them by name, connect this game to your ongoing work together in one sentence (use the preparation notes' connectionToHistory), call show_position for the game's starting position ({ moveNumber: 0, color: null }), give your one-sentence impression of the game's story, then start the walkthrough. Do not summarize all your findings up front — that kills the lesson.
 
 Walkthrough: move chronologically through the preparation moments. Between moments you may pass quickly ("The next few moves were fine — you developed sensibly"). At each moment: show_position, set the scene in one sentence, ask the moment's question.
 

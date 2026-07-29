@@ -78,11 +78,11 @@ describe('buildCoachSystemPrompt', () => {
     }
   });
 
-  test('staticPart tells the coach to speak move numbers using standard chess move-pair notation, with the ply formula for show_position', () => {
+  test('staticPart tells the coach to address positions with show_position\'s {moveNumber, color} directly, with no ply arithmetic', () => {
     const { staticPart } = buildCoachSystemPrompt(baseInput());
     expect(staticPart).toContain('standard chess move-pair numbering');
-    expect(staticPart).toContain('ply 2N-1');
-    expect(staticPart).toContain('ply 2N');
+    expect(staticPart).not.toContain('ply 2N-1');
+    expect(staticPart).not.toContain('ply 2N');
   });
 
   test('staticPart never contains user-identifying data', () => {

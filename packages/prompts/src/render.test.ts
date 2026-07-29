@@ -98,7 +98,7 @@ describe('renderRecentFindingsBlock', () => {
 });
 
 describe('renderCoachingPlanBlock', () => {
-  test('numbers each moment with ply, kind, question, and key line', () => {
+  test('numbers each moment with a White/Black move-pair reference (not a bare ply, which is not standard PGN terminology), kind, question, and key line', () => {
     const block = renderCoachingPlanBlock({
       gameSummary: 'summary',
       openingNote: 'opening',
@@ -118,7 +118,29 @@ describe('renderCoachingPlanBlock', () => {
     });
 
     expect(block).toBe(
-      '1. Ply 23 (user_mistake): "Before pushing this pawn, where is your king going to live?" Key line: O-O Re8 d3 h6'
+      '1. White\'s move 12 (user_mistake): "Before pushing this pawn, where is your king going to live?" Key line: O-O Re8 d3 h6'
     );
+  });
+
+  test("a moment at ply 24 is Black's move 12", () => {
+    const block = renderCoachingPlanBlock({
+      gameSummary: 'summary',
+      openingNote: 'opening',
+      themes: ['king_safety'],
+      connectionToHistory: 'connection',
+      moments: [
+        {
+          ply: 24,
+          kind: 'user_mistake',
+          category: 'king_safety',
+          whatHappened: 'x',
+          socraticQuestion: 'y',
+          keyLine: 'z',
+          revealDepthPlies: 6
+        }
+      ]
+    });
+
+    expect(block).toContain("Black's move 12");
   });
 });

@@ -1,3 +1,4 @@
+import { plyToMoveRef } from '@chess-coach/chess-analysis';
 import { MISTAKE_CATEGORIES } from '@chess-coach/shared';
 import type { CoachingPlan, MistakeCategory } from '@chess-coach/shared';
 
@@ -59,12 +60,24 @@ export function renderRecentFindingsBlock(findings: RecentFinding[], now: Date):
     .join('\n');
 }
 
-/** prompts.md §2.2: numbered moments with ply, kind, question, and key line. */
+/**
+ * prompts.md §2.2: numbered moments with a move-pair reference, kind,
+ * question, and key line. Uses "White's/Black's move N" (standard PGN
+ * terminology) rather than a bare ply — the model must later address this
+ * same moment via show_position's {moveNumber, color}, so the reference it
+ * reads here has to be the one it can hand back unchanged, not one it has
+ * to convert.
+ */
 export function renderCoachingPlanBlock(plan: CoachingPlan): string {
-  return plan.moments
-    .map(
-      (moment, index) =>
-        `${index + 1}. Ply ${moment.ply} (${moment.kind}): "${moment.socraticQuestion}" Key line: ${moment.keyLine}`
-    )
-    .join('\n');
+  return plan.moments.map((moment, index) => `${index + 1}. ${renderMoment(moment)}`).join('\n');
+}
+
+function renderMoment(moment: CoachingPlan['moments'][number]): string {
+  const ref = plyToMoveRef(moment.ply);
+  const moveRef = ref.color === null ? 'the game start' : `${capitalize(ref.color)}'s move ${ref.moveNumber}`;
+  return `${moveRef} (${moment.kind}): "${moment.socraticQuestion}" Key line: ${moment.keyLine}`;
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
