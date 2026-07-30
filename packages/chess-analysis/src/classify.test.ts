@@ -107,12 +107,16 @@ describe('qualityFor', () => {
     expect(qualityFor(300, 0.25, true)).toBe('mistake');
   });
 
-  test('isMiss overrides the ladder result entirely, even at blunder-range epLoss', () => {
-    expect(qualityFor(900, 0.95, false, true)).toBe('miss');
+  test('isMiss overrides the ladder result when the epLoss has not reached mistake severity', () => {
+    expect(qualityFor(150, 0.15, false, true)).toBe('miss');
   });
 
   test('isMiss overrides even a would-be brilliant sacrifice', () => {
     expect(qualityFor(10, 0.01, true, true)).toBe('miss');
+  });
+
+  test('isMiss does not override when the move is already independently severe (blunder-range epLoss)', () => {
+    expect(qualityFor(800, 0.45, false, true)).toBe('blunder');
   });
 
   test('cpLoss 1 (not exactly 0) with tiny epLoss is good, not best', () => {
@@ -175,13 +179,13 @@ describe('classifyMoves', () => {
     // defended by the black king — but this is an ordinary trade (a
     // capture), not a material "offer", so the sacrifice heuristic excludes
     // it deliberately.
-    const beforeFen = '4k3/3p4/8/8/2B5/8/8/4K3 w - - 0 1';
+    const beforeFen = '4k3/3p4/4B3/8/8/8/8/4K3 w - - 0 1';
     const afterFen = '4k3/3B4/8/8/8/8/8/4K3 b - - 0 1';
     const game: ParsedGame = {
       headers: {},
       positions: [
         { ply: 0, fen: beforeFen, moveSan: null, moveUci: null, mover: null },
-        { ply: 1, fen: afterFen, moveSan: 'Bxd7', moveUci: 'c4d7', mover: 'white' }
+        { ply: 1, fen: afterFen, moveSan: 'Bxd7', moveUci: 'e6d7', mover: 'white' }
       ]
     };
     const evals = [evalAt(beforeFen, 0), evalAt(afterFen, 0)];
@@ -376,6 +380,26 @@ describe('classifyMoves', () => {
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
     expect(whiteMove?.quality).toBe('miss');
+  });
+
+  test('a large multiPv gap does not override a genuinely severe blunder', () => {
+    const game = twoPlyGame();
+    // Best line is Nc3, keeping things equal (0cp) -- not the move actually
+    // played (e4, per twoPlyGame's fixture). Second-best line is already bad
+    // (-500cp, gap 500 >= MISS_GAP_CP), which would trigger the raw multiPv
+    // isMiss signal. But the player's actual move (e4) leaves the position
+    // at -800cp -- a severe, independently-bad blunder (epLoss ~0.45, well
+    // past BLUNDER_EP) that should keep its real severity rather than being
+    // masked as 'miss'.
+    const evals = [
+      evalWithLines(START_FEN, [line('Nc3', 0), line('Nf3', -500)]),
+      evalAt(AFTER_E4_FEN, -800),
+      evalAt(AFTER_E4_E5_FEN, -800)
+    ];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.quality).toBe('blunder');
   });
 
   test('does not flag miss when the player found the engine-best move, regardless of the gap to the second line', () => {

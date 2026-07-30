@@ -84,9 +84,11 @@ describe('ClassifiedMoveSchema', () => {
   test('rejects an unknown quality tier (e.g. the old "inaccuracy" name)', () => {
     expect(ClassifiedMoveSchema.safeParse({ ...validMove, quality: 'inaccuracy' }).success).toBe(false);
   });
-  test('rejects a move missing hangsPiece', () => {
+  test('defaults hangsPiece to false when missing (backward compatibility with pre-branch persisted games)', () => {
     const { hangsPiece, ...withoutHangsPiece } = validMove;
-    expect(ClassifiedMoveSchema.safeParse(withoutHangsPiece).success).toBe(false);
+    const result = ClassifiedMoveSchema.safeParse(withoutHangsPiece);
+    expect(result.success).toBe(true);
+    expect(result.data?.hangsPiece).toBe(false);
   });
 });
 

@@ -180,7 +180,10 @@ function mateToCp(mateIn: number): number {
  * 0-1, via `expectedPoints`) as the primary signal, plus two overrides:
  * `isSacrifice` (unchanged detection, gated to low epLoss) and `isMiss`
  * (true multi-PV "you had a much better line and didn't play it" signal,
- * which overrides the ladder result entirely -- see `classifyMove`).
+ * which overrides the ladder result -- but only when the move's own epLoss
+ * hasn't already reached `mistake` severity, so a genuinely severe,
+ * independent blunder keeps its real tier instead of being masked as
+ * `miss` -- see `classifyMove`).
  *
  * `cpLoss === 0` is the one exception that stays cp-based rather than
  * EP-based: it is the exact "played the engine's own top choice" case, and
@@ -188,7 +191,7 @@ function mateToCp(mateIn: number): number {
  * the EP conversion.
  */
 export function qualityFor(cpLoss: number, epLoss: number, isSacrifice = false, isMiss = false): MoveQuality {
-  if (isMiss) return 'miss';
+  if (isMiss && epLoss < MISTAKE_EP) return 'miss';
   if (epLoss >= BLUNDER_EP) return 'blunder';
   if (epLoss >= MISTAKE_EP) return 'mistake';
   if (epLoss >= DUBIOUS_EP) return 'dubious';

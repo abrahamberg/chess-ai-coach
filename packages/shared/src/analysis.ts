@@ -51,7 +51,7 @@ export const ClassifiedMoveSchema = z.object({
   quality: MoveQualitySchema,
   bestLineSan: z.array(z.string()),
   evalAfterCp: z.number().int(),
-  hangsPiece: z.boolean()
+  hangsPiece: z.boolean().default(false)
 });
 export type ClassifiedMoveDto = z.infer<typeof ClassifiedMoveSchema>;
 
