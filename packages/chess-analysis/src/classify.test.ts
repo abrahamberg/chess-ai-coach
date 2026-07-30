@@ -1,7 +1,7 @@
 import type { EngineEval } from '@chess-coach/shared';
 import { describe, expect, test } from 'vitest';
 import type { ParsedGame } from './pgn.js';
-import { classifyMoves, expectedPoints, isSoundQuality } from './classify.js';
+import { classifyMoves, expectedPoints, hangsPiece, isSoundQuality } from './classify.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4_FEN = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -395,5 +395,44 @@ describe('isSoundQuality', () => {
 
   test('best is sound', () => {
     expect(isSoundQuality('best')).toBe(true);
+  });
+});
+
+describe('hangsPiece', () => {
+  test('a non-capture move onto an attacked, undefended square hangs the piece', () => {
+    // White bishop c4-e6: e6 is attacked by black pawns d7/f7, and no white
+    // piece defends it.
+    const beforeFen = '4k3/3p1p2/8/8/2B5/8/8/4K3 w - - 0 1';
+    expect(hangsPiece(beforeFen, 'Be6')).toBe(true);
+  });
+
+  test('a move onto an attacked square that a friendly piece defends does not hang', () => {
+    // Same bishop move, but a white rook on e1 defends e6 down the open e-file.
+    const beforeFen = '4k3/3p1p2/8/8/2B5/8/8/4RK2 w - - 0 1';
+    expect(hangsPiece(beforeFen, 'Be6')).toBe(false);
+  });
+
+  test('a move onto an unattacked square does not hang', () => {
+    const beforeFen = '4k3/8/8/8/2B5/8/8/4K3 w - - 0 1';
+    expect(hangsPiece(beforeFen, 'Be6')).toBe(false);
+  });
+
+  test('a pawn move is never flagged, even onto an attacked, undefended square', () => {
+    // White pawn d4-d5: a black knight on b6 attacks d5, nothing defends it,
+    // but pawn moves are excluded regardless.
+    const beforeFen = '4k3/8/1n6/8/3P4/8/8/4K3 w - - 0 1';
+    expect(hangsPiece(beforeFen, 'd5')).toBe(false);
+  });
+
+  test('a capture that leaves the capturing piece hanging still counts (unlike isSacrifice)', () => {
+    // Bxd7: bishop on e6 captures a pawn on d7, landing on a square the black king
+    // attacks, with no white defender.
+    const beforeFen = '4k3/3p4/4B3/8/8/8/8/4K3 w - - 0 1';
+    expect(hangsPiece(beforeFen, 'Bxd7')).toBe(true);
+  });
+
+  test('an illegal move string returns false rather than throwing', () => {
+    const beforeFen = '4k3/8/8/8/2B5/8/8/4K3 w - - 0 1';
+    expect(hangsPiece(beforeFen, 'Zz9')).toBe(false);
   });
 });

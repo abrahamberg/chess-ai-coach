@@ -108,6 +108,27 @@ export function isSacrifice(fenBefore: string, moveSan: string): boolean {
   });
 }
 
+/** Best-effort "left a piece hanging" signal: true when the piece that just
+ * moved lands on a square the opponent attacks with nothing of the mover's
+ * own defending it. Simpler than isSacrifice -- no equal-or-lesser-attacker
+ * comparison, no capture exclusion (a bad recapture that hangs the
+ * recapturing piece still counts) -- and, like isSacrifice, only looks one
+ * ply deep at the moved piece itself, not the whole board or later plies. */
+export function hangsPiece(fenBefore: string, moveSan: string): boolean {
+  const chess = new Chess(fenBefore);
+  let move;
+  try {
+    move = chess.move(moveSan);
+  } catch {
+    return false;
+  }
+  if (!move || move.piece === 'p' || move.piece === 'k') return false;
+
+  const opponentColor = move.color === 'w' ? 'b' : 'w';
+  if (!chess.isAttacked(move.to, opponentColor)) return false;
+  return !chess.isAttacked(move.to, move.color);
+}
+
 /** Converts a white-perspective centipawn score to the given mover's perspective. */
 export function toMoverPerspective(whiteCp: number, mover: 'white' | 'black'): number {
   return mover === 'white' ? whiteCp : -whiteCp;
