@@ -426,7 +426,7 @@ behavior are specified there; do not invent visual design in code.
 **Interfaces:**
 - Produces: `POST /api/credits/checkout {pack: 'small'|'medium'|'large'}` → Stripe Checkout session URL (packs/prices from env `STRIPE_PRICE_SMALL=300credits`, etc.; metadata `{userId, credits}`); `POST /api/stripe/webhook` raw-body, `stripe.webhooks.constructEvent` signature check, `checkout.session.completed` → ledger `+credits` with `stripe_event_id` (unique → replay is a no-op 200).
 
-- [ ] **Steps 1–5:** failing tests (mock stripe lib; bad signature → 400; valid event → balance up; same event twice → balance up once) → implement → pass → commit `feat: stripe credit packs`.
+- [x] **Steps 1–5:** failing tests (mock stripe lib; bad signature → 400; valid event → balance up; same event twice → balance up once) → implement → pass → commit `feat: stripe credit packs`.
 
 ---
 
