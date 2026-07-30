@@ -12,6 +12,7 @@ function move(overrides: Partial<ClassifiedMove> & { ply: number }): ClassifiedM
     quality: 'good',
     bestLineSan: ['e4'],
     evalAfterCp: 0,
+    hangsPiece: false,
     ...overrides
   };
 }

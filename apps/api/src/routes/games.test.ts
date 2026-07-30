@@ -200,7 +200,8 @@ describe('POST/GET /api/games', () => {
         cpLoss: 0,
         quality: 'good',
         bestLineSan: ['e4'],
-        evalAfterCp: 20
+        evalAfterCp: 20,
+        hangsPiece: false
       }
     ]);
 

@@ -12,7 +12,8 @@ const moves: ClassifiedMove[] = [
     cpLoss: 0,
     quality: 'good',
     bestLineSan: ['e4', 'e5'],
-    evalAfterCp: 20
+    evalAfterCp: 20,
+    hangsPiece: false
   },
   {
     ply: 2,
@@ -22,7 +23,8 @@ const moves: ClassifiedMove[] = [
     cpLoss: 0,
     quality: 'good',
     bestLineSan: ['e5'],
-    evalAfterCp: 15
+    evalAfterCp: 15,
+    hangsPiece: false
   },
   {
     ply: 3,
@@ -32,7 +34,8 @@ const moves: ClassifiedMove[] = [
     cpLoss: 180,
     quality: 'mistake',
     bestLineSan: ['d4', 'exd4'],
-    evalAfterCp: -160
+    evalAfterCp: -160,
+    hangsPiece: false
   }
 ];
 

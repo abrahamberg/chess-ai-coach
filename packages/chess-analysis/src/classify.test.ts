@@ -1,7 +1,7 @@
-import type { EngineEval } from '@chess-coach/shared';
+import type { EngineEval, EngineLine } from '@chess-coach/shared';
 import { describe, expect, test } from 'vitest';
 import type { ParsedGame } from './pgn.js';
-import { classifyMoves, expectedPoints, hangsPiece, isSoundQuality } from './classify.js';
+import { classifyMoves, expectedPoints, hangsPiece, isSoundQuality, qualityFor } from './classify.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4_FEN = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -32,6 +32,14 @@ function evalAt(fen: string, cp: number | null, mateIn: number | null = null): E
   };
 }
 
+function line(moveSan: string, cp: number | null, mateIn: number | null = null): EngineLine {
+  return { moveUci: 'e2e4', moveSan, cp, mateIn };
+}
+
+function evalWithLines(fen: string, lines: EngineLine[]): EngineEval {
+  return { ply: 0, fen, depth: 18, lines };
+}
+
 describe('expectedPoints', () => {
   test('cp=0 is exactly 0.5 (a coin flip)', () => {
     expect(expectedPoints(0)).toBeCloseTo(0.5, 10);
@@ -58,6 +66,60 @@ describe('expectedPoints', () => {
   });
 });
 
+describe('qualityFor', () => {
+  test('cpLoss 0 is always best, regardless of epLoss', () => {
+    expect(qualityFor(0, 0)).toBe('best');
+  });
+
+  test('epLoss just below the interesting boundary (0.05) is good', () => {
+    expect(qualityFor(50, 0.049)).toBe('good');
+  });
+
+  test('epLoss at the interesting boundary (0.05) is interesting', () => {
+    expect(qualityFor(50, 0.05)).toBe('interesting');
+  });
+
+  test('epLoss just below the dubious boundary (0.10) stays interesting', () => {
+    expect(qualityFor(100, 0.099)).toBe('interesting');
+  });
+
+  test('epLoss at the dubious boundary (0.10) is dubious', () => {
+    expect(qualityFor(100, 0.1)).toBe('dubious');
+  });
+
+  test('epLoss at the mistake boundary (0.20) is mistake', () => {
+    expect(qualityFor(200, 0.2)).toBe('mistake');
+  });
+
+  test('epLoss at the blunder boundary (0.30) is blunder', () => {
+    expect(qualityFor(300, 0.3)).toBe('blunder');
+  });
+
+  test('epLoss well past the blunder boundary is still blunder', () => {
+    expect(qualityFor(900, 0.95)).toBe('blunder');
+  });
+
+  test('a sacrifice with low epLoss is brilliant', () => {
+    expect(qualityFor(10, 0.01, true)).toBe('brilliant');
+  });
+
+  test('a sacrifice with high epLoss is not brilliant -- the ladder wins', () => {
+    expect(qualityFor(300, 0.25, true)).toBe('mistake');
+  });
+
+  test('isMiss overrides the ladder result entirely, even at blunder-range epLoss', () => {
+    expect(qualityFor(900, 0.95, false, true)).toBe('miss');
+  });
+
+  test('isMiss overrides even a would-be brilliant sacrifice', () => {
+    expect(qualityFor(10, 0.01, true, true)).toBe('miss');
+  });
+
+  test('cpLoss 1 (not exactly 0) with tiny epLoss is good, not best', () => {
+    expect(qualityFor(1, 0.001)).toBe('good');
+  });
+});
+
 describe('classifyMoves', () => {
   test('cpLoss 0 (played the engine-best move) classifies as best', () => {
     const game = twoPlyGame();
@@ -67,29 +129,6 @@ describe('classifyMoves', () => {
 
     expect(whiteMove?.cpLoss).toBe(0);
     expect(whiteMove?.quality).toBe('best');
-  });
-
-  test('cpLoss 75 classifies as dubious', () => {
-    const game = twoPlyGame();
-    // White to move at ply 0: best = +100 (white perspective). White plays a
-    // move leaving the position at ply 1 with best = +25 (still white
-    // perspective, mover is white so no sign flip). 100 - 25 = 75.
-    const evals = [evalAt(START_FEN, 100), evalAt(AFTER_E4_FEN, 25), evalAt(AFTER_E4_E5_FEN, 25)];
-
-    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
-
-    expect(whiteMove?.cpLoss).toBe(75);
-    expect(whiteMove?.quality).toBe('dubious');
-  });
-
-  test('cpLoss 30 (below dubious, above the near-best band) classifies as interesting', () => {
-    const game = twoPlyGame();
-    const evals = [evalAt(START_FEN, 100), evalAt(AFTER_E4_FEN, 70), evalAt(AFTER_E4_E5_FEN, 70)];
-
-    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
-
-    expect(whiteMove?.cpLoss).toBe(30);
-    expect(whiteMove?.quality).toBe('interesting');
   });
 
   test('a non-capture move onto a square defended by a black pawn, with low cpLoss, classifies as brilliant', () => {
@@ -152,34 +191,6 @@ describe('classifyMoves', () => {
     expect(whiteMove?.quality).toBe('best');
   });
 
-  test('cpLoss 150 classifies as mistake', () => {
-    const game = twoPlyGame();
-    const evals = [
-      evalAt(START_FEN, 100),
-      evalAt(AFTER_E4_FEN, -50),
-      evalAt(AFTER_E4_E5_FEN, -50)
-    ];
-
-    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
-
-    expect(whiteMove?.cpLoss).toBe(150);
-    expect(whiteMove?.quality).toBe('mistake');
-  });
-
-  test('cpLoss 400 classifies as blunder', () => {
-    const game = twoPlyGame();
-    const evals = [
-      evalAt(START_FEN, 100),
-      evalAt(AFTER_E4_FEN, -300),
-      evalAt(AFTER_E4_E5_FEN, -300)
-    ];
-
-    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
-
-    expect(whiteMove?.cpLoss).toBe(400);
-    expect(whiteMove?.quality).toBe('blunder');
-  });
-
   test('clamps cpLoss at 1000 even when the raw gap is larger', () => {
     const game = twoPlyGame();
     const evals = [
@@ -191,25 +202,7 @@ describe('classifyMoves', () => {
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
     expect(whiteMove?.cpLoss).toBe(1000);
-    expect(whiteMove?.quality).toBe('miss');
-  });
-
-  test('missing an available mate reclassifies a would-be blunder as miss', () => {
-    const game = twoPlyGame();
-    // White had mate-in-3 available (mateIn: 3 -> +1000cp, white perspective,
-    // mover is white so no flip) but instead played a move leaving a roughly
-    // equal position (0 cp) at ply 1. Having a forced mate available counts
-    // as "clearly winning" for the miss heuristic.
-    const evals = [
-      evalAt(START_FEN, null, 3),
-      evalAt(AFTER_E4_FEN, 0, null),
-      evalAt(AFTER_E4_E5_FEN, 0, null)
-    ];
-
-    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
-
-    expect(whiteMove?.cpLoss).toBe(1000);
-    expect(whiteMove?.quality).toBe('miss');
+    expect(whiteMove?.quality).toBe('blunder');
   });
 
   test('black-to-move perspective flip: black finds the objectively-best move, no cp loss', () => {
@@ -355,36 +348,105 @@ describe('classifyMoves', () => {
     expect(classifyMoves(game, evals, 'white')).toEqual([]);
   });
 
-  test('a mistake-range cpLoss from an already-winning position (bestCp >= 300) classifies as miss', () => {
+  test('the EP-loss ladder is wired end-to-end through classifyMoves (not just qualityFor in isolation)', () => {
     const game = twoPlyGame();
-    // White was +300 before the move (exactly at the winning threshold), and
-    // gives back 150cp (mistake-range on its own) — reclassified as miss.
-    const evals = [evalAt(START_FEN, 300), evalAt(AFTER_E4_FEN, 150), evalAt(AFTER_E4_E5_FEN, 150)];
+    // bestCp=0, playedCp=-500 (mover perspective) -> epLoss = expectedPoints(0)
+    // - expectedPoints(-500) ~= 0.5 - 0.137 ~= 0.363, past the 0.30 blunder
+    // boundary.
+    const evals = [evalAt(START_FEN, 0), evalAt(AFTER_E4_FEN, -500), evalAt(AFTER_E4_E5_FEN, -500)];
 
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
-    expect(whiteMove?.cpLoss).toBe(150);
+    expect(whiteMove?.cpLoss).toBe(500);
+    expect(whiteMove?.quality).toBe('blunder');
+  });
+
+  test('a large multiPv gap overrides to miss even when the move played was still nearly winning (EP saturation)', () => {
+    const game = twoPlyGame();
+    // Best line is mate-in-5 (+1000cp); the move actually played (e4) leaves a
+    // position evaluated at only +700 -- still winning big, so naive epLoss
+    // (expectedPoints(1000) - expectedPoints(700) ~= 0.046) would read as
+    // 'good'. The 300cp raw gap to the second-best line is what catches this.
+    const evals = [
+      evalWithLines(START_FEN, [line('Qxf7', null, 5), line('e4', 700)]),
+      evalAt(AFTER_E4_FEN, 700),
+      evalAt(AFTER_E4_E5_FEN, 700)
+    ];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
     expect(whiteMove?.quality).toBe('miss');
   });
 
-  test('the same mistake-range cpLoss stays mistake when the position was NOT already winning (bestCp just below 300)', () => {
+  test('does not flag miss when the player found the engine-best move, regardless of the gap to the second line', () => {
     const game = twoPlyGame();
-    const evals = [evalAt(START_FEN, 299), evalAt(AFTER_E4_FEN, 149), evalAt(AFTER_E4_E5_FEN, 149)];
+    const evals = [
+      evalWithLines(START_FEN, [line('e4', 900), line('Nf3', 100)]),
+      evalAt(AFTER_E4_FEN, 900),
+      evalAt(AFTER_E4_E5_FEN, 900)
+    ];
 
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
-    expect(whiteMove?.cpLoss).toBe(150);
+    expect(whiteMove?.cpLoss).toBe(0);
+    expect(whiteMove?.quality).toBe('best');
+  });
+
+  test('does not flag miss when the multiPv gap is below the 300cp threshold', () => {
+    const game = twoPlyGame();
+    const evals = [
+      evalWithLines(START_FEN, [line('Nxf7', 400), line('e4', 200)]),
+      evalAt(AFTER_E4_FEN, 200),
+      evalAt(AFTER_E4_E5_FEN, 200)
+    ];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.cpLoss).toBe(200);
+    expect(whiteMove?.quality).toBe('dubious');
+  });
+
+  test('does not flag miss when evalBefore has only one line (no multiPv data)', () => {
+    const game = twoPlyGame();
+    const evals = [evalAt(START_FEN, 900), evalAt(AFTER_E4_FEN, 200), evalAt(AFTER_E4_E5_FEN, 200)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.cpLoss).toBe(700);
     expect(whiteMove?.quality).toBe('mistake');
   });
 
-  test('a blunder-range cpLoss from an already-winning position classifies as miss, not blunder', () => {
-    const game = twoPlyGame();
-    const evals = [evalAt(START_FEN, 500), evalAt(AFTER_E4_FEN, 50), evalAt(AFTER_E4_E5_FEN, 50)];
+  test('a move ending in # (delivered mate) is never classified as miss, even with a large multiPv gap to a different top line', () => {
+    const game: ParsedGame = {
+      headers: {},
+      positions: [
+        { ply: 0, fen: START_FEN, moveSan: null, moveUci: null, mover: null },
+        { ply: 1, fen: AFTER_E4_FEN, moveSan: 'e4#', moveUci: 'e2e4', mover: 'white' }
+      ]
+    };
+    const evals = [evalWithLines(START_FEN, [line('Qxf7', null, 1), line('e4', 50)]), evalAt(AFTER_E4_FEN, 1000)];
 
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
-    expect(whiteMove?.cpLoss).toBe(450);
-    expect(whiteMove?.quality).toBe('miss');
+    expect(whiteMove?.cpLoss).toBe(0);
+    expect(whiteMove?.quality).toBe('best');
+  });
+
+  test('classifyMoves surfaces hangsPiece on the returned move', () => {
+    const beforeFen = '4k3/3p1p2/8/8/2B5/8/8/4K3 w - - 0 1';
+    const afterFen = '4k3/3p1p2/4B3/8/8/8/8/4K3 b - - 1 1';
+    const game: ParsedGame = {
+      headers: {},
+      positions: [
+        { ply: 0, fen: beforeFen, moveSan: null, moveUci: null, mover: null },
+        { ply: 1, fen: afterFen, moveSan: 'Be6', moveUci: 'c4e6', mover: 'white' }
+      ]
+    };
+    const evals = [evalAt(beforeFen, 0), evalAt(afterFen, 0)];
+
+    const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
+
+    expect(whiteMove?.hangsPiece).toBe(true);
   });
 });
 

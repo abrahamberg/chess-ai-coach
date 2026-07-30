@@ -3,11 +3,11 @@ import type { EngineEval, EngineLine, MoveQuality } from '@chess-coach/shared';
 import type { ParsedGame } from './pgn.js';
 
 const MATE_CP = 1000;
-const INTERESTING_THRESHOLD_CP = 20;
-const DUBIOUS_THRESHOLD_CP = 50;
-const MISTAKE_THRESHOLD_CP = 100;
-const BLUNDER_THRESHOLD_CP = 300;
-const WINNING_POSITION_CP = 300;
+const INTERESTING_EP = 0.05;
+const DUBIOUS_EP = 0.1;
+const MISTAKE_EP = 0.2;
+const BLUNDER_EP = 0.3;
+const MISS_GAP_CP = 300;
 
 /** Static piece values for the sacrifice heuristic — not engine-precise, just
  * enough to tell "gave up more than it's worth" from "traded evenly". */
@@ -22,6 +22,7 @@ export interface ClassifiedMove {
   quality: MoveQuality;
   bestLineSan: string[];
   evalAfterCp: number;
+  hangsPiece: boolean;
 }
 
 /**
@@ -62,8 +63,11 @@ function classifyMove(
   const deliveredMate = position.moveSan?.endsWith('#') ?? false;
   const playedCp = deliveredMate ? bestCp : toMoverPerspective(whitePerspectiveCp(bestLine(evalAfter)), mover);
   const cpLoss = clamp(bestCp - playedCp, 0, MATE_CP);
+  const epLoss = clamp(expectedPoints(bestCp) - expectedPoints(playedCp), 0, 1);
   const sacrifice =
     fenBefore !== undefined && position.moveSan !== null && isSacrifice(fenBefore, position.moveSan);
+  const hangs = fenBefore !== undefined && position.moveSan !== null && hangsPiece(fenBefore, position.moveSan);
+  const isMiss = computeIsMiss(evalBefore, position.moveSan, mover, bestCp, deliveredMate);
 
   return {
     ply: position.ply,
@@ -71,10 +75,32 @@ function classifyMove(
     mover,
     isUserMove: mover === userColor,
     cpLoss,
-    quality: qualityFor(cpLoss, sacrifice, bestCp),
+    quality: qualityFor(cpLoss, epLoss, sacrifice, isMiss),
     bestLineSan: bestLineSan(evalBefore),
-    evalAfterCp: whitePerspectiveCp(bestLine(evalAfter))
+    evalAfterCp: whitePerspectiveCp(bestLine(evalAfter)),
+    hangsPiece: hangs
   };
+}
+
+/** True multi-PV "miss": the pre-move position had a much better line
+ * (>=MISS_GAP_CP better, mover perspective) than the one actually played,
+ * and the mover didn't deliver mate instead (which would otherwise
+ * spuriously trigger this via the mate-vs-non-mate cp gap, even though
+ * delivering mate is definitionally the best possible outcome). */
+function computeIsMiss(
+  evalBefore: EngineEval | undefined,
+  playedSan: string | null,
+  mover: 'white' | 'black',
+  bestCp: number,
+  deliveredMate: boolean
+): boolean {
+  if (deliveredMate) return false;
+  const lines = evalBefore?.lines ?? [];
+  const bestMoveSan = lines[0]?.moveSan;
+  const secondLine = lines[1];
+  if (bestMoveSan === undefined || secondLine === undefined || playedSan === bestMoveSan) return false;
+  const secondBestCp = toMoverPerspective(whitePerspectiveCp(secondLine), mover);
+  return bestCp - secondBestCp >= MISS_GAP_CP;
 }
 
 /**
@@ -150,25 +176,23 @@ function mateToCp(mateIn: number): number {
 }
 
 /**
- * Bucket a non-negative centipawn loss (plus the sacrifice signal and the
- * mover-perspective eval of the position BEFORE the move) into a move
- * quality per the fixed thresholds. `cpLoss === 0` is `best`; 1–19 is `good`;
- * a sacrifice anywhere in the 0–19 range outranks both as `brilliant`.
+ * Buckets a move into a quality tier using Expected-Points-loss (`epLoss`,
+ * 0-1, via `expectedPoints`) as the primary signal, plus two overrides:
+ * `isSacrifice` (unchanged detection, gated to low epLoss) and `isMiss`
+ * (true multi-PV "you had a much better line and didn't play it" signal,
+ * which overrides the ladder result entirely -- see `classifyMove`).
  *
- * `bestCpBeforeMoverPerspective` powers the `miss` tier: a move that would
- * otherwise be a `mistake`/`blunder` (cpLoss >= MISTAKE_THRESHOLD_CP)
- * reclassifies to `miss` when the mover was already clearly winning
- * (>= WINNING_POSITION_CP) before playing it — "you were winning big and
- * gave a lot of it back". This is an approximation, not true chess.com-style
- * detection (which compares the engine's top-2 lines) — see
- * docs/superpowers/specs/2026-07-29-move-quality-badges-design.md.
+ * `cpLoss === 0` is the one exception that stays cp-based rather than
+ * EP-based: it is the exact "played the engine's own top choice" case, and
+ * using raw cp for it sidesteps any floating-point-equality concerns from
+ * the EP conversion.
  */
-export function qualityFor(cpLoss: number, isSacrifice = false, bestCpBeforeMoverPerspective = 0): MoveQuality {
-  const wasWinningBig = bestCpBeforeMoverPerspective >= WINNING_POSITION_CP;
-  if (cpLoss >= BLUNDER_THRESHOLD_CP) return wasWinningBig ? 'miss' : 'blunder';
-  if (cpLoss >= MISTAKE_THRESHOLD_CP) return wasWinningBig ? 'miss' : 'mistake';
-  if (cpLoss >= DUBIOUS_THRESHOLD_CP) return 'dubious';
-  if (cpLoss >= INTERESTING_THRESHOLD_CP) return 'interesting';
+export function qualityFor(cpLoss: number, epLoss: number, isSacrifice = false, isMiss = false): MoveQuality {
+  if (isMiss) return 'miss';
+  if (epLoss >= BLUNDER_EP) return 'blunder';
+  if (epLoss >= MISTAKE_EP) return 'mistake';
+  if (epLoss >= DUBIOUS_EP) return 'dubious';
+  if (epLoss >= INTERESTING_EP) return 'interesting';
   if (isSacrifice) return 'brilliant';
   return cpLoss === 0 ? 'best' : 'good';
 }
