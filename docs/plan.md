@@ -143,8 +143,8 @@ test('rejects unknown category', () => {
 
 **Interfaces:**
 - Produces: `findCandidateMoments(moves: ClassifiedMove[]): CandidateMoment[]`,
-  `CandidateMoment = { ply: number; kind: 'user_mistake'|'missed_chance'|'turning_point'; cpLoss: number }`.
-- Rules (specs §4.2.3): user mistakes/blunders; user `good` moves where a ≥300cp better alternative existed (missed_chance uses multiPv line gap); plies where white-perspective eval crosses ±150. No cap here (planner LLM prioritizes); sorted by ply; deduped by ply (priority: user_mistake > missed_chance > turning_point).
+  `CandidateMoment = { ply: number; kind: 'user_mistake'|'turning_point'; cpLoss: number }`.
+- Rules (specs §4.2.3): user mistakes/blunders/misses; plies where white-perspective eval crosses ±150. No cap here (planner LLM prioritizes); sorted by ply; deduped by ply (priority: user_mistake > turning_point). (The former `missed_chance` rule — user `good` moves where a ≥300cp better multiPv line existed — was folded into `classify.ts`'s true multi-PV `miss` quality tier as of the 2026-07-30 threshold-retuning spec; any move it would have flagged is now already tagged `miss` and reaches the coaching plan via the `user_mistake` rule instead.)
 
 - [x] **Steps 1–4:** failing tests with fixture games covering each rule + dedup, then implement, then pass.
 - [x] **Step 5: Commit** — `feat: critical moment detection`.
