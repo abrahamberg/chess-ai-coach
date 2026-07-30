@@ -23,7 +23,7 @@ spec:
         - name: api
           image: {{ include "chess-ai-coach.image" (dict "ctx" . "image" .Values.api.image) | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["tsx", "apps/api/src/server.ts"]
+          command: ["node", "dist-bundle/server.mjs"]
           securityContext:
             {{- include "chess-ai-coach.containerSecurityContext" . | nindent 12 }}
           ports:

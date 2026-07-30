@@ -1,7 +1,7 @@
 {{- if .Values.migrate.enabled }}
 {{/* architecture §11: Helm hook `pre-install,pre-upgrade` runs the kysely
      migrations before any new code sees the database. Uses the api image —
-     same source tree, different command.
+     same bundle, different entrypoint (migrate.mjs).
 
      Caveat when postgresql.enabled=true: on a *first* install the subchart's
      StatefulSet is created in the main phase, i.e. after pre-install hooks, so
@@ -34,7 +34,7 @@ spec:
         - name: migrate
           image: {{ include "chess-ai-coach.image" (dict "ctx" . "image" .Values.api.image) | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["npm", "run", "migrate", "--workspace=@chess-coach/api"]
+          command: ["node", "dist-bundle/migrate.mjs"]
           securityContext:
             {{- include "chess-ai-coach.containerSecurityContext" . | nindent 12 }}
           env:

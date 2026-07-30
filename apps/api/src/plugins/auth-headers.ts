@@ -22,9 +22,13 @@ export interface AuthHeadersOptions {
 const DEV_STUB_USER: AuthUser = { email: 'dev@local.test', displayName: 'dev@local.test' };
 
 // architecture.md §11/§12: oauth2-proxy is configured with `--skip-auth-route` for
-// this path and never sets X-Auth-Request-* headers on it — Stripe calls it directly
-// and is authenticated instead by the webhook signature (routes/stripe-webhook.ts).
-const AUTH_EXEMPT_PATHS = new Set(['/api/stripe/webhook']);
+// each of these paths and never sets X-Auth-Request-* headers on them.
+//   /api/stripe/webhook — Stripe calls it directly and is authenticated instead by
+//     the webhook signature (routes/stripe-webhook.ts).
+//   /healthz, /readyz — the k8s kubelet probes these directly, bypassing the proxy,
+//     with no headers of any kind; requiring auth here would keep every pod out of
+//     the Ready state (deploy/helm/chess-ai-coach api Deployment).
+const AUTH_EXEMPT_PATHS = new Set(['/api/stripe/webhook', '/healthz', '/readyz']);
 
 /** Decorates `request.user` from oauth2-proxy's X-Auth-Request-* headers. Requests
  * without those headers get a dev-stub identity in dev-stub mode, or 401 otherwise

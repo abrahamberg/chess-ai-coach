@@ -28,6 +28,20 @@ describe('probes', () => {
     expect(response.statusCode).toBe(503);
     expect(response.headers['content-type']).toContain('application/problem+json');
   });
+
+  // The k8s kubelet sends no X-Auth-Request-* headers, and the probes do not go
+  // through oauth2-proxy at all — so in the deployed posture (AUTH_MODE unset =>
+  // 'proxy') an authenticated probe endpoint means pods never become Ready.
+  // architecture.md §11 puts /healthz and /readyz in oauth2-proxy's
+  // --skip-auth-route alongside the Stripe webhook for the same reason.
+  test.each(['/healthz', '/readyz'] as const)(
+    'GET %s answers without proxy auth headers in proxy mode (k8s probes are unauthenticated)',
+    async (url) => {
+      const app = buildApp({ authMode: 'proxy', checkReady: () => Promise.resolve(true) });
+      const response = await app.inject({ method: 'GET', url });
+      expect(response.statusCode).toBe(200);
+    }
+  );
 });
 
 describe('proxy auth headers', () => {

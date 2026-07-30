@@ -1,4 +1,4 @@
-{{/* Same image as the api, different entrypoint (apps/api/src/worker.ts is the
+{{/* Same image as the api, different entrypoint (worker.mjs is the bundled
      graphile-worker runner). architecture §11: 1 replica, no HPA. */}}
 apiVersion: apps/v1
 kind: Deployment
@@ -23,7 +23,7 @@ spec:
         - name: worker
           image: {{ include "chess-ai-coach.image" (dict "ctx" . "image" .Values.api.image) | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["tsx", "apps/api/src/worker.ts"]
+          command: ["node", "dist-bundle/worker.mjs"]
           securityContext:
             {{- include "chess-ai-coach.containerSecurityContext" . | nindent 12 }}
           env:

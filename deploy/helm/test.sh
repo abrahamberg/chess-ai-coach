@@ -100,6 +100,7 @@ fi
 # ---------------------------------------------------------------------------
 API="$RENDER_DIR/api.yaml"
 render "$API" --show-only templates/api-deployment.yaml
+assert_contains "api deployment runs the server bundle" '"node", "dist-bundle/server.mjs"' "$API"
 assert_contains "api deployment declares ENGINE_URL" "name: ENGINE_URL" "$API"
 assert_contains "api deployment declares DATABASE_URL" "name: DATABASE_URL" "$API"
 assert_contains "api deployment declares LLM_KEY_MASTER_KEY" "name: LLM_KEY_MASTER_KEY" "$API"
@@ -109,7 +110,7 @@ assert_contains "api readiness probe is /readyz (architecture §11)" "path: /rea
 # The worker is the same image with a different command (apps/api/src/worker.ts).
 WORKER="$RENDER_DIR/worker.yaml"
 render "$WORKER" --show-only templates/worker-deployment.yaml
-assert_contains "worker deployment runs worker.ts" "apps/api/src/worker.ts" "$WORKER"
+assert_contains "worker deployment runs the worker bundle" '"node", "dist-bundle/worker.mjs"' "$WORKER"
 assert_contains "worker deployment declares ENGINE_URL" "name: ENGINE_URL" "$WORKER"
 
 # ---------------------------------------------------------------------------
@@ -164,7 +165,7 @@ MIGRATE="$RENDER_DIR/migrate.yaml"
 render "$MIGRATE" --show-only templates/migrate-job.yaml
 assert_contains "migrate job is a pre-install/pre-upgrade hook" '"helm.sh/hook": pre-install,pre-upgrade' "$MIGRATE"
 assert_contains "migrate job runs the kysely migrations" \
-  '"npm", "run", "migrate", "--workspace=@chess-coach/api"' "$MIGRATE"
+  '"node", "dist-bundle/migrate.mjs"' "$MIGRATE"
 assert_contains "migrate job reuses the api image" "chess-ai-coach/api" "$MIGRATE"
 
 NETPOL="$RENDER_DIR/netpol.yaml"

@@ -1,68 +1,36 @@
-# Image for both `api` (apps/api/src/server.ts) and `worker`
-# (apps/api/src/worker.ts) — same tree, different command, chosen by the k8s
-# Deployment. The Helm migrate-job hook reuses it too.
+# Runtime image for `api`, `worker` and the Helm migrate-job — one image, three
+# commands (dist-bundle/{server,worker,migrate}.mjs).
 #
-# Build from the repo root:  docker build -f docker/Dockerfile.api .
-
-# --- build: full deps for the api's workspaces; also the typecheck gate ------
-FROM node:22-slim AS build
-WORKDIR /app
-
-COPY package.json package-lock.json tsconfig.base.json tsconfig.json ./
-COPY packages/shared/package.json packages/shared/
-COPY packages/chess-analysis/package.json packages/chess-analysis/
-COPY packages/prompts/package.json packages/prompts/
-COPY apps/api/package.json apps/api/
-RUN npm ci \
-    --workspace=@chess-coach/shared \
-    --workspace=@chess-coach/chess-analysis \
-    --workspace=@chess-coach/prompts \
-    --workspace=@chess-coach/api \
-    --include-workspace-root
-
-COPY packages/shared packages/shared
-COPY packages/chess-analysis packages/chess-analysis
-COPY packages/prompts packages/prompts
-COPY apps/api apps/api
-RUN npm run typecheck -- --build apps/api
-
-# --- runtime: production deps only, no devDependencies, no unrelated apps ----
+# COPY-only by design: nothing is compiled or installed here. The bundle and the
+# production node_modules are built on the CI runner first, which is faster and
+# better-cached than doing the same work inside a Docker layer. See
+# docs/deploy-build.md for the exact commands that must run before this build.
+#
+# Why this matters for arm64: `tsx` (the runtime TS loader this image used to
+# need) depends on esbuild, whose native binary — @esbuild/linux-x64 vs
+# @esbuild/linux-arm64 — is selected at npm-install time by the *build* machine's
+# architecture. Copying an amd64 runner's node_modules into an arm64 container
+# would ship the wrong binary. apps/api is therefore bundled ahead of time and
+# runs on plain `node`, and every remaining production dependency is pure
+# JavaScript — no native binaries, no install scripts, no os/cpu constraints
+# (audited; see docs/deploy-build.md) — so the copied tree is portable.
 FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY package.json package-lock.json tsconfig.base.json tsconfig.json ./
-COPY packages/shared/package.json packages/shared/tsconfig.json packages/shared/
-COPY packages/chess-analysis/package.json packages/chess-analysis/tsconfig.json packages/chess-analysis/
-COPY packages/prompts/package.json packages/prompts/tsconfig.json packages/prompts/
-COPY apps/api/package.json apps/api/tsconfig.json apps/api/
-RUN npm ci --omit=dev \
-    --workspace=@chess-coach/shared \
-    --workspace=@chess-coach/chess-analysis \
-    --workspace=@chess-coach/prompts \
-    --workspace=@chess-coach/api \
-    --include-workspace-root \
- && npm cache clean --force
+# Pre-built on the runner by:
+#   npm ci --omit=dev --workspace=@chess-coach/api --include-workspace-root
+# First-party workspace code is inlined into the bundle, so the dangling
+# @chess-coach/* symlinks this tree contains are never resolved at runtime.
+COPY node_modules ./node_modules
 
-# tsx, not plain `node --experimental-strip-types`: workspace packages' exports
-# point at raw .ts source (e.g. @chess-coach/shared -> src/index.ts), whose own
-# NodeNext-style `./foo.js` relative imports (really `./foo.ts`) plain Node's
-# type-stripping does not resolve. Same reasoning as docker/Dockerfile.engine.
-# tsx is a *root* devDependency, so --omit=dev drops it; reinstall it globally
-# at exactly the version the lockfile resolved.
-RUN npm install -g "tsx@$(node -p "require('./package-lock.json').packages['node_modules/tsx'].version")" \
- && npm cache clean --force
-
-# Sourced from the build stage, so the typecheck above is a hard prerequisite
-# of this image (BuildKit prunes stages nothing depends on). `src` only — tests
-# and build output stay out of the runtime image.
-COPY --from=build /app/packages/shared/src packages/shared/src
-COPY --from=build /app/packages/chess-analysis/src packages/chess-analysis/src
-COPY --from=build /app/packages/prompts/src packages/prompts/src
-COPY --from=build /app/apps/api/src apps/api/src
+# Pre-built on the runner by `npm run bundle --workspace=@chess-coach/api`.
+# Self-contained ESM (`.mjs`), so no package.json is needed alongside it.
+COPY apps/api/dist-bundle ./dist-bundle
 
 USER node
 ENV PORT=3000
 EXPOSE 3000
-# Overridden by the Helm worker Deployment to run apps/api/src/worker.ts.
-CMD ["tsx", "apps/api/src/server.ts"]
+# The worker Deployment and the migrate-job override this with worker.mjs and
+# migrate.mjs respectively (same image, different command).
+CMD ["node", "dist-bundle/server.mjs"]
