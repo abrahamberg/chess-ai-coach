@@ -446,7 +446,7 @@ behavior are specified there; do not invent visual design in code.
 **Files:**
 - Create: `.github/workflows/ci.yml` (install stockfish, npm ci, lint, typecheck, test w/ Testcontainers, docker build all images, helm lint)
 
-- [ ] **Steps 1–5:** push branch → CI green → commit `chore: ci pipeline`.
+- [x] **Steps 1–5:** push branch → CI green → commit `chore: ci pipeline`.
 
 ---
 

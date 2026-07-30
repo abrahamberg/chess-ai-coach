@@ -19,6 +19,12 @@ export class ApiError extends Error {
  * (`({signal}) => apiGet(path, schema, signal)`) — otherwise React 18
  * StrictMode's dev-only double-mount cancels the first fetch without this
  * function ever seeing it, leaving the query stuck pending/paused forever. */
+// `any` in the Def/Input slots is load-bearing, not laziness: zod's `Input` type
+// for a schema with a `.default(...)` field (e.g. ClassifiedMoveSchema's
+// hangsPiece) makes that key optional, and pinning Input to T here would let
+// that optionality leak into the inferred T via property-position inference —
+// callers would see `hangsPiece?: boolean` instead of `hangsPiece: boolean`.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function apiGet<T>(path: string, schema: ZodType<T, any, any>, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { credentials: 'include', signal });
   if (!response.ok) {
@@ -28,6 +34,7 @@ export async function apiGet<T>(path: string, schema: ZodType<T, any, any>, sign
   return schema.parse(body);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see apiGet above
 export async function apiPost<T>(path: string, payload: unknown, schema: ZodType<T, any, any>): Promise<T> {
   const response = await fetch(path, {
     method: 'POST',
@@ -42,6 +49,7 @@ export async function apiPost<T>(path: string, payload: unknown, schema: ZodType
   return schema.parse(body);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see apiGet above
 export async function apiPatch<T>(path: string, payload: unknown, schema: ZodType<T, any, any>): Promise<T> {
   const response = await fetch(path, {
     method: 'PATCH',
