@@ -47,4 +47,23 @@ describe('creditsService', () => {
 
     await expect(service.assertCanSpend(userId)).rejects.toThrow(InsufficientCreditsError);
   });
+
+  test('grantPurchase credits the ledger by the pack size', async () => {
+    const userId = await makeUser('purchase-user@example.com');
+    const service = createCreditsService(db);
+
+    await service.grantPurchase({ userId, credits: 300, stripeEventId: 'evt_purchase_1' });
+
+    expect(await service.balance(userId)).toBe(300);
+  });
+
+  test('grantPurchase is idempotent by stripeEventId (webhook replay is a no-op)', async () => {
+    const userId = await makeUser('purchase-replay@example.com');
+    const service = createCreditsService(db);
+
+    await service.grantPurchase({ userId, credits: 1000, stripeEventId: 'evt_replay_1' });
+    await service.grantPurchase({ userId, credits: 1000, stripeEventId: 'evt_replay_1' });
+
+    expect(await service.balance(userId)).toBe(1000);
+  });
 });

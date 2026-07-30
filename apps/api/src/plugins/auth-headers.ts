@@ -21,11 +21,19 @@ export interface AuthHeadersOptions {
 // uses .test (the IANA-reserved TLD for testing) instead.
 const DEV_STUB_USER: AuthUser = { email: 'dev@local.test', displayName: 'dev@local.test' };
 
+// architecture.md §11/§12: oauth2-proxy is configured with `--skip-auth-route` for
+// this path and never sets X-Auth-Request-* headers on it — Stripe calls it directly
+// and is authenticated instead by the webhook signature (routes/stripe-webhook.ts).
+const AUTH_EXEMPT_PATHS = new Set(['/api/stripe/webhook']);
+
 /** Decorates `request.user` from oauth2-proxy's X-Auth-Request-* headers. Requests
- * without those headers get a dev-stub identity in dev-stub mode, or 401 otherwise. */
+ * without those headers get a dev-stub identity in dev-stub mode, or 401 otherwise
+ * (except AUTH_EXEMPT_PATHS, which are authenticated some other way). */
 export const authHeadersPlugin: FastifyPluginAsync<AuthHeadersOptions> = fp(
   (app: FastifyInstance, opts: AuthHeadersOptions) => {
     app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+      if (AUTH_EXEMPT_PATHS.has(request.url)) return;
+
       const user = userFromHeaders(request);
       if (user) {
         request.user = user;

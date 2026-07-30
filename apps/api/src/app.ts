@@ -3,11 +3,13 @@ import type { Kysely } from 'kysely';
 import { pingDb } from './db/index.js';
 import type { Database } from './db/schema.js';
 import { registerAnalysesRoutes } from './routes/analyses.js';
+import { registerCreditsRoutes } from './routes/credits.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerGamesRoutes } from './routes/games.js';
 import { registerLichessRoutes } from './routes/lichess.js';
 import { registerLlmKeysRoutes } from './routes/llm-keys.js';
 import { registerSessionsRoutes } from './routes/sessions.js';
+import { registerStripeWebhookRoutes } from './routes/stripe-webhook.js';
 import { authHeadersPlugin, type AuthHeadersOptions } from './plugins/auth-headers.js';
 import { errorMapperPlugin } from './plugins/error-mapper.js';
 import { registerUsersRoutes } from './routes/users.js';
@@ -15,6 +17,7 @@ import { noopJobQueue, type JobQueue } from './jobs/queue.js';
 import type { KeyVault } from './llm/key-vault.js';
 import { createLichessClient, type LichessClient } from './services/lichess.js';
 import type { CoachAgentDependencies } from './services/coach-agent.js';
+import type { StripeClient } from './services/stripe.js';
 
 const DEFAULT_ANALYSES_POLL_INTERVAL_MS = 1000;
 
@@ -29,6 +32,8 @@ export interface BuildAppOptions {
   /** Required to register /api/sessions/* routes. */
   coachAgentDeps?: CoachAgentDependencies;
   lichessClient?: LichessClient;
+  /** Required to register /api/credits/checkout and /api/stripe/webhook. */
+  stripeClient?: StripeClient;
 }
 
 /** Builds the Fastify app: proxy-auth header decoration, problem+json error mapping,
@@ -71,6 +76,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
     if (options.coachAgentDeps) {
       registerSessionsRoutes(app, options.db, options.coachAgentDeps);
+    }
+    if (options.stripeClient) {
+      registerCreditsRoutes(app, options.db, options.stripeClient);
+      registerStripeWebhookRoutes(app, options.db, options.stripeClient);
     }
   }
 

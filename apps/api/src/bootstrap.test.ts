@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { noopJobQueue } from './jobs/queue.js';
-import { buildCoachAgentDependencies, buildGatewayConfigFromEnv, requireEnv } from './bootstrap.js';
+import {
+  buildCoachAgentDependencies,
+  buildGatewayConfigFromEnv,
+  buildStripeClientFromEnv,
+  requireEnv
+} from './bootstrap.js';
 
 const REQUIRED_ENV = {
   LLM_STANDARD_MODEL_ANTHROPIC: 'claude-standard',
@@ -71,6 +76,54 @@ describe('buildGatewayConfigFromEnv', () => {
     process.env.LLM_FAKE = '1';
     expect(buildGatewayConfigFromEnv(keyVault).fake).toBe(true);
     delete process.env.LLM_FAKE;
+  });
+});
+
+describe('buildStripeClientFromEnv', () => {
+  const STRIPE_ENV_KEYS = [
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'STRIPE_PRICE_SMALL',
+    'STRIPE_PRICE_MEDIUM',
+    'STRIPE_PRICE_LARGE',
+    'STRIPE_CHECKOUT_SUCCESS_URL',
+    'STRIPE_CHECKOUT_CANCEL_URL'
+  ] as const;
+  const ORIGINAL = Object.fromEntries(STRIPE_ENV_KEYS.map((key) => [key, process.env[key]]));
+
+  afterEach(() => {
+    for (const key of STRIPE_ENV_KEYS) {
+      const original = ORIGINAL[key];
+      if (original === undefined) delete process.env[key];
+      else process.env[key] = original;
+    }
+  });
+
+  test('returns undefined when STRIPE_SECRET_KEY is unset, so docker-compose dev works with no Stripe configured', () => {
+    for (const key of STRIPE_ENV_KEYS) delete process.env[key];
+    expect(buildStripeClientFromEnv()).toBeUndefined();
+  });
+
+  test('throws a descriptive error when STRIPE_SECRET_KEY is set but a companion var is missing', () => {
+    for (const key of STRIPE_ENV_KEYS) delete process.env[key];
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123';
+    expect(() => buildStripeClientFromEnv()).toThrow(/STRIPE_WEBHOOK_SECRET/);
+  });
+
+  test('builds a StripeClient once every STRIPE_* var is set', () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123';
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_123';
+    process.env.STRIPE_PRICE_SMALL = 'price_small';
+    process.env.STRIPE_PRICE_MEDIUM = 'price_medium';
+    process.env.STRIPE_PRICE_LARGE = 'price_large';
+    process.env.STRIPE_CHECKOUT_SUCCESS_URL = 'https://example.com/success';
+    process.env.STRIPE_CHECKOUT_CANCEL_URL = 'https://example.com/cancel';
+
+    const client = buildStripeClientFromEnv();
+
+    expect(client).toBeDefined();
+    expect(client?.createCheckoutSession).toBeInstanceOf(Function);
+    expect(client?.parseWebhookEvent).toBeInstanceOf(Function);
   });
 });
 

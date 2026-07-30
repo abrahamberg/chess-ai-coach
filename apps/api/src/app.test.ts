@@ -71,6 +71,15 @@ describe('proxy auth headers', () => {
     expect(user).toEqual({ email: user.email, displayName: user.email });
   });
 
+  test('exempts /api/stripe/webhook from the proxy-header requirement (architecture.md §11/§12: oauth2-proxy skip-auth-route, authenticated by Stripe signature instead)', async () => {
+    const app = buildApp({ authMode: 'proxy' });
+    app.post('/api/stripe/webhook', async () => ({ received: true }));
+
+    const response = await app.inject({ method: 'POST', url: '/api/stripe/webhook' });
+
+    expect(response.statusCode).toBe(200);
+  });
+
   test('dev-stub mode still honors real headers when present', async () => {
     const app = buildApp({ authMode: 'dev-stub' });
     app.get('/test-route', async (request) => ({ user: request.user }));

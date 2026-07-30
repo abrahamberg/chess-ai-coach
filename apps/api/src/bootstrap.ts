@@ -7,6 +7,7 @@ import { buildModel, type GatewayConfig } from './llm/gateway.js';
 import { buildFakeModel } from './llm/fake.js';
 import type { KeyVault } from './llm/key-vault.js';
 import type { CoachAgentDependencies } from './services/coach-agent.js';
+import { createStripeClient, type StripeClient } from './services/stripe.js';
 
 export function requireEnv(name: string): string {
   const value = process.env[name];
@@ -61,6 +62,28 @@ export function buildCoachAgentDependencies(
       return result.text;
     }
   };
+}
+
+/** Optional: only wired when STRIPE_SECRET_KEY is set (Task 8.1), the same way
+ * platform LLM keys are optional — local/dev docker-compose runs fine with no
+ * Stripe configured at all, and /api/credits/checkout + /api/stripe/webhook
+ * simply don't register (see app.ts). Once secretKey is set, the rest of the
+ * STRIPE_* vars are required together. */
+export function buildStripeClientFromEnv(): StripeClient | undefined {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return undefined;
+
+  return createStripeClient({
+    secretKey,
+    webhookSecret: requireEnv('STRIPE_WEBHOOK_SECRET'),
+    priceIds: {
+      small: requireEnv('STRIPE_PRICE_SMALL'),
+      medium: requireEnv('STRIPE_PRICE_MEDIUM'),
+      large: requireEnv('STRIPE_PRICE_LARGE')
+    },
+    successUrl: requireEnv('STRIPE_CHECKOUT_SUCCESS_URL'),
+    cancelUrl: requireEnv('STRIPE_CHECKOUT_CANCEL_URL')
+  });
 }
 
 function buildLightModel(gatewayConfig: GatewayConfig) {
