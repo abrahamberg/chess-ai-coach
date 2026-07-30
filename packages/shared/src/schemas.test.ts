@@ -70,7 +70,8 @@ describe('ClassifiedMoveSchema', () => {
     cpLoss: 0,
     quality: 'brilliant',
     bestLineSan: ['Qxf7#'],
-    evalAfterCp: 1000
+    evalAfterCp: 1000,
+    hangsPiece: false
   };
   test('accepts a valid classified move', () => {
     expect(ClassifiedMoveSchema.safeParse(validMove).success).toBe(true);
@@ -82,6 +83,10 @@ describe('ClassifiedMoveSchema', () => {
   });
   test('rejects an unknown quality tier (e.g. the old "inaccuracy" name)', () => {
     expect(ClassifiedMoveSchema.safeParse({ ...validMove, quality: 'inaccuracy' }).success).toBe(false);
+  });
+  test('rejects a move missing hangsPiece', () => {
+    const { hangsPiece, ...withoutHangsPiece } = validMove;
+    expect(ClassifiedMoveSchema.safeParse(withoutHangsPiece).success).toBe(false);
   });
 });
 
