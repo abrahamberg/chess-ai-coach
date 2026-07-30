@@ -208,8 +208,16 @@ ingress:
   tls: []
 
 ## Applied to every pod/container this chart owns (§12).
+## runAsUser is NOT optional next to runAsNonRoot: with runAsNonRoot alone,
+## kubelet must derive the uid from the image and refuses to start any container
+## whose image runs as root or names its user non-numerically
+## ("image has non-numeric user (node), cannot verify user is non-root").
+## 1000 is the uid every image in docker/ declares (`USER 1000`); change both
+## together or pods will fail admission, not just misbehave.
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
   seccompProfile:
     type: RuntimeDefault
 containerSecurityContext:

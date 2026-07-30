@@ -28,7 +28,14 @@ COPY node_modules ./node_modules
 # Self-contained ESM (`.mjs`), so no package.json is needed alongside it.
 COPY apps/api/dist-bundle ./dist-bundle
 
-USER node
+# Numeric, not `USER node`. Kubelet enforces the chart's `runAsNonRoot: true` by
+# reading the image's user, and it cannot resolve a *name* to a uid inside the
+# image: a named user makes every pod fail admission with "image has non-numeric
+# user (node), cannot verify user is non-root". 1000 is exactly the `node` user's
+# uid in node:22-slim, and it matches podSecurityContext.runAsUser in
+# deploy/helm/chess-ai-coach/values.yaml. Everything COPY'd above is owned by
+# root but world-readable, so uid 1000 can read node_modules and dist-bundle.
+USER 1000
 ENV PORT=3000
 EXPOSE 3000
 # The worker Deployment and the migrate-job override this with worker.mjs and

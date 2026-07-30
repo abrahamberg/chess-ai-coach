@@ -185,7 +185,110 @@ assert_not_matches "ingress does not expose api/web directly" \
   'name: chess-coach-(api|web)$' "$INGRESS"
 
 # ---------------------------------------------------------------------------
-# 6. Optional Stripe: the chart must render with Stripe disabled too
+# 6. Pod admission: `runAsNonRoot: true` needs a *numeric* `runAsUser`.
+#
+#    With runAsNonRoot alone, kubelet has to derive the uid from the image and
+#    refuses to start the container when it cannot prove the uid is non-root:
+#      - image with no USER          -> "container has runAsNonRoot and image
+#                                        will run as root"
+#      - image with `USER node`      -> "image has non-numeric user (node),
+#                                        cannot verify user is non-root"
+#    Both are admission-time failures, so neither `helm template`, `helm lint`,
+#    `kubeconform` nor `docker run` sees them — the pod simply never starts (and
+#    for the migrate-job hook, `helm install` never gets past the hook).
+#
+#    The assertion below is structural, not a grep for one key: for every
+#    Deployment/Job this chart renders it reconstructs the *effective* security
+#    context per container (container-level wins, pod-level is the default) and
+#    requires a numeric runAsUser wherever runAsNonRoot is true. The images must
+#    agree — docker/Dockerfile.{api,web,engine} all declare `USER 1000`.
+# ---------------------------------------------------------------------------
+RUNASUSER_AWK='
+function record() {
+  if (curIndent >= 0) {
+    idx++
+    bIndent[idx] = curIndent; bNonRoot[idx] = curNonRoot; bUser[idx] = curUser
+  }
+  curIndent = -1; curNonRoot = ""; curUser = ""
+}
+function check(   i, min, podNonRoot, podUser, containers, nr, u) {
+  min = 9999
+  for (i = 1; i <= idx; i++) if (bIndent[i] < min) min = bIndent[i]
+  podNonRoot = ""; podUser = ""; containers = 0
+  # The shallowest securityContext in a workload is the pod-level one; anything
+  # deeper is a container override.
+  for (i = 1; i <= idx; i++) {
+    if (bIndent[i] == min) {
+      if (bNonRoot[i] != "") podNonRoot = bNonRoot[i]
+      if (bUser[i] != "") podUser = bUser[i]
+    } else containers++
+  }
+  if (containers == 0) {
+    if (podNonRoot == "true" && podUser != "numeric") {
+      print "pod securityContext sets runAsNonRoot: true without a numeric non-root runAsUser"
+      bad = 1
+    }
+  } else {
+    for (i = 1; i <= idx; i++) {
+      if (bIndent[i] == min) continue
+      nr = (bNonRoot[i] != "") ? bNonRoot[i] : podNonRoot
+      u  = (bUser[i]    != "") ? bUser[i]    : podUser
+      if (nr == "true" && u != "numeric") {
+        print "container securityContext: runAsNonRoot: true without a numeric non-root runAsUser in effect"
+        bad = 1
+      }
+    }
+  }
+  idx = 0
+}
+BEGIN { curIndent = -1; idx = 0; bad = 0 }
+/^---[[:space:]]*$/ { record(); check(); next }
+{
+  match($0, /^ */); ind = RLENGTH
+  if ($0 ~ /^ *securityContext:[[:space:]]*$/) { record(); curIndent = ind; next }
+  if (curIndent >= 0) {
+    if ($0 !~ /[^ ]/) next
+    if (ind > curIndent) {
+      if ($0 ~ /^ *runAsNonRoot:[[:space:]]*true[[:space:]]*$/) curNonRoot = "true"
+      # uid 0 is numeric but still root: kubelet rejects it as
+      # "runAsUser: 0 conflicts with runAsNonRoot".
+      else if ($0 ~ /^ *runAsUser:[[:space:]]*0+[[:space:]]*$/) curUser = "root"
+      else if ($0 ~ /^ *runAsUser:[[:space:]]*[0-9]+[[:space:]]*$/) curUser = "numeric"
+      else if ($0 ~ /^ *runAsUser:/) curUser = "non-numeric"
+      next
+    }
+    record()
+  }
+}
+END { record(); check(); exit bad }
+'
+
+WORKLOADS_CHECKED=0
+for TPL in "$CHART_DIR"/templates/*.yaml; do
+  TPL_NAME="templates/$(basename "$TPL")"
+  ONE="$RENDER_DIR/one.yaml"
+  render "$ONE" --show-only "$TPL_NAME" || continue
+  grep -qE '^kind: (Deployment|Job)$' "$ONE" || continue
+  WORKLOADS_CHECKED=$((WORKLOADS_CHECKED + 1))
+  PROBLEM="$(awk "$RUNASUSER_AWK" "$ONE")"
+  if [ -z "$PROBLEM" ]; then
+    pass "$TPL_NAME: runAsNonRoot is backed by a numeric runAsUser"
+  else
+    fail "$TPL_NAME: runAsNonRoot is backed by a numeric runAsUser" "$PROBLEM"
+  fi
+done
+
+# Guard against the loop above silently checking nothing (renamed templates,
+# --show-only failures): api, worker, engine, web + the migrate job.
+if [ "$WORKLOADS_CHECKED" -ge 5 ]; then
+  pass "every Deployment/Job was covered by the runAsUser check ($WORKLOADS_CHECKED)"
+else
+  fail "every Deployment/Job was covered by the runAsUser check" \
+    "only $WORKLOADS_CHECKED workload template(s) rendered; expected >= 5"
+fi
+
+# ---------------------------------------------------------------------------
+# 7. Optional Stripe: the chart must render with Stripe disabled too
 #    (apps/api/src/bootstrap.ts treats STRIPE_* as all-or-nothing optional).
 # ---------------------------------------------------------------------------
 NOSTRIPE="$RENDER_DIR/nostripe.yaml"
@@ -196,7 +299,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Schema validation (optional, only when kubeconform is installed).
+# 8. Schema validation (optional, only when kubeconform is installed).
 # ---------------------------------------------------------------------------
 if command -v kubeconform >/dev/null 2>&1; then
   if kubeconform -strict -summary "$ALL" >"$RENDER_DIR/kubeconform.txt" 2>&1; then
