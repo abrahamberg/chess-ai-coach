@@ -16,6 +16,7 @@ function classifiedMove(overrides: Partial<ClassifiedMoveDto>): ClassifiedMoveDt
     quality: 'good',
     bestLineSan: ['e4'],
     evalAfterCp: 20,
+    hangsPiece: false,
     ...overrides
   };
 }

@@ -40,7 +40,8 @@ describe('MoveStrip', () => {
         cpLoss: 400,
         quality: 'blunder' as const,
         bestLineSan: ['Nc3'],
-        evalAfterCp: -400
+        evalAfterCp: -400,
+        hangsPiece: false
       }
     ];
     render(
