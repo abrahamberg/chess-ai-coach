@@ -1,7 +1,7 @@
 import type { EngineEval } from '@chess-coach/shared';
 import { describe, expect, test } from 'vitest';
 import type { ParsedGame } from './pgn.js';
-import { classifyMoves, isSoundQuality } from './classify.js';
+import { classifyMoves, expectedPoints, isSoundQuality } from './classify.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4_FEN = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -31,6 +31,32 @@ function evalAt(fen: string, cp: number | null, mateIn: number | null = null): E
     lines: [{ moveUci: 'e2e4', moveSan: 'e4', cp, mateIn }]
   };
 }
+
+describe('expectedPoints', () => {
+  test('cp=0 is exactly 0.5 (a coin flip)', () => {
+    expect(expectedPoints(0)).toBeCloseTo(0.5, 10);
+  });
+
+  test('is symmetric around 0', () => {
+    expect(expectedPoints(-200)).toBeCloseTo(1 - expectedPoints(200), 10);
+  });
+
+  test('is monotonically increasing', () => {
+    expect(expectedPoints(-100)).toBeLessThan(expectedPoints(0));
+    expect(expectedPoints(0)).toBeLessThan(expectedPoints(100));
+    expect(expectedPoints(100)).toBeLessThan(expectedPoints(500));
+  });
+
+  test('saturates toward 1 for a large positive score (e.g. a clamped mate score)', () => {
+    expect(expectedPoints(1000)).toBeGreaterThan(0.97);
+    expect(expectedPoints(1000)).toBeLessThan(1);
+  });
+
+  test('saturates toward 0 for a large negative score', () => {
+    expect(expectedPoints(-1000)).toBeLessThan(0.03);
+    expect(expectedPoints(-1000)).toBeGreaterThan(0);
+  });
+});
 
 describe('classifyMoves', () => {
   test('cpLoss 0 (played the engine-best move) classifies as best', () => {

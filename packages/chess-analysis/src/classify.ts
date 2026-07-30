@@ -113,6 +113,16 @@ export function toMoverPerspective(whiteCp: number, mover: 'white' | 'black'): n
   return mover === 'white' ? whiteCp : -whiteCp;
 }
 
+/** Converts a mover-perspective centipawn score to that mover's expected
+ * points (0-1) via the standard logistic win-probability curve (the same
+ * conversion chess.com/Lichess-adjacent tooling uses). Symmetric around
+ * cp=0 (0.5) and monotonic; mate scores arrive pre-clamped to +-MATE_CP by
+ * whitePerspectiveCp/mateToCp, so they saturate near 0/1 rather than
+ * exploding. */
+export function expectedPoints(cp: number): number {
+  return 1 / (1 + Math.exp(-0.00368208 * cp));
+}
+
 /** Maps a mate-in-N score to a white-perspective centipawn value: +N (white mates) -> +1000, -N (black mates) -> -1000. */
 function mateToCp(mateIn: number): number {
   return mateIn > 0 ? MATE_CP : -MATE_CP;
