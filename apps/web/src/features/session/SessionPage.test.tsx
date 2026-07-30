@@ -360,7 +360,7 @@ describe('SessionPage', () => {
       'fetch',
       mockFetch({
         classifiedMoves: [
-          { ply: 1, moveSan: 'e4', mover: 'white', isUserMove: false, cpLoss: 0, quality: 'good', bestLineSan: ['e4'], evalAfterCp: 20 },
+          { ply: 1, moveSan: 'e4', mover: 'white', isUserMove: false, cpLoss: 0, quality: 'good', bestLineSan: ['e4'], evalAfterCp: 20, hangsPiece: false },
           {
             ply: 3,
             moveSan: 'Nf3',
@@ -369,7 +369,8 @@ describe('SessionPage', () => {
             cpLoss: 60,
             quality: 'dubious',
             bestLineSan: ['Bc4'],
-            evalAfterCp: -40
+            evalAfterCp: -40,
+            hangsPiece: false
           }
         ]
       })
