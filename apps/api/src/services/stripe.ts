@@ -58,7 +58,11 @@ export function createStripeClient(config: StripeConfig): StripeClient {
   };
 }
 
-function toWebhookEvent(event: Stripe.Event): StripeWebhookEvent {
+/** Exported for direct unit testing (stripe.test.ts) — the branching/parsing
+ * logic here (event-type narrowing, metadata extraction, NaN handling) is the
+ * one piece of real logic in this file and isn't exercised by route tests that
+ * mock `StripeClient.parseWebhookEvent` at the interface boundary. */
+export function toWebhookEvent(event: Stripe.Event): StripeWebhookEvent {
   if (event.type !== 'checkout.session.completed') return { type: 'ignored' };
 
   const session = event.data.object;
