@@ -19,7 +19,7 @@ export class ApiError extends Error {
  * (`({signal}) => apiGet(path, schema, signal)`) — otherwise React 18
  * StrictMode's dev-only double-mount cancels the first fetch without this
  * function ever seeing it, leaving the query stuck pending/paused forever. */
-export async function apiGet<T>(path: string, schema: ZodType<T>, signal?: AbortSignal): Promise<T> {
+export async function apiGet<T>(path: string, schema: ZodType<T, any, any>, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { credentials: 'include', signal });
   if (!response.ok) {
     throw new ApiError(response.status, `GET ${path} failed with ${response.status}`, await safeJson(response));
@@ -28,7 +28,7 @@ export async function apiGet<T>(path: string, schema: ZodType<T>, signal?: Abort
   return schema.parse(body);
 }
 
-export async function apiPost<T>(path: string, payload: unknown, schema: ZodType<T>): Promise<T> {
+export async function apiPost<T>(path: string, payload: unknown, schema: ZodType<T, any, any>): Promise<T> {
   const response = await fetch(path, {
     method: 'POST',
     credentials: 'include',
@@ -42,7 +42,7 @@ export async function apiPost<T>(path: string, payload: unknown, schema: ZodType
   return schema.parse(body);
 }
 
-export async function apiPatch<T>(path: string, payload: unknown, schema: ZodType<T>): Promise<T> {
+export async function apiPatch<T>(path: string, payload: unknown, schema: ZodType<T, any, any>): Promise<T> {
   const response = await fetch(path, {
     method: 'PATCH',
     credentials: 'include',
