@@ -7,3 +7,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Helm subcharts vendored by `helm dependency build`; Chart.lock pins them.
+deploy/helm/*/charts/

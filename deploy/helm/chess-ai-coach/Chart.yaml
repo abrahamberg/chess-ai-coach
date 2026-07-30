@@ -1,0 +1,25 @@
+apiVersion: v2
+name: chess-ai-coach
+description: |
+  Umbrella chart for the AI chess coach (architecture.md §11): nginx-served SPA,
+  Fastify API, graphile-worker job runner, Stockfish engine service, fronted by
+  oauth2-proxy and backed by PostgreSQL 16.
+type: application
+
+# Chart version — bump on every chart change.
+version: 0.1.0
+# Version of the application this chart deploys; overridden per-component by
+# `<component>.image.tag`.
+appVersion: "0.0.1"
+
+dependencies:
+  # PostgreSQL 16 (architecture.md §3). Chart 15.5.38 pins appVersion 16.4.0.
+  - name: postgresql
+    version: 15.5.38
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  # The only ingress-exposed component (architecture.md §11).
+  - name: oauth2-proxy
+    version: 10.7.0
+    repository: https://oauth2-proxy.github.io/manifests
+    condition: oauth2-proxy.enabled

@@ -1,0 +1,44 @@
+{{- if .Values.migrate.enabled }}
+{{/* architecture §11: Helm hook `pre-install,pre-upgrade` runs the kysely
+     migrations before any new code sees the database. Uses the api image —
+     same source tree, different command.
+
+     Caveat when postgresql.enabled=true: on a *first* install the subchart's
+     StatefulSet is created in the main phase, i.e. after pre-install hooks, so
+     the DB does not exist yet and this hook cannot connect. Either install the
+     database first (`--set migrate.enabled=false`, then re-run) or set
+     `migrate.hooks: [post-install, pre-upgrade]` for that one install. Upgrades
+     are unaffected. */}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "chess-ai-coach.componentName" (dict "ctx" . "component" "migrate") }}
+  labels:
+    {{- include "chess-ai-coach.labels" (dict "ctx" . "component" "migrate") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": {{ join "," .Values.migrate.hooks }}
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrate.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "chess-ai-coach.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "chess-ai-coach.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "chess-ai-coach.image" (dict "ctx" . "image" .Values.api.image) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["npm", "run", "migrate", "--workspace=@chess-coach/api"]
+          securityContext:
+            {{- include "chess-ai-coach.containerSecurityContext" . | nindent 12 }}
+          env:
+            {{- include "chess-ai-coach.env.database" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrate.resources | nindent 12 }}
+{{- end }}

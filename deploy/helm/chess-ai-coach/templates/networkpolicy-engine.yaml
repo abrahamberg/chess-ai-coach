@@ -1,0 +1,26 @@
+{{- if .Values.networkPolicy.enabled }}
+{{/* architecture §11: "engine accepts only api+worker". */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "chess-ai-coach.componentName" (dict "ctx" . "component" "engine") }}
+  labels:
+    {{- include "chess-ai-coach.labels" (dict "ctx" . "component" "engine") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "engine") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "api") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "worker") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.engine.containerPort }}
+{{- end }}

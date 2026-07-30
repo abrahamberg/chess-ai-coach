@@ -1,0 +1,34 @@
+{{- if .Values.ingress.enabled }}
+{{/* architecture §11: oauth2-proxy is the *only* ingress-exposed component.
+     It fans out to the api (/api/...) and the web bundle (everything else) via
+     its own upstreams config — see the oauth2-proxy block in values.yaml. */}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "chess-ai-coach.fullname" . }}
+  labels:
+    {{- include "chess-ai-coach.labels" (dict "ctx" . "component" "ingress") | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ required "ingress.host is required when ingress.enabled" .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ printf "%s-oauth2-proxy" (include "chess-ai-coach.fullname" .) }}
+                port:
+                  number: {{ (index .Values "oauth2-proxy" "service" "portNumber") }}
+{{- end }}

@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chess-ai-coach.componentName" (dict "ctx" . "component" "api") }}
+  labels:
+    {{- include "chess-ai-coach.labels" (dict "ctx" . "component" "api") | nindent 4 }}
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "api") | nindent 8 }}
+    spec:
+      {{- include "chess-ai-coach.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "chess-ai-coach.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ include "chess-ai-coach.image" (dict "ctx" . "image" .Values.api.image) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["tsx", "apps/api/src/server.ts"]
+          securityContext:
+            {{- include "chess-ai-coach.containerSecurityContext" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.containerPort }}
+          env:
+            - name: PORT
+              value: {{ .Values.api.containerPort | quote }}
+            {{- include "chess-ai-coach.env.database" . | nindent 12 }}
+            {{- include "chess-ai-coach.env.app" . | nindent 12 }}
+          # architecture §11: readiness = /readyz (checks DB); /healthz is liveness only.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
