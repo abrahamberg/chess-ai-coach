@@ -1763,6 +1763,62 @@ git commit -m "feat: add coach-context service — jump resolution, episode clos
 Add to `apps/api/src/services/coach-agent.test.ts`, inside (or alongside) the existing `describe('coach-agent startTurn concurrency', ...)` block so it can reuse the file's `deps()`/`drain()`/`controllableStreamModel`/`instantTextModel` helpers and `testDb`:
 
 ```ts
+test('a show_position tool-call and its later-confirmed tool-result stay in the same episode — no orphaned tool_result once the position moves', async () => {
+  const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+  await creditsRepo.insertSignupGrant(db, user.id);
+  const game = await gamesRepo.insert(db, {
+    userId: user.id,
+    pgn: PGN,
+    source: 'paste',
+    userColor: 'white',
+    whiteName: 'Ann',
+    blackName: 'Bob',
+    result: '1-0',
+    timeControl: '10+0',
+    eco: null,
+    playedAt: null
+  });
+  const analysis = await analysesRepo.insertQueued(db, game.id);
+  await analysesRepo.markReady(db, analysis.id, PLAN);
+  await analysesRepo.storeClassifiedMoves(db, analysis.id, []);
+  const session = await coachAgent.createSession(db, user.id, game.id);
+
+  // Turn 1: the model itself calls show_position — no clientToolResult
+  // input yet, this is the coach DECIDING to move, before any client
+  // round-trip. currentPly is still 0 when this turn starts.
+  const { model: showModel, finish: showFinish } = controllableStreamModel('Let me show you.', {
+    toolCallId: 'call-show-1',
+    toolName: 'show_position',
+    args: { moveNumber: 2, color: 'black' }
+  });
+  const turn1 = await coachAgent.startTurn(deps(showModel), session, { content: 'hi coach' });
+  const drain1 = drain(turn1);
+  void showFinish();
+  await drain1;
+
+  // Turn 2: the client confirms the move actually happened.
+  const turn2 = await coachAgent.startTurn(deps(instantTextModel('Here it is.')), session, {
+    clientToolResult: { toolCallId: 'call-show-1', toolName: 'show_position', result: { moveNumber: 2, color: 'black', ply: 4 } }
+  });
+  await drain(turn2);
+
+  // Turn 3: an ordinary follow-up in the same (now-current) episode. This is
+  // the turn whose request would break if the tool-call landed in a
+  // different episode than its tool-result.
+  const turn3 = await coachAgent.startTurn(deps(instantTextModel('Sure.')), session, { content: 'what about here?' });
+  await drain(turn3);
+
+  const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
+  const conversation = (snapshot?.request.messages ?? []).filter((m) => (m as { role: string }).role !== 'system');
+
+  // The episode's first message must be the assistant's tool-call, never a
+  // bare tool-result with no matching tool-call earlier in the same request
+  // — that shape is what real Anthropic/OpenAI requests reject.
+  expect(conversation[0]).toMatchObject({ role: 'assistant' });
+  const firstToolResultIndex = conversation.findIndex((m) => (m as { role: string }).role === 'tool');
+  expect(firstToolResultIndex).toBeGreaterThan(0);
+}, 20000);
+
 test('a jump back to an earlier move closes the old episode into a note and the new turn\'s request excludes that episode\'s raw messages', async () => {
   const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
   await creditsRepo.insertSignupGrant(db, user.id);
@@ -1853,7 +1909,7 @@ Also replace the old `describe('buildCacheableMessages', ...)` block (lines ~344
 - [ ] **Step 2: Run it to confirm it fails**
 
 Run: `npm test -w apps/api -- coach-agent.test`
-Expected: FAIL — `startTurn` still replays the whole transcript and doesn't parse `[position_context]`; `buildCacheableMessages` no longer being referenced from the deleted test is fine, but the two new tests fail against current behavior.
+Expected: FAIL — `startTurn` still replays the whole transcript, doesn't parse `[position_context]`, and doesn't advance the write-time ply tag when a `show_position` tool-call streams in; `buildCacheableMessages` no longer being referenced from the deleted test is fine, but the three new tests fail against current behavior.
 
 - [ ] **Step 3: Implement**
 
@@ -1997,8 +2053,26 @@ export async function startTurn(
             }
           } satisfies TurnDebugSnapshot);
 
+          // A show_position tool-call inside this turn's own response is the
+          // coach *deciding* to move to a new position, before the client
+          // round-trip that confirms it (that confirmation lands in a later
+          // turn's applyClientToolResult). The assistant message carrying
+          // that tool-call must be tagged with the ply it's ABOUT to move
+          // to, not the ply that was current when the turn started —
+          // otherwise it's tagged old-ply while the eventual tool-result
+          // (tagged new-ply, once confirmed) lands one episode later, and
+          // buildEpisodeContext's episode scan splits the tool-call from
+          // its tool-result across two episodes: a bare tool-result with no
+          // matching tool-call in the same request, which Anthropic and
+          // OpenAI both reject. moveRefToPly is deterministic from the tool
+          // call's own {moveNumber, color} args — no need to wait for the
+          // client's confirmed ply, and it always matches what the client
+          // later reports (both compute it from the same address).
+          let tagPly = currentPly;
           for (const message of event.response.messages) {
-            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content, currentPly);
+            const jumpTargetPly = extractShowPositionTargetPly(message);
+            if (jumpTargetPly !== null) tagPly = jumpTargetPly;
+            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content, tagPly);
           }
           await recordUsage(deps.db, {
             userId: session.userId,
@@ -2067,10 +2141,33 @@ async function applyClientToolResult(
 }
 ```
 
-Add the `currentEpisode` import:
+Add the `currentEpisode` import and a `moveRefToPly` import:
 
 ```ts
+import { moveRefToPly } from '@chess-coach/chess-analysis';
 import { currentEpisode } from '../lib/episodes.js';
+```
+
+Add the helper `extractShowPositionTargetPly` (used by the `onFinish` loop above), placed near `toCoreMessage`/other small private helpers at the bottom of the file:
+
+```ts
+/** The onFinish tagging fix above: reads a show_position tool-call's own
+ * {moveNumber, color} args to determine the ply it targets, without
+ * waiting for the client's confirming round-trip. Returns null for any
+ * message that isn't an assistant message containing a show_position call
+ * (the overwhelmingly common case — most turns never move the position). */
+function extractShowPositionTargetPly(message: { role: string; content: unknown }): number | null {
+  if (!Array.isArray(message.content)) return null;
+  for (const part of message.content) {
+    if (typeof part !== 'object' || part === null) continue;
+    const candidate = part as { type?: unknown; toolName?: unknown; args?: unknown };
+    if (candidate.type !== 'tool-call' || candidate.toolName !== 'show_position') continue;
+    const args = candidate.args as { moveNumber?: unknown; color?: unknown };
+    if (typeof args.moveNumber !== 'number') continue;
+    return moveRefToPly(args.moveNumber, (args.color as 'white' | 'black' | null) ?? null);
+  }
+  return null;
+}
 ```
 
 Delete `buildCacheableMessages` and the private `toCoreMessage` function entirely (both superseded — `toCoreMessage` is now private to `coach-context.ts`, `buildCacheableMessages` is now `coach-context.ts`'s `buildEpisodeMessages`). Confirm nothing else in `coach-agent.ts` still references `toCoreMessage` (it doesn't, after the `priorMessages.map(toCoreMessage)` line — which itself no longer exists — is gone) or `CoreMessage`/`ProviderMetadata` imports that become unused; adjust the `import ... from 'ai'` line accordingly if `CoreMessage` is no longer referenced directly in this file (check — `TurnDebugSnapshot.request.messages: CoreMessage[]` still uses the type, so keep it).
