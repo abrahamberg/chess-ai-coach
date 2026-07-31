@@ -252,17 +252,22 @@ describe('buildCoachTools', () => {
   });
 
   describe('record_move_note', () => {
-    test('validates the ply against the game and upserts a note', async () => {
+    test('validates the { moveNumber, color } address against the game and upserts a note', async () => {
       const { userId, gameId, sessionId } = await setupCtx('1. e4 e5 2. Nf3 Nc6');
       const tools = buildCoachTools({ userId, sessionId, gameId }, makeDeps());
 
+      // moveRefToPly(1, 'black') === 2.
       const ok = await tools.record_move_note?.execute?.(
-        { ply: 2, note: 'discussed the fork' },
+        { moveNumber: 1, color: 'black', note: 'discussed the fork' },
         { toolCallId: '1', messages: [] }
       );
       expect(ok).toEqual({ recorded: true });
 
-      const rejected = await tools.record_move_note?.execute?.({ ply: 999, note: 'x' }, { toolCallId: '2', messages: [] });
+      // moveRefToPly(500, 'white') === 999, far beyond this short game.
+      const rejected = await tools.record_move_note?.execute?.(
+        { moveNumber: 500, color: 'white', note: 'x' },
+        { toolCallId: '2', messages: [] }
+      );
       expect(rejected).toEqual({ error: 'that move does not exist in this game' });
     });
   });
@@ -272,16 +277,25 @@ describe('buildCoachTools', () => {
       const { userId, gameId, sessionId } = await setupCtx('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
       const tools = buildCoachTools({ userId, sessionId, gameId }, makeDeps());
 
-      const nothingYet = await tools.recall_move?.execute?.({ ply: 2 }, { toolCallId: '1', messages: [] });
+      // moveRefToPly(1, 'black') === 2.
+      const nothingYet = await tools.recall_move?.execute?.(
+        { moveNumber: 1, color: 'black' },
+        { toolCallId: '1', messages: [] }
+      );
       expect(nothingYet).toEqual({ text: 'nothing recorded for that move yet' });
 
       // Distinct args each time — withTurnGuards caches by (name, args), so
       // repeating the same args would return the cached result without ever
       // re-checking the budget. Three distinct calls exhaust the budget of 3;
       // a fourth distinct call (never cached) is the one that actually hits it.
-      await tools.recall_move?.execute?.({ ply: 4 }, { toolCallId: '2', messages: [] });
-      await tools.recall_move?.execute?.({ ply: 6 }, { toolCallId: '3', messages: [] });
-      const overBudget = await tools.recall_move?.execute?.({ ply: 1 }, { toolCallId: '4', messages: [] });
+      // moveRefToPly(2, 'black') === 4, moveRefToPly(3, 'black') === 6,
+      // moveRefToPly(1, 'white') === 1.
+      await tools.recall_move?.execute?.({ moveNumber: 2, color: 'black' }, { toolCallId: '2', messages: [] });
+      await tools.recall_move?.execute?.({ moveNumber: 3, color: 'black' }, { toolCallId: '3', messages: [] });
+      const overBudget = await tools.recall_move?.execute?.(
+        { moveNumber: 1, color: 'white' },
+        { toolCallId: '4', messages: [] }
+      );
       expect(overBudget).toEqual({ error: 'budget_exhausted — answer with what you have' });
     });
   });

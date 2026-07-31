@@ -82,25 +82,33 @@ describe('coach agent tool parameter schemas (architecture §7.1)', () => {
   });
 });
 
-describe('record_move_note: { ply, note }', () => {
-  test('accepts a nonnegative int ply and a short note', () => {
-    expect(recordMoveNoteParameters.safeParse({ ply: 18, note: 'missed Rxd5, assigned as homework' }).success).toBe(
-      true
-    );
+describe('record_move_note: { moveNumber, color, note } — same address as show_position, never a bare ply (final review #1)', () => {
+  test('accepts a { moveNumber, color } address and a short note', () => {
+    expect(
+      recordMoveNoteParameters.safeParse({ moveNumber: 9, color: 'black', note: 'missed Rxd5, assigned as homework' })
+        .success
+    ).toBe(true);
   });
 
-  test('rejects a negative ply and an empty note', () => {
-    expect(recordMoveNoteParameters.safeParse({ ply: -1, note: 'x' }).success).toBe(false);
-    expect(recordMoveNoteParameters.safeParse({ ply: 18, note: '' }).success).toBe(false);
+  test('rejects a bare ply, a negative moveNumber, and an empty note', () => {
+    expect(recordMoveNoteParameters.safeParse({ ply: 18, note: 'x' }).success).toBe(false);
+    expect(recordMoveNoteParameters.safeParse({ moveNumber: -1, color: 'white', note: 'x' }).success).toBe(false);
+    expect(recordMoveNoteParameters.safeParse({ moveNumber: 9, color: 'black', note: '' }).success).toBe(false);
+  });
+
+  test('moveNumber 0 requires color null, same rule as show_position', () => {
+    expect(recordMoveNoteParameters.safeParse({ moveNumber: 0, color: 'white', note: 'x' }).success).toBe(false);
+    expect(recordMoveNoteParameters.safeParse({ moveNumber: 0, color: null, note: 'x' }).success).toBe(true);
   });
 });
 
-describe('recall_move: { ply }', () => {
-  test('accepts a nonnegative int ply', () => {
-    expect(recallMoveParameters.safeParse({ ply: 22 }).success).toBe(true);
+describe('recall_move: { moveNumber, color } — same address as show_position, never a bare ply (final review #1)', () => {
+  test('accepts a { moveNumber, color } address', () => {
+    expect(recallMoveParameters.safeParse({ moveNumber: 11, color: 'black' }).success).toBe(true);
   });
 
-  test('rejects a missing ply', () => {
+  test('rejects a bare ply and a missing address', () => {
+    expect(recallMoveParameters.safeParse({ ply: 22 }).success).toBe(false);
     expect(recallMoveParameters.safeParse({}).success).toBe(false);
   });
 });

@@ -22,7 +22,7 @@ import * as sessionsRepo from '../db/repositories/sessions.js';
 import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { getPositionAtPly } from './game-positions.js';
-import { recallMove, recordMoveNote } from './move-notes.js';
+import { recallMove, recordMoveNote, type MoveAddress } from './move-notes.js';
 import * as progressService from './progress.js';
 import { createThreadsService } from './threads.js';
 import * as userProfileService from './user-profile.js';
@@ -114,17 +114,15 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
     }),
     record_move_note: tool({
       description:
-        "Save a one-sentence note on a move you're about to leave, for your own later reference (e.g. \"missed Rxd5, discussed the pin, assigned as homework\"). Worth calling most of the time you leave a moment — not mechanically every single time.",
+        "Save a one-sentence note on a move you're about to leave, for your own later reference (e.g. \"missed Rxd5, discussed the pin, assigned as homework\"). Addressed the same way as show_position/check_position ({ moveNumber, color }; e.g. White's move 12 is { moveNumber: 12, color: 'white' }) — never a bare ply. Worth calling most of the time you leave a moment — not mechanically every single time.",
       parameters: recordMoveNoteParameters,
-      execute: withTurnGuards(guardState, 'record_move_note', (args: { ply: number; note: string }) =>
-        recordMoveNote(deps.db, ctx, args)
-      )
+      execute: withTurnGuards(guardState, 'record_move_note', (args: MoveNoteArgs) => recordMoveNote(deps.db, ctx, args))
     }),
     recall_move: tool({
       description:
-        "Look up more detail on a specific earlier move in THIS session than the one-line summary already gives you.",
+        "Look up more detail on a specific earlier move in THIS session than the one-line summary already gives you. Addressed the same way as show_position/check_position ({ moveNumber, color }) — never a bare ply.",
       parameters: recallMoveParameters,
-      execute: withTurnGuards(guardState, 'recall_move', (args: { ply: number }) => recallMoveTool(deps, ctx, args))
+      execute: withTurnGuards(guardState, 'recall_move', (args: MoveAddress) => recallMoveTool(deps, ctx, args))
     }),
     end_session: tool({
       description: 'Mark the session complete and trigger the post-session progress summary.',
@@ -186,6 +184,8 @@ interface CheckPositionArgs {
   color: 'white' | 'black' | null;
 }
 
+type MoveNoteArgs = MoveAddress & { note: string };
+
 async function checkPosition(
   deps: CoachToolsDependencies,
   ctx: CoachToolsContext,
@@ -200,10 +200,10 @@ async function checkPosition(
 async function recallMoveTool(
   deps: CoachToolsDependencies,
   ctx: CoachToolsContext,
-  args: { ply: number }
+  args: MoveAddress
 ): Promise<{ text: string } | { error: string }> {
   const session = await sessionsRepo.findById(deps.db, ctx.sessionId);
-  return recallMove(deps, { sessionId: ctx.sessionId, gameId: ctx.gameId, currentPly: session?.currentPly ?? 0 }, args.ply);
+  return recallMove(deps, { sessionId: ctx.sessionId, gameId: ctx.gameId, currentPly: session?.currentPly ?? 0 }, args);
 }
 
 function renderEngineLines(lines: EngineLine[]): string {

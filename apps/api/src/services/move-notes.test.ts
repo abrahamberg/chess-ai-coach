@@ -43,17 +43,23 @@ describe('move-notes service', () => {
   }
 
   describe('recordMoveNote', () => {
-    test('a valid ply upserts a note', async () => {
+    test('a valid { moveNumber, color } address upserts a note, keyed internally by the converted ply', async () => {
       const { sessionId, gameId } = await seedSession();
-      const result = await recordMoveNote(db, { sessionId, gameId }, { ply: 2, note: 'played the Ruy Lopez idea' });
+      // moveRefToPly(1, 'black') === 2.
+      const result = await recordMoveNote(
+        db,
+        { sessionId, gameId },
+        { moveNumber: 1, color: 'black', note: 'played the Ruy Lopez idea' }
+      );
       expect(result).toEqual({ recorded: true });
       const row = await sessionMoveNotesRepo.findByPly(db, sessionId, 2);
       expect(row?.note).toBe('played the Ruy Lopez idea');
     });
 
-    test('a ply outside the game is rejected, never trusting the model\'s own arithmetic', async () => {
+    test('an address beyond the game is rejected, never trusting the model\'s own arithmetic', async () => {
       const { sessionId, gameId } = await seedSession();
-      const result = await recordMoveNote(db, { sessionId, gameId }, { ply: 999, note: 'x' });
+      // moveRefToPly(500, 'white') === 999, far beyond this short game.
+      const result = await recordMoveNote(db, { sessionId, gameId }, { moveNumber: 500, color: 'white', note: 'x' });
       expect(result).toEqual({ error: 'that move does not exist in this game' });
     });
   });
@@ -66,37 +72,47 @@ describe('move-notes service', () => {
     test('the currently-open ply short-circuits without touching the DB or the light model', async () => {
       const { sessionId, gameId } = await seedSession();
       const callLightModel = vi.fn();
-      const result = await recallMove(deps(callLightModel), { sessionId, gameId, currentPly: 4 }, 4);
+      // moveRefToPly(2, 'black') === 4.
+      const result = await recallMove(
+        deps(callLightModel),
+        { sessionId, gameId, currentPly: 4 },
+        { moveNumber: 2, color: 'black' }
+      );
       expect(result).toEqual({ text: "that's the position you're already discussing — it's already in view." });
       expect(callLightModel).not.toHaveBeenCalled();
     });
 
-    test('a ply outside the game is rejected', async () => {
+    test('an address outside the game is rejected', async () => {
       const { sessionId, gameId } = await seedSession();
-      const result = await recallMove(deps(), { sessionId, gameId, currentPly: 0 }, 999);
+      // moveRefToPly(500, 'white') === 999, far beyond this short game.
+      const result = await recallMove(deps(), { sessionId, gameId, currentPly: 0 }, { moveNumber: 500, color: 'white' });
       expect(result).toEqual({ error: 'that move does not exist in this game' });
     });
 
-    test('a ply with no messages and no note returns the explicit "nothing recorded" case', async () => {
+    test('an address with no messages and no note returns the explicit "nothing recorded" case', async () => {
       const { sessionId, gameId } = await seedSession();
-      const result = await recallMove(deps(), { sessionId, gameId, currentPly: 0 }, 4);
+      const result = await recallMove(deps(), { sessionId, gameId, currentPly: 0 }, { moveNumber: 2, color: 'black' });
       expect(result).toEqual({ text: 'nothing recorded for that move yet' });
     });
 
-    test('a ply with a note but no raw messages (already folded) falls back to the note verbatim', async () => {
+    test('an address with a note but no raw messages (already folded) falls back to the note verbatim', async () => {
       const { sessionId, gameId } = await seedSession();
       await sessionMoveNotesRepo.upsert(db, sessionId, 4, 'discussed the knight retreat');
-      const result = await recallMove(deps(), { sessionId, gameId, currentPly: 0 }, 4);
+      const result = await recallMove(deps(), { sessionId, gameId, currentPly: 0 }, { moveNumber: 2, color: 'black' });
       expect(result).toEqual({ text: 'discussed the knight retreat' });
     });
 
-    test('a ply with raw messages gets a fresh light-tier digest of them', async () => {
+    test('an address with raw messages gets a fresh light-tier digest of them', async () => {
       const { sessionId, gameId } = await seedSession();
       await sessionMessagesRepo.insert(db, sessionId, 'assistant', 'What did you consider here?', 4);
       await sessionMessagesRepo.insert(db, sessionId, 'user', 'I thought about Nf6', 4);
       const callLightModel = vi.fn().mockResolvedValue('Student considered Nf6 at this move.');
 
-      const result = await recallMove(deps(callLightModel), { sessionId, gameId, currentPly: 0 }, 4);
+      const result = await recallMove(
+        deps(callLightModel),
+        { sessionId, gameId, currentPly: 0 },
+        { moveNumber: 2, color: 'black' }
+      );
 
       expect(result).toEqual({ text: 'Student considered Nf6 at this move.' });
       expect(callLightModel).toHaveBeenCalledOnce();
