@@ -343,11 +343,12 @@ describe('sessions routes', () => {
 
       expect(doStream).toHaveBeenCalledOnce();
       const options = doStream.mock.calls[0]?.[0] as { prompt: Array<{ role: string; content: unknown }> };
-      // Cache breakpoints (design doc, "Backend: wiring up real caching") split
-      // the system prompt into two leading system-role messages — static
-      // instructions, then per-session dynamic context.
+      // Cache breakpoints (coach context restructure design doc §5) split the
+      // system prompt into five leading system-role messages — static
+      // instructions, per-session dynamic context, annotated PGN, other-moves
+      // summary, then the uncached current-move block.
       const systemMessages = options.prompt.filter((m) => m.role === 'system');
-      expect(systemMessages).toHaveLength(2);
+      expect(systemMessages).toHaveLength(5);
       const systemText = JSON.stringify(systemMessages);
       expect(systemText).toContain('What was your opponent threatening?'); // plan moment
       expect(systemText).toContain('none yet'); // empty-focus-areas fallback
@@ -598,7 +599,7 @@ describe('sessions routes', () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.request.provider).toBe('anthropic');
-      expect(body.request.messages.filter((m: { role: string }) => m.role === 'system')).toHaveLength(2);
+      expect(body.request.messages.filter((m: { role: string }) => m.role === 'system')).toHaveLength(5);
       expect(body.request.tools.some((t: { name: string }) => t.name === 'show_position')).toBe(true);
       expect(body.response.usage).toEqual({
         freshInputTokens: 300,

@@ -2,6 +2,7 @@ import { buildCoachSystemPrompt } from '@chess-coach/prompts';
 import type { ClientToolResult, EngineEval, LlmProvider } from '@chess-coach/shared';
 import { streamText, zodSchema, type CoreMessage, type ProviderMetadata, type StreamTextResult, type ToolSet } from 'ai';
 import type { Kysely } from 'kysely';
+import { moveRefToPly } from '@chess-coach/chess-analysis';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import * as gamesRepo from '../db/repositories/games.js';
 import * as sessionMessagesRepo from '../db/repositories/session-messages.js';
@@ -12,10 +13,12 @@ import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import { getModelForUser, recordUsage, type GatewayConfig, type ModelResolution, type Tier } from '../llm/gateway.js';
 import { buildCoachTools } from './coach-tools.js';
+import * as coachContext from './coach-context.js';
 import { getPositionAtPly } from './game-positions.js';
 import * as userProfileService from './user-profile.js';
 import { ConflictError, InsufficientCreditsError, NotFoundError } from '../lib/errors.js';
 import { createKeyedLock } from '../lib/keyedLock.js';
+import { currentEpisode } from '../lib/episodes.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { createCreditsService, type CreditsService } from './credits.js';
 
@@ -96,7 +99,7 @@ export async function createSession(
   if (!game) throw new NotFoundError('Game not found');
 
   const session = await sessionsRepo.insert(db, { gameId: game.id, userId });
-  await sessionMessagesRepo.insert(db, session.id, 'user', SESSION_START_CONTENT);
+  await sessionMessagesRepo.insert(db, session.id, 'user', SESSION_START_CONTENT, session.currentPly);
   return session;
 }
 
@@ -216,16 +219,45 @@ export async function startTurn(
       }
     }
 
+    // Tracks the ply this turn's messages get tagged with — starts at
+    // whatever was current before this turn, and only ever moves forward
+    // via a resolved jump or a show_position client-tool-result, both
+    // below. Read by the onFinish closure further down.
+    let currentPly = session.currentPly;
+
     if (input.content !== undefined) {
-      await sessionMessagesRepo.insert(deps.db, session.id, 'user', input.content);
+      const jump = await coachContext.resolvePositionContextJump(deps.db, session.gameId, input.content);
+      if (jump && jump.ply !== currentPly) {
+        const historyBeforeTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
+        const closedEpisode = currentEpisode(historyBeforeTurn, currentPly);
+        await coachContext.closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, currentPly);
+        currentPly = jump.ply;
+        await sessionsRepo.updateCurrentPly(deps.db, session.id, currentPly);
+        // Keeps the caller's SessionRow in sync with the DB write above — in
+        // production this is a no-op (routes/sessions.ts fetches a fresh
+        // session per request), but it matters whenever the same in-memory
+        // session object is reused across turns (as a resumed conversation
+        // in a single process does), so the next turn's `session.currentPly`
+        // read isn't stale.
+        session.currentPly = currentPly;
+      }
+      await sessionMessagesRepo.insert(deps.db, session.id, 'user', input.content, currentPly);
     }
     if (input.clientToolResult) {
-      await applyClientToolResult(deps.db, session, input.clientToolResult);
+      currentPly = await applyClientToolResult(deps, session, input.clientToolResult, currentPly);
     }
 
     const { staticPart, dynamicPart } = await buildSystemPromptForSession(deps.db, session);
-    const priorMessages = await sessionMessagesRepo.listBySession(deps.db, session.id);
-    const requestMessages = buildCacheableMessages(staticPart, dynamicPart, priorMessages.map(toCoreMessage));
+    const historyAfterTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
+    const requestMessages = await coachContext.buildEpisodeContext({
+      db: deps.db,
+      callLightModel: deps.callLightModel,
+      session,
+      currentPly,
+      historyAfterTurn,
+      staticPart,
+      dynamicPart
+    });
 
     const tools = buildCoachTools(
       { userId: session.userId, sessionId: session.id, gameId: session.gameId },
@@ -271,8 +303,26 @@ export async function startTurn(
             }
           } satisfies TurnDebugSnapshot);
 
+          // A show_position tool-call inside this turn's own response is the
+          // coach *deciding* to move to a new position, before the client
+          // round-trip that confirms it (that confirmation lands in a later
+          // turn's applyClientToolResult). The assistant message carrying
+          // that tool-call must be tagged with the ply it's ABOUT to move
+          // to, not the ply that was current when the turn started —
+          // otherwise it's tagged old-ply while the eventual tool-result
+          // (tagged new-ply, once confirmed) lands one episode later, and
+          // buildEpisodeContext's episode scan splits the tool-call from
+          // its tool-result across two episodes: a bare tool-result with no
+          // matching tool-call in the same request, which Anthropic and
+          // OpenAI both reject. moveRefToPly is deterministic from the tool
+          // call's own {moveNumber, color} args — no need to wait for the
+          // client's confirmed ply, and it always matches what the client
+          // later reports (both compute it from the same address).
+          let tagPly = currentPly;
           for (const message of event.response.messages) {
-            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content);
+            const jumpTargetPly = extractShowPositionTargetPly(message);
+            if (jumpTargetPly !== null) tagPly = jumpTargetPly;
+            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content, tagPly);
           }
           await recordUsage(deps.db, {
             userId: session.userId,
@@ -306,19 +356,35 @@ export async function startTurn(
 }
 
 async function applyClientToolResult(
-  db: Kysely<Database>,
+  deps: CoachAgentDependencies,
   session: SessionRow,
-  toolResult: NonNullable<StartTurnInput['clientToolResult']>
-): Promise<void> {
+  toolResult: NonNullable<StartTurnInput['clientToolResult']>,
+  currentPly: number
+): Promise<number> {
   let result = toolResult.result;
+  let ply = currentPly;
   if (toolResult.toolName === 'show_position') {
-    const { ply } = toolResult.result as { ply: number };
-    await sessionsRepo.updateCurrentPly(db, session.id, ply);
-    result = await withAuthoritativeFen(db, session.gameId, ply, toolResult.result);
+    const { ply: newPly } = toolResult.result as { ply: number };
+    if (newPly !== currentPly) {
+      const historyBeforeTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
+      const closedEpisode = currentEpisode(historyBeforeTurn, currentPly);
+      await coachContext.closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, currentPly);
+    }
+    ply = newPly;
+    await sessionsRepo.updateCurrentPly(deps.db, session.id, ply);
+    // See the matching comment in startTurn's position_context jump branch —
+    // keeps the caller's SessionRow in sync with the DB write above.
+    session.currentPly = ply;
+    result = await withAuthoritativeFen(deps.db, session.gameId, ply, toolResult.result);
   }
-  await sessionMessagesRepo.insert(db, session.id, 'tool', [
-    { type: 'tool-result', toolCallId: toolResult.toolCallId, toolName: toolResult.toolName, result }
-  ]);
+  await sessionMessagesRepo.insert(
+    deps.db,
+    session.id,
+    'tool',
+    [{ type: 'tool-result', toolCallId: toolResult.toolCallId, toolName: toolResult.toolName, result }],
+    ply
+  );
+  return ply;
 }
 
 /**
@@ -373,33 +439,22 @@ async function buildSystemPromptForSession(
   });
 }
 
-function toCoreMessage(row: SessionMessageRow): CoreMessage {
-  return { role: row.role, content: row.content } as CoreMessage;
-}
-
-/**
- * architecture §8.1: static instructions and per-session dynamic context each
- * get their own Anthropic cache breakpoint; the conversation itself is left
- * uncached (it's not a stable prefix). Two leading `role: 'system'` messages
- * (rather than one `system` string) is what lets each carry its own
- * `cache_control` — verified against the installed SDK (`ai@4.3.19`,
- * `@ai-sdk/anthropic@1.2.12`): the Anthropic provider merges consecutive
- * system messages into independently-cacheable content blocks.
- * `providerOptions.anthropic` is a harmless no-op for OpenAI, whose prefix
- * caching is automatic and gets the same discount for free from this same
- * static/dynamic/conversation ordering.
- */
-export function buildCacheableMessages(
-  staticPart: string,
-  dynamicPart: string,
-  priorMessages: CoreMessage[]
-): CoreMessage[] {
-  const cacheControl = { anthropic: { cacheControl: { type: 'ephemeral' as const } } };
-  return [
-    { role: 'system', content: staticPart, providerOptions: cacheControl },
-    { role: 'system', content: dynamicPart, providerOptions: cacheControl },
-    ...priorMessages
-  ];
+/** The onFinish tagging fix above: reads a show_position tool-call's own
+ * {moveNumber, color} args to determine the ply it targets, without
+ * waiting for the client's confirming round-trip. Returns null for any
+ * message that isn't an assistant message containing a show_position call
+ * (the overwhelmingly common case — most turns never move the position). */
+function extractShowPositionTargetPly(message: { role: string; content: unknown }): number | null {
+  if (!Array.isArray(message.content)) return null;
+  for (const part of message.content) {
+    if (typeof part !== 'object' || part === null) continue;
+    const candidate = part as { type?: unknown; toolName?: unknown; args?: unknown };
+    if (candidate.type !== 'tool-call' || candidate.toolName !== 'show_position') continue;
+    const args = candidate.args as { moveNumber?: unknown; color?: unknown };
+    if (typeof args.moveNumber !== 'number') continue;
+    return moveRefToPly(args.moveNumber, (args.color as 'white' | 'black' | null) ?? null);
+  }
+  return null;
 }
 
 /** Providers occasionally report non-finite usage on multi-step tool-calling
