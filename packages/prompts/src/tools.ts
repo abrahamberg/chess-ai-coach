@@ -50,3 +50,15 @@ export const endSessionParameters = z.object({
   summary: z.string(),
   homework: z.string().nullable()
 });
+
+/** design doc §3: coach-authored per-move note, discretionary (same pattern
+ * as record_finding — not mandatory every move). */
+export const recordMoveNoteParameters = z.object({
+  ply: z.number().int().nonnegative(),
+  note: z.string().min(1).max(300)
+});
+
+/** design doc §4: on-demand deeper lookup for a specific past move. */
+export const recallMoveParameters = z.object({
+  ply: z.number().int().nonnegative()
+});

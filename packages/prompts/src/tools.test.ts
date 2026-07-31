@@ -7,6 +7,8 @@ import {
   getUserProfileParameters,
   recordFindingParameters,
   proposeFocusAreaUpdateParameters,
+  recallMoveParameters,
+  recordMoveNoteParameters,
   showPositionParameters,
   updateThreadsParameters
 } from './tools.js';
@@ -77,5 +79,28 @@ describe('coach agent tool parameter schemas (architecture §7.1)', () => {
       true
     );
     expect(endSessionParameters.safeParse({ summary: 'x' }).success).toBe(false);
+  });
+});
+
+describe('record_move_note: { ply, note }', () => {
+  test('accepts a nonnegative int ply and a short note', () => {
+    expect(recordMoveNoteParameters.safeParse({ ply: 18, note: 'missed Rxd5, assigned as homework' }).success).toBe(
+      true
+    );
+  });
+
+  test('rejects a negative ply and an empty note', () => {
+    expect(recordMoveNoteParameters.safeParse({ ply: -1, note: 'x' }).success).toBe(false);
+    expect(recordMoveNoteParameters.safeParse({ ply: 18, note: '' }).success).toBe(false);
+  });
+});
+
+describe('recall_move: { ply }', () => {
+  test('accepts a nonnegative int ply', () => {
+    expect(recallMoveParameters.safeParse({ ply: 22 }).success).toBe(true);
+  });
+
+  test('rejects a missing ply', () => {
+    expect(recallMoveParameters.safeParse({}).success).toBe(false);
   });
 });
