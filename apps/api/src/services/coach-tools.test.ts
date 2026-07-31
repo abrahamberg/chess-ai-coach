@@ -58,7 +58,7 @@ describe('buildCoachTools', () => {
     };
   }
 
-  test('exposes all 9 architecture §7.1 tools', async () => {
+  test('exposes all 11 architecture §7.1 tools', async () => {
     const ctx = await setupCtx();
     const tools = buildCoachTools(ctx, makeDeps());
 
@@ -70,7 +70,9 @@ describe('buildCoachTools', () => {
         'get_engine_analysis',
         'get_user_profile',
         'propose_focus_area_update',
+        'recall_move',
         'record_finding',
+        'record_move_note',
         'show_position',
         'update_threads'
       ].sort()
@@ -246,6 +248,41 @@ describe('buildCoachTools', () => {
       await expect(
         tools.update_threads?.execute?.({ threads }, { toolCallId: '1', messages: [] })
       ).rejects.toThrow();
+    });
+  });
+
+  describe('record_move_note', () => {
+    test('validates the ply against the game and upserts a note', async () => {
+      const { userId, gameId, sessionId } = await setupCtx('1. e4 e5 2. Nf3 Nc6');
+      const tools = buildCoachTools({ userId, sessionId, gameId }, makeDeps());
+
+      const ok = await tools.record_move_note?.execute?.(
+        { ply: 2, note: 'discussed the fork' },
+        { toolCallId: '1', messages: [] }
+      );
+      expect(ok).toEqual({ recorded: true });
+
+      const rejected = await tools.record_move_note?.execute?.({ ply: 999, note: 'x' }, { toolCallId: '2', messages: [] });
+      expect(rejected).toEqual({ error: 'that move does not exist in this game' });
+    });
+  });
+
+  describe('recall_move', () => {
+    test("reads the session's current ply and is budgeted", async () => {
+      const { userId, gameId, sessionId } = await setupCtx('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+      const tools = buildCoachTools({ userId, sessionId, gameId }, makeDeps());
+
+      const nothingYet = await tools.recall_move?.execute?.({ ply: 2 }, { toolCallId: '1', messages: [] });
+      expect(nothingYet).toEqual({ text: 'nothing recorded for that move yet' });
+
+      // Distinct args each time — withTurnGuards caches by (name, args), so
+      // repeating the same args would return the cached result without ever
+      // re-checking the budget. Three distinct calls exhaust the budget of 3;
+      // a fourth distinct call (never cached) is the one that actually hits it.
+      await tools.recall_move?.execute?.({ ply: 4 }, { toolCallId: '2', messages: [] });
+      await tools.recall_move?.execute?.({ ply: 6 }, { toolCallId: '3', messages: [] });
+      const overBudget = await tools.recall_move?.execute?.({ ply: 1 }, { toolCallId: '4', messages: [] });
+      expect(overBudget).toEqual({ error: 'budget_exhausted — answer with what you have' });
     });
   });
 });

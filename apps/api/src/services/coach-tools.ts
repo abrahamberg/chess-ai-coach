@@ -6,7 +6,9 @@ import {
   getEngineAnalysisParameters,
   getUserProfileParameters,
   proposeFocusAreaUpdateParameters,
+  recallMoveParameters,
   recordFindingParameters,
+  recordMoveNoteParameters,
   renderFocusAreasBlock,
   renderRecentFindingsBlock,
   showPositionParameters,
@@ -16,9 +18,11 @@ import { moveRefToPly } from '@chess-coach/chess-analysis';
 import type { EngineEval, EngineLine, Finding, FocusAreaUpdate, Thread } from '@chess-coach/shared';
 import { tool, type ToolSet } from 'ai';
 import type { Kysely } from 'kysely';
+import * as sessionsRepo from '../db/repositories/sessions.js';
 import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { getPositionAtPly } from './game-positions.js';
+import { recallMove, recordMoveNote } from './move-notes.js';
 import * as progressService from './progress.js';
 import { createThreadsService } from './threads.js';
 import * as userProfileService from './user-profile.js';
@@ -42,7 +46,8 @@ export interface CoachToolsDependencies {
  * per turn. Over budget the tool returns an error object instead of executing. */
 const TOOL_BUDGETS: Partial<Record<string, number>> = {
   get_engine_analysis: 2,
-  get_user_profile: 1
+  get_user_profile: 1,
+  recall_move: 3
 };
 const BUDGET_EXHAUSTED = { error: 'budget_exhausted — answer with what you have' } as const;
 
@@ -106,6 +111,20 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
       execute: withTurnGuards(guardState, 'update_threads', (args: { threads: Thread[] }) =>
         createThreadsService(deps.db).replace(ctx.sessionId, args.threads)
       )
+    }),
+    record_move_note: tool({
+      description:
+        "Save a one-sentence note on a move you're about to leave, for your own later reference (e.g. \"missed Rxd5, discussed the pin, assigned as homework\"). Worth calling most of the time you leave a moment — not mechanically every single time.",
+      parameters: recordMoveNoteParameters,
+      execute: withTurnGuards(guardState, 'record_move_note', (args: { ply: number; note: string }) =>
+        recordMoveNote(deps.db, ctx, args)
+      )
+    }),
+    recall_move: tool({
+      description:
+        "Look up more detail on a specific earlier move in THIS session than the one-line summary already gives you.",
+      parameters: recallMoveParameters,
+      execute: withTurnGuards(guardState, 'recall_move', (args: { ply: number }) => recallMoveTool(deps, ctx, args))
     }),
     end_session: tool({
       description: 'Mark the session complete and trigger the post-session progress summary.',
@@ -176,6 +195,15 @@ async function checkPosition(
   const position = await getPositionAtPly(deps.db, ctx.gameId, ply);
   if (!position) return { error: 'that move does not exist in this game' };
   return { fen: position.fen, moveSan: position.moveSan };
+}
+
+async function recallMoveTool(
+  deps: CoachToolsDependencies,
+  ctx: CoachToolsContext,
+  args: { ply: number }
+): Promise<{ text: string } | { error: string }> {
+  const session = await sessionsRepo.findById(deps.db, ctx.sessionId);
+  return recallMove(deps, { sessionId: ctx.sessionId, gameId: ctx.gameId, currentPly: session?.currentPly ?? 0 }, args.ply);
 }
 
 function renderEngineLines(lines: EngineLine[]): string {
