@@ -1,6 +1,6 @@
 import { plyToMoveRef } from '@chess-coach/chess-analysis';
 import { MISTAKE_CATEGORIES } from '@chess-coach/shared';
-import type { CoachingPlan, MistakeCategory } from '@chess-coach/shared';
+import type { CoachingPlan, MistakeCategory, Thread } from '@chess-coach/shared';
 
 export const MISTAKE_CATEGORIES_BLOCK = MISTAKE_CATEGORIES.join(', ');
 
@@ -60,6 +60,16 @@ export function renderRecentFindingsBlock(findings: RecentFinding[], now: Date):
     .join('\n');
 }
 
+/** Standard chess move-pair phrasing for any ply — "the game start" for
+ * ply 0, otherwise "White's/Black's move N". Shared by the coaching-plan
+ * renderer and the coach context restructure's annotated-PGN/other-moves-
+ * summary/current-move-block renderers (packages/prompts/src/episode-
+ * context.ts) so they all describe a ply identically. */
+export function describeMoveRef(ply: number): string {
+  const ref = plyToMoveRef(ply);
+  return ref.color === null ? 'the game start' : `${capitalize(ref.color)}'s move ${ref.moveNumber}`;
+}
+
 /**
  * prompts.md §2.2: numbered moments with a move-pair reference, kind,
  * question, and key line. Uses "White's/Black's move N" (standard PGN
@@ -73,9 +83,20 @@ export function renderCoachingPlanBlock(plan: CoachingPlan): string {
 }
 
 function renderMoment(moment: CoachingPlan['moments'][number]): string {
-  const ref = plyToMoveRef(moment.ply);
-  const moveRef = ref.color === null ? 'the game start' : `${capitalize(ref.color)}'s move ${ref.moveNumber}`;
-  return `${moveRef} (${moment.kind}): "${moment.socraticQuestion}" Key line: ${moment.keyLine}`;
+  return `${describeMoveRef(moment.ply)} (${moment.kind}): "${moment.socraticQuestion}" Key line: ${moment.keyLine}`;
+}
+
+/** Coach context restructure design §5, layer 5: the backstage conversation
+ * ledger, finally rendered into the live prompt (previously computed but
+ * never injected). */
+export function renderThreadsBlock(threads: Thread[]): string {
+  if (threads.length === 0) return '(empty — no parked topics right now)';
+  return threads.map(renderThreadLine).join('\n');
+}
+
+function renderThreadLine(thread: Thread): string {
+  const hypothesis = thread.hypothesis ? ` (hypothesis: ${thread.hypothesis})` : '';
+  return `- [${thread.status}] ${thread.topic}${hypothesis}`;
 }
 
 function capitalize(value: string): string {

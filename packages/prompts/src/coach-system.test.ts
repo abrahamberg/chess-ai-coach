@@ -144,4 +144,10 @@ describe('buildCoachSystemPrompt', () => {
     const second = buildCoachSystemPrompt(input);
     expect(first.dynamicPart).toBe(second.dynamicPart);
   });
+
+  test('staticPart tells the coach about record_move_note and recall_move', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('record_move_note');
+    expect(staticPart).toContain('recall_move');
+  });
 });

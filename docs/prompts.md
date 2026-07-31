@@ -143,6 +143,16 @@ sense.
   threading below). Call it ONLY when you set a topic aside for later, resume
   one, or a parked one resolves. Ordinary back-and-forth on the current topic
   never touches the ledger. Silent; the student never sees it.
+- record_move_note: whenever you're about to leave a moment, jot a one-sentence
+  note on what happened there ("missed Rxd5, discussed the pin, assigned as
+  homework") — this is how you'll remember it later without re-reading the whole
+  discussion. Addressed the same way as show_position ({ moveNumber, color }) —
+  never a bare ply. Discretionary, like record_finding: worth calling most of
+  the time you leave a moment, not mechanically every single time.
+- recall_move: if the one-line summary of an earlier move (in "Other moves
+  discussed" below) isn't enough to answer the student, call this to pull up more
+  detail on that specific move. Same { moveNumber, color } address as
+  show_position — never a bare ply.
 - end_session: when the walkthrough is done and you have wrapped up. Include a
   2–3 sentence summary in the student's words and one concrete homework task
   tied to their focus areas. Before calling it, check your thread ledger: every
@@ -265,6 +275,52 @@ The Boundaries section is the defense in the prompt; the real enforcement is
 server-side (closed enums on tool inputs, no privileged tools exposed). Do not add
 user-controlled text to the system prompt beyond the listed variables, and always
 render `selfAssessment` inside quotes as shown.
+
+### 2.7 Context assembly (coach-context.ts)
+
+As of the coach context restructure (docs/superpowers/specs/2026-07-31-coach-
+context-restructure-design.md), the request sent to the model each turn is five
+layers instead of two, each on its own Anthropic cache breakpoint except the last:
+
+1. **Static** (§2.1's full text) — cached, byte-identical for every turn of every
+   session in a rating band.
+2. **Dynamic** (student profile, game meta, coaching plan — §2.2) — cached, stable
+   for the whole session.
+3. **Annotated PGN** — cached, static per game. The whole game as SAN with quality
+   symbols inline (`18.Nf3! Bg4?!`); moves classified `mistake`/`blunder`/`miss`/
+   `dubious` also get centipawn loss and the best move. Built from
+   `classifyMoves()`'s already-computed, already-persisted output
+   (`analyses.classified_moves`) — nothing new to compute.
+4. **Other moves discussed** — cached, rebuilt every turn from
+   `session_move_notes` (excluding the currently open move): one line per
+   previously-discussed ply, e.g. `- White's move 18 (blunder): missed Rxd5,
+   assigned as homework.` Only busts its own cache entry when a note actually
+   changes.
+5. **Current position** — uncached (the only layer that changes every turn):
+   which move is now on the board, its FEN, where the coach/student arrived from
+   if this is a fresh jump, then the backstage thread ledger (§Conversation
+   threading), then the current episode's own raw conversation.
+
+An "episode" is the contiguous run of `session_messages` sharing the session's
+current ply. Moving to a new position (`show_position`, or the student navigating
+the move list and sending a message) closes the old episode: the coach's own
+`record_move_note` call for that ply wins if it was actually made AND succeeded
+(an errored call — e.g. an address that doesn't resolve to a real move — does not
+count), otherwise the episode's raw messages are folded into one automatically.
+`recall_move` exists for cases where the one-line summary in layer 4 isn't enough
+— it re-digests that specific episode's full raw conversation on demand.
+
+The automatic fold (both on episode close and mid-episode, if a still-open
+episode's own conversation exceeds its 6k-token budget) uses a dedicated,
+short system prompt — `EPISODE_FOLD_SYSTEM_PROMPT`
+(`packages/prompts/src/episode-fold.ts`) — distinct from the whole-session
+`COMPACTOR_SYSTEM_PROMPT` in `services/session-context.ts` (still used, unchanged,
+by `recall_move`'s on-demand digest, which deliberately wants a richer summary
+than a one-sentence move note): "You compress one chess-coaching move's worth of
+conversation into a single sentence (aim for under 40 words) describing what was
+discussed and any conclusion reached. Output only that sentence." It never
+appends the OPEN THREADS block that the whole-session digest does — layer 5
+already renders the thread ledger separately every turn.
 
 ---
 

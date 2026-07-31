@@ -12,10 +12,12 @@ import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import { getModelForUser, recordUsage, type GatewayConfig, type ModelResolution, type Tier } from '../llm/gateway.js';
 import { buildCoachTools } from './coach-tools.js';
+import * as coachContext from './coach-context.js';
 import { getPositionAtPly } from './game-positions.js';
 import * as userProfileService from './user-profile.js';
 import { ConflictError, InsufficientCreditsError, NotFoundError } from '../lib/errors.js';
 import { createKeyedLock } from '../lib/keyedLock.js';
+import { currentEpisode } from '../lib/episodes.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { createCreditsService, type CreditsService } from './credits.js';
 
@@ -96,7 +98,7 @@ export async function createSession(
   if (!game) throw new NotFoundError('Game not found');
 
   const session = await sessionsRepo.insert(db, { gameId: game.id, userId });
-  await sessionMessagesRepo.insert(db, session.id, 'user', SESSION_START_CONTENT);
+  await sessionMessagesRepo.insert(db, session.id, 'user', SESSION_START_CONTENT, session.currentPly);
   return session;
 }
 
@@ -216,16 +218,38 @@ export async function startTurn(
       }
     }
 
+    // Tracks the ply this turn's messages get tagged with — starts at
+    // whatever was current before this turn, and only ever moves forward
+    // via a resolved jump or a show_position client-tool-result, both
+    // below. Read by the onFinish closure further down.
+    let currentPly = session.currentPly;
+
     if (input.content !== undefined) {
-      await sessionMessagesRepo.insert(deps.db, session.id, 'user', input.content);
+      const jump = await coachContext.resolvePositionContextJump(deps.db, session.gameId, input.content);
+      if (jump && jump.ply !== currentPly) {
+        const historyBeforeTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
+        const closedEpisode = currentEpisode(historyBeforeTurn, currentPly);
+        await coachContext.closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, currentPly);
+        currentPly = jump.ply;
+        await sessionsRepo.updateCurrentPly(deps.db, session.id, currentPly);
+      }
+      await sessionMessagesRepo.insert(deps.db, session.id, 'user', input.content, currentPly);
     }
     if (input.clientToolResult) {
-      await applyClientToolResult(deps.db, session, input.clientToolResult);
+      currentPly = await applyClientToolResult(deps, session, input.clientToolResult, currentPly);
     }
 
     const { staticPart, dynamicPart } = await buildSystemPromptForSession(deps.db, session);
-    const priorMessages = await sessionMessagesRepo.listBySession(deps.db, session.id);
-    const requestMessages = buildCacheableMessages(staticPart, dynamicPart, priorMessages.map(toCoreMessage));
+    const historyAfterTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
+    const requestMessages = await coachContext.buildEpisodeContext({
+      db: deps.db,
+      callLightModel: deps.callLightModel,
+      session,
+      currentPly,
+      historyAfterTurn,
+      staticPart,
+      dynamicPart
+    });
 
     const tools = buildCoachTools(
       { userId: session.userId, sessionId: session.id, gameId: session.gameId },
@@ -272,7 +296,7 @@ export async function startTurn(
           } satisfies TurnDebugSnapshot);
 
           for (const message of event.response.messages) {
-            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content);
+            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content, currentPly);
           }
           await recordUsage(deps.db, {
             userId: session.userId,
@@ -306,19 +330,35 @@ export async function startTurn(
 }
 
 async function applyClientToolResult(
-  db: Kysely<Database>,
+  deps: CoachAgentDependencies,
   session: SessionRow,
-  toolResult: NonNullable<StartTurnInput['clientToolResult']>
-): Promise<void> {
+  toolResult: NonNullable<StartTurnInput['clientToolResult']>,
+  currentPly: number
+): Promise<number> {
   let result = toolResult.result;
+  let ply = currentPly;
   if (toolResult.toolName === 'show_position') {
-    const { ply } = toolResult.result as { ply: number };
-    await sessionsRepo.updateCurrentPly(db, session.id, ply);
-    result = await withAuthoritativeFen(db, session.gameId, ply, toolResult.result);
+    const { ply: claimedPly } = toolResult.result as { ply: number };
+    const position = await getPositionAtPly(deps.db, session.gameId, claimedPly);
+    if (position) {
+      if (claimedPly !== currentPly) {
+        const historyBeforeTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
+        const closedEpisode = currentEpisode(historyBeforeTurn, currentPly);
+        await coachContext.closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, currentPly);
+      }
+      ply = claimedPly;
+      await sessionsRepo.updateCurrentPly(deps.db, session.id, ply);
+    }
+    result = await withAuthoritativeFen(deps.db, session.gameId, ply, toolResult.result);
   }
-  await sessionMessagesRepo.insert(db, session.id, 'tool', [
-    { type: 'tool-result', toolCallId: toolResult.toolCallId, toolName: toolResult.toolName, result }
-  ]);
+  await sessionMessagesRepo.insert(
+    deps.db,
+    session.id,
+    'tool',
+    [{ type: 'tool-result', toolCallId: toolResult.toolCallId, toolName: toolResult.toolName, result }],
+    ply
+  );
+  return ply;
 }
 
 /**
@@ -371,35 +411,6 @@ async function buildSystemPromptForSession(
     focusAreas: profileSummary.focusAreas,
     recentFindings: profileSummary.recentFindings
   });
-}
-
-function toCoreMessage(row: SessionMessageRow): CoreMessage {
-  return { role: row.role, content: row.content } as CoreMessage;
-}
-
-/**
- * architecture §8.1: static instructions and per-session dynamic context each
- * get their own Anthropic cache breakpoint; the conversation itself is left
- * uncached (it's not a stable prefix). Two leading `role: 'system'` messages
- * (rather than one `system` string) is what lets each carry its own
- * `cache_control` — verified against the installed SDK (`ai@4.3.19`,
- * `@ai-sdk/anthropic@1.2.12`): the Anthropic provider merges consecutive
- * system messages into independently-cacheable content blocks.
- * `providerOptions.anthropic` is a harmless no-op for OpenAI, whose prefix
- * caching is automatic and gets the same discount for free from this same
- * static/dynamic/conversation ordering.
- */
-export function buildCacheableMessages(
-  staticPart: string,
-  dynamicPart: string,
-  priorMessages: CoreMessage[]
-): CoreMessage[] {
-  const cacheControl = { anthropic: { cacheControl: { type: 'ephemeral' as const } } };
-  return [
-    { role: 'system', content: staticPart, providerOptions: cacheControl },
-    { role: 'system', content: dynamicPart, providerOptions: cacheControl },
-    ...priorMessages
-  ];
 }
 
 /** Providers occasionally report non-finite usage on multi-step tool-calling

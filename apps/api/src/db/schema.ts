@@ -58,8 +58,6 @@ export interface SessionsTable {
   currentPly: Generated<number>;
   threads: ColumnType<unknown, string | undefined, string>;
   debugSnapshot: ColumnType<unknown, string | null | undefined, string | null>;
-  contextDigest: string | null;
-  digestThroughMessageId: string | null;
   summary: string | null;
   homework: string | null;
   startedAt: Generated<Date>;
@@ -71,7 +69,17 @@ export interface SessionMessagesTable {
   sessionId: string;
   role: 'user' | 'assistant' | 'tool';
   content: Jsonb<unknown>;
+  ply: number | null;
   createdAt: Generated<Date>;
+}
+
+export interface SessionMoveNotesTable {
+  id: Generated<string>;
+  sessionId: string;
+  ply: number;
+  note: string;
+  createdAt: Generated<Date>;
+  updatedAt: Generated<Date>;
 }
 
 export interface FindingsTable {
@@ -129,6 +137,7 @@ export interface Database {
   analyses: AnalysesTable;
   sessions: SessionsTable;
   sessionMessages: SessionMessagesTable;
+  sessionMoveNotes: SessionMoveNotesTable;
   findings: FindingsTable;
   focusAreas: FocusAreasTable;
   creditLedger: CreditLedgerTable;

@@ -58,7 +58,7 @@ describe('buildCoachTools', () => {
     };
   }
 
-  test('exposes all 9 architecture §7.1 tools', async () => {
+  test('exposes all 11 architecture §7.1 tools', async () => {
     const ctx = await setupCtx();
     const tools = buildCoachTools(ctx, makeDeps());
 
@@ -70,7 +70,9 @@ describe('buildCoachTools', () => {
         'get_engine_analysis',
         'get_user_profile',
         'propose_focus_area_update',
+        'recall_move',
         'record_finding',
+        'record_move_note',
         'show_position',
         'update_threads'
       ].sort()
@@ -246,6 +248,55 @@ describe('buildCoachTools', () => {
       await expect(
         tools.update_threads?.execute?.({ threads }, { toolCallId: '1', messages: [] })
       ).rejects.toThrow();
+    });
+  });
+
+  describe('record_move_note', () => {
+    test('validates the { moveNumber, color } address against the game and upserts a note', async () => {
+      const { userId, gameId, sessionId } = await setupCtx('1. e4 e5 2. Nf3 Nc6');
+      const tools = buildCoachTools({ userId, sessionId, gameId }, makeDeps());
+
+      // moveRefToPly(1, 'black') === 2.
+      const ok = await tools.record_move_note?.execute?.(
+        { moveNumber: 1, color: 'black', note: 'discussed the fork' },
+        { toolCallId: '1', messages: [] }
+      );
+      expect(ok).toEqual({ recorded: true });
+
+      // moveRefToPly(500, 'white') === 999, far beyond this short game.
+      const rejected = await tools.record_move_note?.execute?.(
+        { moveNumber: 500, color: 'white', note: 'x' },
+        { toolCallId: '2', messages: [] }
+      );
+      expect(rejected).toEqual({ error: 'that move does not exist in this game' });
+    });
+  });
+
+  describe('recall_move', () => {
+    test("reads the session's current ply and is budgeted", async () => {
+      const { userId, gameId, sessionId } = await setupCtx('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+      const tools = buildCoachTools({ userId, sessionId, gameId }, makeDeps());
+
+      // moveRefToPly(1, 'black') === 2.
+      const nothingYet = await tools.recall_move?.execute?.(
+        { moveNumber: 1, color: 'black' },
+        { toolCallId: '1', messages: [] }
+      );
+      expect(nothingYet).toEqual({ text: 'nothing recorded for that move yet' });
+
+      // Distinct args each time — withTurnGuards caches by (name, args), so
+      // repeating the same args would return the cached result without ever
+      // re-checking the budget. Three distinct calls exhaust the budget of 3;
+      // a fourth distinct call (never cached) is the one that actually hits it.
+      // moveRefToPly(2, 'black') === 4, moveRefToPly(3, 'black') === 6,
+      // moveRefToPly(1, 'white') === 1.
+      await tools.recall_move?.execute?.({ moveNumber: 2, color: 'black' }, { toolCallId: '2', messages: [] });
+      await tools.recall_move?.execute?.({ moveNumber: 3, color: 'black' }, { toolCallId: '3', messages: [] });
+      const overBudget = await tools.recall_move?.execute?.(
+        { moveNumber: 1, color: 'white' },
+        { toolCallId: '4', messages: [] }
+      );
+      expect(overBudget).toEqual({ error: 'budget_exhausted — answer with what you have' });
     });
   });
 });

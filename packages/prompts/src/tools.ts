@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { FindingSchema, FocusAreaUpdateSchema, ThreadSchema } from '@chess-coach/shared';
 
-/** architecture §7.1 — parameter schemas for the coach agent's 9 tools. Pure
+/** architecture §7.1 — parameter schemas for the coach agent's 11 tools. Pure
  * (no execute functions here); apps/api/src/services/coach-tools.ts binds
  * these to real services to build the AI SDK ToolSet. */
 
@@ -11,15 +11,24 @@ import { FindingSchema, FocusAreaUpdateSchema, ThreadSchema } from '@chess-coach
  * named, and asking the model to convert ply <-> move-pair itself in prose
  * ("White's move N is ply 2N-1") reliably produced miscounted navigation.
  * moveNumber 0 with color null addresses the game's starting position.
+ * Shared by every tool that addresses a move in this game (show_position,
+ * check_position, record_move_note, recall_move) — never a bare ply,
+ * anywhere in the tool surface.
  */
+const moveAddressShape = {
+  moveNumber: z.number().int().nonnegative(),
+  color: z.enum(['white', 'black']).nullable()
+};
+
+function refineMoveAddress<T extends { moveNumber: number; color: 'white' | 'black' | null }>(value: T): boolean {
+  return value.moveNumber === 0 ? value.color === null : value.color !== null;
+}
+
+const MOVE_ADDRESS_REFINEMENT_MESSAGE = 'color must be null only when moveNumber is 0 (the game start)';
+
 export const showPositionParameters = z
-  .object({
-    moveNumber: z.number().int().nonnegative(),
-    color: z.enum(['white', 'black']).nullable()
-  })
-  .refine((value) => (value.moveNumber === 0 ? value.color === null : value.color !== null), {
-    message: 'color must be null only when moveNumber is 0 (the game start)'
-  });
+  .object(moveAddressShape)
+  .refine(refineMoveAddress, { message: MOVE_ADDRESS_REFINEMENT_MESSAGE });
 
 /** check_position takes the same {moveNumber, color} address as
  * show_position — it just answers with the FEN instead of moving the
@@ -50,3 +59,18 @@ export const endSessionParameters = z.object({
   summary: z.string(),
   homework: z.string().nullable()
 });
+
+/** design doc §3: coach-authored per-move note, discretionary (same pattern
+ * as record_finding — not mandatory every move). Addressed the same way as
+ * show_position/check_position ({ moveNumber, color }) — never a bare ply
+ * (final review #1): every other context surface speaks move-pair
+ * terminology, and a bare ply here was the one place the model was
+ * silently likely to miscount. */
+export const recordMoveNoteParameters = z
+  .object({ ...moveAddressShape, note: z.string().min(1).max(300) })
+  .refine(refineMoveAddress, { message: MOVE_ADDRESS_REFINEMENT_MESSAGE });
+
+/** design doc §4: on-demand deeper lookup for a specific past move, same
+ * { moveNumber, color } address as show_position/check_position (final
+ * review #1). */
+export const recallMoveParameters = showPositionParameters;
