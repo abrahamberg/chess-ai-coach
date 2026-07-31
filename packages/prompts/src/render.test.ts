@@ -5,8 +5,11 @@ import {
   relativeDate,
   renderCoachingPlanBlock,
   renderFocusAreasBlock,
-  renderRecentFindingsBlock
+  renderRecentFindingsBlock,
+  describeMoveRef,
+  renderThreadsBlock
 } from './render.js';
+import type { Thread } from '@chess-coach/shared';
 
 describe('MISTAKE_CATEGORIES_BLOCK', () => {
   test('contains all 13 categories, comma-separated', () => {
@@ -142,5 +145,42 @@ describe('renderCoachingPlanBlock', () => {
     });
 
     expect(block).toContain("Black's move 12");
+  });
+});
+
+describe('describeMoveRef', () => {
+  test('ply 0 is the game start', () => {
+    expect(describeMoveRef(0)).toBe('the game start');
+  });
+
+  test('an odd ply is White\'s move', () => {
+    expect(describeMoveRef(35)).toBe("White's move 18");
+  });
+
+  test('an even ply is Black\'s move', () => {
+    expect(describeMoveRef(36)).toBe("Black's move 18");
+  });
+});
+
+describe('renderThreadsBlock', () => {
+  test('an empty ledger renders a fallback, not an empty string', () => {
+    expect(renderThreadsBlock([])).toBe('(empty — no parked topics right now)');
+  });
+
+  test('renders status, topic, and hypothesis when present', () => {
+    const threads: Thread[] = [
+      { id: 1, topic: 'the h3 line', status: 'parked', hypothesis: null, anchorPly: null, anchorFen: null },
+      {
+        id: 2,
+        topic: 'king safety pattern',
+        status: 'active',
+        hypothesis: 'stops calculating after the first capture',
+        anchorPly: null,
+        anchorFen: null
+      }
+    ];
+    expect(renderThreadsBlock(threads)).toBe(
+      '- [parked] the h3 line\n- [active] king safety pattern (hypothesis: stops calculating after the first capture)'
+    );
   });
 });
