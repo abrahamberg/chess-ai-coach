@@ -60,15 +60,20 @@ describe('renderOtherMovesSummary', () => {
 
 describe('renderCurrentMoveBlock', () => {
   test('the first episode of a session has no "reached from" sentence', () => {
-    const text = renderCurrentMoveBlock(0, 'startpos-fen', null);
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '(empty — no parked topics right now)');
     expect(text).toContain('You are now discussing the game start');
     expect(text).not.toContain('You reached this position from');
   });
 
   test('a jump includes where the coach/student arrived from', () => {
-    const text = renderCurrentMoveBlock(35, 'fen-after-18', 8);
+    const text = renderCurrentMoveBlock(35, 'fen-after-18', 8, '(empty — no parked topics right now)');
     expect(text).toContain("You are now discussing White's move 18");
     expect(text).toContain('FEN: fen-after-18');
     expect(text).toContain("You reached this position from Black's move 4");
+  });
+
+  test('folds the thread ledger in under its own heading (final review #8: heading owned by packages/prompts)', () => {
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '- [active] the h3 line');
+    expect(text).toContain('## Your thread ledger\n\n- [active] the h3 line');
   });
 });

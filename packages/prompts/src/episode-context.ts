@@ -65,8 +65,13 @@ function renderOtherMoveLine(entry: MoveNoteEntry, qualityByPly: Map<number, Mov
  * rides after every cache breakpoint instead of busting one. `previousPly`
  * (null for a session's very first episode) states where the coach or
  * student arrived from, so the model never has to infer it from scrollback.
+ * `threadsBlock` is the backstage conversation ledger (renderThreadsBlock's
+ * output, render.ts) — folded in here rather than composed by the caller
+ * (final review #8), so the '## Your thread ledger' heading stays prompt
+ * text owned by packages/prompts, matching how this function already owns
+ * its own '## Current position' heading.
  */
-export function renderCurrentMoveBlock(ply: number, fen: string, previousPly: number | null): string {
+export function renderCurrentMoveBlock(ply: number, fen: string, previousPly: number | null, threadsBlock: string): string {
   const arrival = previousPly !== null ? ` You reached this position from ${describeMoveRef(previousPly)}.` : '';
-  return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board. FEN: ${fen}.${arrival}`;
+  return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board. FEN: ${fen}.${arrival}\n\n## Your thread ledger\n\n${threadsBlock}`;
 }
