@@ -1,6 +1,6 @@
 import { buildCoachSystemPrompt } from '@chess-coach/prompts';
-import type { ClientToolResult, EngineEval } from '@chess-coach/shared';
-import { streamText, type CoreMessage, type StreamTextResult, type ToolSet } from 'ai';
+import type { ClientToolResult, EngineEval, LlmProvider } from '@chess-coach/shared';
+import { streamText, zodSchema, type CoreMessage, type ProviderMetadata, type StreamTextResult, type ToolSet } from 'ai';
 import type { Kysely } from 'kysely';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import * as gamesRepo from '../db/repositories/games.js';
@@ -25,6 +25,48 @@ const SESSION_START_CONTENT = '[session_start]';
 /** Serializes startTurn calls per session — see createKeyedLock's doc comment
  * for why this is needed (the client-tool round-trip race). */
 const sessionLock = createKeyedLock();
+
+/** Provider-normalized token usage for a turn (coach debug mode design doc,
+ * "Provider-specific usage"). `cacheWriteTokens` is `null` — never `0` — for
+ * OpenAI, since it has no cache-write concept at all (its prefix caching is
+ * automatic and free to populate). */
+export interface TurnUsage {
+  freshInputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number | null;
+  outputTokens: number;
+}
+
+/** Literal request/response snapshot for the coach debug popup — deliberately
+ * NOT reshaped: `request.messages` is the exact array passed to `streamText`,
+ * `response.messages`/`finishReason`/`providerMetadata` are exactly what
+ * `onFinish` received. Latest-turn-only: stored on the session row (see
+ * `sessionsRepo.updateDebugSnapshot`/`getDebugSnapshot`), overwritten every
+ * turn — no historical persistence, but (unlike an in-memory Map) consistent
+ * across pods and process restarts. */
+export interface TurnDebugSnapshot {
+  request: {
+    provider: LlmProvider;
+    model: string;
+    messages: CoreMessage[];
+    tools: Array<{ name: string; description: string; parameters: unknown }>;
+    maxSteps: number;
+  };
+  response: {
+    messages: unknown[];
+    finishReason: string;
+    usage: TurnUsage;
+    providerMetadata: unknown;
+  };
+}
+
+export async function getLastTurnDebugSnapshot(
+  db: Kysely<Database>,
+  sessionId: string
+): Promise<TurnDebugSnapshot | undefined> {
+  const snapshot = await sessionsRepo.getDebugSnapshot(db, sessionId);
+  return snapshot as TurnDebugSnapshot | undefined;
+}
 
 export type ModelResolver = (
   db: Kysely<Database>,
@@ -183,7 +225,7 @@ export async function startTurn(
 
     const { staticPart, dynamicPart } = await buildSystemPromptForSession(deps.db, session);
     const priorMessages = await sessionMessagesRepo.listBySession(deps.db, session.id);
-    const messages = priorMessages.map(toCoreMessage);
+    const requestMessages = buildCacheableMessages(staticPart, dynamicPart, priorMessages.map(toCoreMessage));
 
     const tools = buildCoachTools(
       { userId: session.userId, sessionId: session.id, gameId: session.gameId },
@@ -194,11 +236,11 @@ export async function startTurn(
         callLightModel: deps.callLightModel
       }
     );
+    const requestTools = serializeTools(tools);
 
     return streamText({
       model: resolution.model,
-      system: `${staticPart}\n\n${dynamicPart}`,
-      messages,
+      messages: requestMessages,
       tools,
       maxSteps: MAX_STEPS,
       onFinish: async (event) => {
@@ -209,6 +251,26 @@ export async function startTurn(
         // a provider quirk took down the entire API). Persisting the transcript
         // and metering the call must never be able to do that.
         try {
+          const usage = normalizeUsage(resolution.provider, event.usage, event.providerMetadata);
+
+          // Debug snapshot capture is independent of the persistence/metering
+          // below — written first so a failure further down never hides it.
+          await sessionsRepo.updateDebugSnapshot(deps.db, session.id, {
+            request: {
+              provider: resolution.provider,
+              model: resolution.modelId,
+              messages: requestMessages,
+              tools: requestTools,
+              maxSteps: MAX_STEPS
+            },
+            response: {
+              messages: event.response.messages,
+              finishReason: event.finishReason,
+              usage,
+              providerMetadata: event.providerMetadata
+            }
+          } satisfies TurnDebugSnapshot);
+
           for (const message of event.response.messages) {
             await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content);
           }
@@ -219,9 +281,13 @@ export async function startTurn(
             model: resolution.modelId,
             tier: 'standard',
             usage: {
-              inputTokens: event.usage.promptTokens,
-              outputTokens: event.usage.completionTokens,
-              cachedInputTokens: 0
+              // Total input tokens (fresh + reused-from-cache) — matches
+              // computeCredits' expectation of pre-discount total input.
+              // Cache-write tokens are intentionally excluded (billing math
+              // for the cache-write premium is out of scope; see design doc).
+              inputTokens: usage.freshInputTokens + usage.cacheReadTokens,
+              outputTokens: usage.outputTokens,
+              cachedInputTokens: usage.cacheReadTokens
             },
             purpose: 'coach_turn',
             metered: resolution.metered
@@ -309,4 +375,92 @@ async function buildSystemPromptForSession(
 
 function toCoreMessage(row: SessionMessageRow): CoreMessage {
   return { role: row.role, content: row.content } as CoreMessage;
+}
+
+/**
+ * architecture §8.1: static instructions and per-session dynamic context each
+ * get their own Anthropic cache breakpoint; the conversation itself is left
+ * uncached (it's not a stable prefix). Two leading `role: 'system'` messages
+ * (rather than one `system` string) is what lets each carry its own
+ * `cache_control` — verified against the installed SDK (`ai@4.3.19`,
+ * `@ai-sdk/anthropic@1.2.12`): the Anthropic provider merges consecutive
+ * system messages into independently-cacheable content blocks.
+ * `providerOptions.anthropic` is a harmless no-op for OpenAI, whose prefix
+ * caching is automatic and gets the same discount for free from this same
+ * static/dynamic/conversation ordering.
+ */
+export function buildCacheableMessages(
+  staticPart: string,
+  dynamicPart: string,
+  priorMessages: CoreMessage[]
+): CoreMessage[] {
+  const cacheControl = { anthropic: { cacheControl: { type: 'ephemeral' as const } } };
+  return [
+    { role: 'system', content: staticPart, providerOptions: cacheControl },
+    { role: 'system', content: dynamicPart, providerOptions: cacheControl },
+    ...priorMessages
+  ];
+}
+
+/** Providers occasionally report non-finite usage on multi-step tool-calling
+ * turns (same quirk `gateway.ts`'s `toSafeCount` guards against for the DB
+ * columns) — a NaN here would silently serialize to `null` over JSON and fail
+ * the frontend's schema validation, so every number normalizeUsage produces
+ * is sanitized at this boundary too. */
+function toSafeCount(value: number | null | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Reconciles Anthropic's and OpenAI's incompatible usage-reporting shapes
+ * (design doc, "Provider-specific usage"): Anthropic's `promptTokens` is
+ * fresh-only and cache stats live in `providerMetadata.anthropic`; OpenAI's
+ * `promptTokens` already includes cached tokens and has no cache-write
+ * concept at all (hence `cacheWriteTokens: null`, never coerced to 0).
+ */
+export function normalizeUsage(
+  provider: LlmProvider,
+  usage: { promptTokens: number; completionTokens: number },
+  providerMetadata: ProviderMetadata | undefined
+): TurnUsage {
+  const promptTokens = toSafeCount(usage.promptTokens);
+  const completionTokens = toSafeCount(usage.completionTokens);
+
+  if (provider === 'anthropic') {
+    const anthropic = providerMetadata?.anthropic as
+      | { cacheCreationInputTokens?: number | null; cacheReadInputTokens?: number | null }
+      | undefined;
+    return {
+      freshInputTokens: promptTokens,
+      cacheReadTokens: toSafeCount(anthropic?.cacheReadInputTokens),
+      cacheWriteTokens: toSafeCount(anthropic?.cacheCreationInputTokens),
+      outputTokens: completionTokens
+    };
+  }
+
+  const openai = providerMetadata?.openai as { cachedPromptTokens?: number | null } | undefined;
+  const cacheReadTokens = toSafeCount(openai?.cachedPromptTokens);
+  return {
+    freshInputTokens: promptTokens - cacheReadTokens,
+    cacheReadTokens,
+    cacheWriteTokens: null,
+    outputTokens: completionTokens
+  };
+}
+
+/** Schema-only serialization of the coach's tool set for the debug snapshot —
+ * name/description/JSON-schema-parameters, never the JS closures. */
+function serializeTools(tools: ToolSet): TurnDebugSnapshot['request']['tools'] {
+  return Object.entries(tools).map(([name, coreTool]) => ({
+    name,
+    description: coreTool.description ?? '',
+    parameters: parametersToJsonSchema(coreTool.parameters)
+  }));
+}
+
+function parametersToJsonSchema(parameters: unknown): unknown {
+  if (typeof parameters === 'object' && parameters !== null && 'jsonSchema' in parameters) {
+    return (parameters as { jsonSchema: unknown }).jsonSchema;
+  }
+  return zodSchema(parameters as Parameters<typeof zodSchema>[0]).jsonSchema;
 }

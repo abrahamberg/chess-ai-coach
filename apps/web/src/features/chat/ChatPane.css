@@ -6,6 +6,33 @@
   background: var(--surface);
 }
 
+.chat-pane__header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px 0;
+}
+
+.chat-pane__debug-trigger {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.chat-pane__debug-trigger:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.chat-pane__debug-trigger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .chat-pane [data-testid='message-list'] {
   flex: 1;
   min-height: 0;

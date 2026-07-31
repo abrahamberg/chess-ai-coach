@@ -3,6 +3,7 @@ import * as initial from './migrations/0001_initial.js';
 import * as sessionSummary from './migrations/0002_session_summary.js';
 import * as classifiedMoves from './migrations/0003_classified_moves.js';
 import * as sessionAbandonedStatus from './migrations/0004_session_abandoned_status.js';
+import * as sessionDebugSnapshot from './migrations/0005_session_debug_snapshot.js';
 
 const provider: MigrationProvider = {
   getMigrations: () =>
@@ -10,7 +11,8 @@ const provider: MigrationProvider = {
       '0001_initial': initial,
       '0002_session_summary': sessionSummary,
       '0003_classified_moves': classifiedMoves,
-      '0004_session_abandoned_status': sessionAbandonedStatus
+      '0004_session_abandoned_status': sessionAbandonedStatus,
+      '0005_session_debug_snapshot': sessionDebugSnapshot
     })
 };
 

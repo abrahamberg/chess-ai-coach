@@ -65,4 +65,14 @@ export function registerSessionsRoutes(
       }
     });
   });
+
+  app.get<{ Params: { id: string } }>('/api/sessions/:id/debug/last-turn', async (request) => {
+    const user = await userProfileService.getOrCreate(db, request.user);
+    const session = await sessionsRepo.findByIdForUser(db, request.params.id, user.id);
+    if (!session) throw new NotFoundError('Session not found');
+
+    const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
+    if (!snapshot) throw new NotFoundError('No completed turn to debug yet');
+    return snapshot;
+  });
 }

@@ -1,0 +1,491 @@
+/* Debug popup token system — extends styles/tokens.css with the extra
+ * role/cache/usage semantic colors this "console" view needs. Ground stays
+ * this app's own tokens; monospace-forward typography since the content is
+ * inherently code/data. */
+.debug-panel-backdrop {
+  --debug-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  --debug-role-system: #6f5fd6;
+  --debug-role-system-bg: #f0edfb;
+  --debug-role-user: #2f6fb0;
+  --debug-role-user-bg: #eaf2fa;
+  --debug-role-assistant: #1f8f6f;
+  --debug-role-assistant-bg: #e8f6f1;
+  --debug-role-tool: #b0632f;
+  --debug-role-tool-bg: #faeee3;
+  --debug-accent: #a8762a;
+  --debug-accent-soft: #f3e6cd;
+  --debug-stat-fresh: #5b6472;
+  --debug-stat-read: #1f8f5c;
+  --debug-stat-write: #b0562f;
+  --debug-stat-output: #2f6fb0;
+  --debug-border: color-mix(in srgb, var(--text) 12%, transparent);
+
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 45%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  z-index: 100;
+}
+
+@media (prefers-color-scheme: dark) {
+  .debug-panel-backdrop {
+    --debug-role-system: #a89af0;
+    --debug-role-system-bg: #26223f;
+    --debug-role-user: #6fb0e8;
+    --debug-role-user-bg: #182937;
+    --debug-role-assistant: #5fd4ac;
+    --debug-role-assistant-bg: #142c25;
+    --debug-role-tool: #e0925a;
+    --debug-role-tool-bg: #302014;
+    --debug-accent: #dcab54;
+    --debug-accent-soft: #3a2f1a;
+    --debug-stat-fresh: #9198a8;
+    --debug-stat-read: #4fd190;
+    --debug-stat-write: #e0925a;
+    --debug-stat-output: #6fb0e8;
+  }
+}
+
+:root[data-theme='dark'] .debug-panel-backdrop {
+  --debug-role-system: #a89af0;
+  --debug-role-system-bg: #26223f;
+  --debug-role-user: #6fb0e8;
+  --debug-role-user-bg: #182937;
+  --debug-role-assistant: #5fd4ac;
+  --debug-role-assistant-bg: #142c25;
+  --debug-role-tool: #e0925a;
+  --debug-role-tool-bg: #302014;
+  --debug-accent: #dcab54;
+  --debug-accent-soft: #3a2f1a;
+  --debug-stat-fresh: #9198a8;
+  --debug-stat-read: #4fd190;
+  --debug-stat-write: #e0925a;
+  --debug-stat-output: #6fb0e8;
+}
+
+.debug-panel {
+  width: min(900px, 100%);
+  max-height: 90vh;
+  background: var(--surface);
+  border: 1px solid var(--debug-border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px -20px rgb(0 0 0 / 45%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--debug-mono);
+  color: var(--text);
+}
+
+.debug-panel__status {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.debug-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--debug-border);
+  background: var(--surface-2);
+  flex-shrink: 0;
+}
+
+.debug-panel__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.debug-panel__title-block h1 {
+  font-family: ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14.5px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.debug-panel__subtitle {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.debug-panel__dot {
+  color: var(--text-muted);
+  opacity: 0.6;
+  margin: 0 6px;
+}
+
+.debug-panel__btn {
+  font-family: ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 7px;
+  border: 1px solid var(--debug-border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.debug-panel__btn--copy {
+  color: var(--debug-accent);
+  border-color: var(--debug-accent-soft);
+  background: var(--debug-accent-soft);
+}
+
+.debug-panel__btn--icon {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.debug-panel__usage-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--debug-border);
+  border-bottom: 1px solid var(--debug-border);
+  flex-shrink: 0;
+}
+
+.debug-panel__stat-tile {
+  background: var(--surface);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-panel__stat-label {
+  font-family: ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.debug-panel__swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.debug-panel__stat-tile--fresh .debug-panel__swatch {
+  background: var(--debug-stat-fresh);
+}
+
+.debug-panel__stat-tile--read .debug-panel__swatch {
+  background: var(--debug-stat-read);
+}
+
+.debug-panel__stat-tile--write .debug-panel__swatch {
+  background: var(--debug-stat-write);
+}
+
+.debug-panel__stat-tile--output .debug-panel__swatch {
+  background: var(--debug-stat-output);
+}
+
+.debug-panel__stat-value {
+  font-size: 21px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-panel__stat-tile--read .debug-panel__stat-value {
+  color: var(--debug-stat-read);
+}
+
+.debug-panel__stat-value--na {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 400;
+  cursor: help;
+}
+
+.debug-panel__body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 720px) {
+  .debug-panel__body {
+    grid-template-columns: 1fr;
+  }
+
+  .debug-panel__usage-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.debug-panel__col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.debug-panel__col + .debug-panel__col {
+  border-left: 1px solid var(--debug-border);
+}
+
+.debug-panel__col-header {
+  padding: 9px 14px;
+  font-family: ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--debug-border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.debug-panel__arrow {
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+.debug-panel__col-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.debug-panel__msg {
+  flex-shrink: 0;
+}
+
+.debug-panel__msg {
+  border: 1px solid var(--debug-border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.debug-panel__msg[data-role='system'] {
+  border-left-color: var(--debug-role-system);
+}
+
+.debug-panel__msg[data-role='user'] {
+  border-left-color: var(--debug-role-user);
+}
+
+.debug-panel__msg[data-role='assistant'] {
+  border-left-color: var(--debug-role-assistant);
+}
+
+.debug-panel__msg[data-role='tool'] {
+  border-left-color: var(--debug-role-tool);
+}
+
+.debug-panel__msg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.debug-panel__role-pill {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.debug-panel__msg[data-role='system'] .debug-panel__role-pill {
+  color: var(--debug-role-system);
+  background: var(--debug-role-system-bg);
+}
+
+.debug-panel__msg[data-role='user'] .debug-panel__role-pill {
+  color: var(--debug-role-user);
+  background: var(--debug-role-user-bg);
+}
+
+.debug-panel__msg[data-role='assistant'] .debug-panel__role-pill {
+  color: var(--debug-role-assistant);
+  background: var(--debug-role-assistant-bg);
+}
+
+.debug-panel__msg[data-role='tool'] .debug-panel__role-pill {
+  color: var(--debug-role-tool);
+  background: var(--debug-role-tool-bg);
+}
+
+.debug-panel__msg-preview {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.debug-panel__cache-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--debug-accent);
+  background: var(--debug-accent-soft);
+  padding: 2px 6px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.debug-panel__new-badge {
+  font-family: ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--debug-role-assistant);
+  background: var(--debug-role-assistant-bg);
+  padding: 2px 6px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.debug-panel__chevron {
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-size: 11px;
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+}
+
+.debug-panel__msg--collapsed .debug-panel__msg-body {
+  display: none;
+}
+
+.debug-panel__msg-body {
+  border-top: 1px solid var(--debug-border);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: var(--surface-2);
+}
+
+.debug-panel__msg-body p {
+  margin: 0 0 8px 0;
+  white-space: pre-wrap;
+}
+
+.debug-panel__msg-body p:last-child {
+  margin-bottom: 0;
+}
+
+.debug-panel__msg-body pre {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.debug-panel__tool-block {
+  background: var(--surface);
+  border: 1px solid var(--debug-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 6px;
+}
+
+.debug-panel__tool-block:first-child {
+  margin-top: 0;
+}
+
+.debug-panel__tool-name {
+  color: var(--debug-role-tool);
+  font-weight: 700;
+  font-size: 11.5px;
+}
+
+.debug-panel__tool-block p {
+  margin: 4px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.debug-panel__tool-block pre {
+  margin-top: 6px;
+}
+
+.debug-panel__reasoning-block {
+  border: 1px dashed var(--debug-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 12px;
+  background: var(--surface);
+}
+
+.debug-panel__tag {
+  font-style: normal;
+  font-family: ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  opacity: 0.8;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.debug-panel__section-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  opacity: 0.8;
+  padding: 8px 2px 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.debug-panel__finish-tag {
+  padding: 8px 12px;
+  border-top: 1px solid var(--debug-border);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}

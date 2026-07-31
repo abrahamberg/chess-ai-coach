@@ -27,8 +27,10 @@ numbers requires actually implementing the caching that was only ever documented
   one consistent display.
 - **Visible to all users, in every environment** (not dev-only, not role-gated).
 - **Latest turn only.** One button, always pointing at the most recent coach reply.
-  No per-message historical debug buttons, no DB persistence of prompt/usage detail
-  per message — an in-memory, single-entry-per-session snapshot is sufficient.
+  No per-message historical debug buttons, no persistence of prompt/usage detail per
+  message — a single, overwritten-every-turn snapshot per session is sufficient. It's
+  stored on the session row (not in-process memory) so it's consistent across k8s pods
+  and process restarts — see "Debug snapshot: capture, storage, delivery" below.
 - **Billing/credit math is out of scope.** Real cache-read tokens flow into the
   existing `llm_call_log.cachedInputTokens` column (matches its documented meaning:
   discounted re-used tokens). Cache-write tokens (Anthropic's ~1.25x premium for
@@ -113,7 +115,7 @@ Computed per provider in `onFinish`:
 
 `recordUsage`'s existing `cachedInputTokens` argument (→ `llm_call_log`) receives
 `cacheReadTokens`. `cacheWriteTokens` is not persisted to `llm_call_log`; it only
-flows into the in-memory debug snapshot below.
+flows into the debug snapshot below.
 
 ## Debug snapshot: capture, storage, delivery
 
@@ -143,13 +145,19 @@ interface TurnDebugSnapshot {
 }
 ```
 
-Storage: an in-memory `Map<sessionId, TurnDebugSnapshot>` module-level in
-`coach-agent.ts`, overwritten every turn. This matches the existing precedent of the
-in-process engine-result LRU (architecture §8.3) and is consistent with the
-"latest-turn-only, no historical persistence" scope decision. Known limitation (same
-as the existing engine cache): doesn't survive a process restart and won't be
-consistent across multiple API instances if the app is ever horizontally scaled —
-acceptable at current scale, flagged for whoever revisits this later.
+Storage: a nullable `debug_snapshot jsonb` column directly on the `sessions` row
+(migration `0005_session_debug_snapshot.ts`), overwritten every turn via
+`sessionsRepo.updateDebugSnapshot`/`getDebugSnapshot` — the exact same
+latest-state-on-the-row pattern the `threads` column already uses for the backstage
+conversation ledger (architecture §7.1). Written first in `onFinish`, before message
+persistence/`recordUsage`, so a failure further down never hides it. This was
+originally designed as an in-memory `Map<sessionId, TurnDebugSnapshot>` (matching the
+engine-result LRU's precedent, architecture §8.3) but that breaks the instant the API
+runs as more than one k8s pod: pods share nothing, so a debug request can land on a
+different pod than the one that produced the turn and 404 even though a turn
+genuinely completed. The DB-backed version is consistent across pods and process
+restarts, at the cost of one small JSON write per turn (comparable to the existing
+per-turn message-persistence writes in the same `onFinish`).
 
 Delivery: new endpoint `GET /api/sessions/:id/debug/last-turn` in
 `apps/api/src/routes/sessions.ts`, returning the snapshot as JSON (404 if no turn has
@@ -229,6 +237,11 @@ React.
   capture/storage).
 - `apps/api/src/llm/gateway.ts` — no change to `recordUsage`'s contract; callers now
   pass real `cachedInputTokens` instead of `0`.
+- `apps/api/src/db/migrations/0005_session_debug_snapshot.ts` (new) — nullable
+  `debug_snapshot jsonb` column on `sessions`; registered in `db/migrate.ts`.
+- `apps/api/src/db/schema.ts` — `SessionsTable.debugSnapshot`.
+- `apps/api/src/db/repositories/sessions.ts` — `updateDebugSnapshot`/`getDebugSnapshot`,
+  mirroring the existing `updateThreads`/`getThreads` pattern.
 - `apps/api/src/routes/sessions.ts` — new `GET /api/sessions/:id/debug/last-turn`.
 - `apps/web/src/features/chat/ChatPane.tsx` — new debug trigger button.
 - `apps/web/src/features/chat/DebugPanel.tsx` (new), `DebugPanel.css` (new).
@@ -243,7 +256,10 @@ React.
 - Unit: cache breakpoint construction (the two leading system messages carry the
   expected `providerOptions.anthropic.cacheControl`).
 - Integration: `GET /api/sessions/:id/debug/last-turn` — 404 before any turn, correct
-  snapshot shape after one, auth/ownership check.
+  snapshot shape after one, auth/ownership check, and a snapshot written by one
+  `buildApp` instance is readable from a second independent instance sharing only the
+  database (proves it survives a process restart / a different k8s pod than the one
+  that produced it — the reason this isn't an in-memory Map).
 - Frontend: `DebugPanel` renders a fixture snapshot correctly (role colors, cache
   badges, collapsed/expanded default state, copy-to-clipboard).
 - Live-browser check (per this project's standing practice): run a real session,

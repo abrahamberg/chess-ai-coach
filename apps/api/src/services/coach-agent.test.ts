@@ -204,6 +204,54 @@ describe('coach-agent startTurn concurrency', () => {
     expect(toolResultIndex).toBeGreaterThan(toolCallIndex);
   }, 15000);
 
+  test("a metered turn's llm_call_log inputTokens covers fresh + cache-read tokens (matches computeCredits' total-input expectation)", async () => {
+    const user = await usersRepo.insert(db, { email: 'usage-shape@example.com', displayName: 'Ann' });
+    await creditsRepo.insertSignupGrant(db, user.id);
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '1-0',
+      timeControl: '10+0',
+      eco: null,
+      playedAt: null
+    });
+    const analysis = await analysesRepo.insertQueued(db, game.id);
+    await analysesRepo.markReady(db, analysis.id, PLAN);
+    const session = await coachAgent.createSession(db, user.id, game.id);
+
+    const doStream = vi.fn().mockImplementation((options: unknown) =>
+      Promise.resolve({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: 'text-delta', textDelta: 'Hello!' });
+            controller.enqueue({
+              type: 'finish',
+              finishReason: 'stop',
+              usage: { promptTokens: 400, completionTokens: 50 },
+              providerMetadata: { anthropic: { cacheCreationInputTokens: 0, cacheReadInputTokens: 2000 } }
+            });
+            controller.close();
+          }
+        }),
+        rawCall: { rawPrompt: options, rawSettings: {} }
+      })
+    );
+    const model = new MockLanguageModelV1({ doStream });
+
+    const turn = await coachAgent.startTurn(deps(model), session, { content: 'hi coach' });
+    await drain(turn);
+
+    const logs = await db.selectFrom('llmCallLog').selectAll().where('userId', '=', user.id).execute();
+    expect(logs).toHaveLength(1);
+    // 400 fresh + 2000 cache-read, not the raw promptTokens (400) alone.
+    expect(logs[0]?.inputTokens).toBe(2400);
+    expect(logs[0]?.cachedInputTokens).toBe(2000);
+  }, 15000);
+
   test('a show_position client tool-result is persisted with a server-verified fen, not just the client-reported ply — the coach\'s only ground truth for what it just showed', async () => {
     const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
     await creditsRepo.insertSignupGrant(db, user.id);
@@ -244,4 +292,72 @@ describe('coach-agent startTurn concurrency', () => {
       fen: 'r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3'
     });
   }, 15000);
+});
+
+describe('normalizeUsage', () => {
+  test('anthropic: fresh input is promptTokens as-is (already fresh-only); cache stats come from providerMetadata.anthropic', () => {
+    const usage = coachAgent.normalizeUsage(
+      'anthropic',
+      { promptTokens: 412, completionTokens: 186 },
+      { anthropic: { cacheCreationInputTokens: 0, cacheReadInputTokens: 2180 } }
+    );
+    expect(usage).toEqual({
+      freshInputTokens: 412,
+      cacheReadTokens: 2180,
+      cacheWriteTokens: 0,
+      outputTokens: 186
+    });
+  });
+
+  test('anthropic: missing providerMetadata.anthropic defaults cache stats to 0, not undefined', () => {
+    const usage = coachAgent.normalizeUsage('anthropic', { promptTokens: 100, completionTokens: 20 }, undefined);
+    expect(usage).toEqual({ freshInputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 20 });
+  });
+
+  test('openai: promptTokens already includes cached tokens, so freshInputTokens subtracts cachedPromptTokens out', () => {
+    const usage = coachAgent.normalizeUsage(
+      'openai',
+      { promptTokens: 2592, completionTokens: 186 },
+      { openai: { cachedPromptTokens: 2180 } }
+    );
+    expect(usage).toEqual({
+      freshInputTokens: 412,
+      cacheReadTokens: 2180,
+      cacheWriteTokens: null,
+      outputTokens: 186
+    });
+  });
+
+  test('openai: cacheWriteTokens is null (not 0) — OpenAI has no cache-write concept, and null must never be displayed as "nothing cached"', () => {
+    const usage = coachAgent.normalizeUsage('openai', { promptTokens: 100, completionTokens: 20 }, undefined);
+    expect(usage.cacheWriteTokens).toBeNull();
+    expect(usage).toEqual({ freshInputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: null, outputTokens: 20 });
+  });
+
+  test('a NaN usage number (seen live from OpenAI on multi-step tool-calling turns) sanitizes to 0, not a JSON-null that would fail the frontend schema', () => {
+    const usage = coachAgent.normalizeUsage('openai', { promptTokens: NaN, completionTokens: NaN }, undefined);
+    expect(usage).toEqual({ freshInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: null, outputTokens: 0 });
+    expect(JSON.parse(JSON.stringify(usage))).toEqual(usage);
+  });
+});
+
+describe('buildCacheableMessages', () => {
+  test('the two leading system messages each carry their own anthropic ephemeral cache breakpoint, followed by the conversation verbatim', () => {
+    const priorMessages = [{ role: 'user' as const, content: 'hi coach' }];
+    const messages = coachAgent.buildCacheableMessages('STATIC', 'DYNAMIC', priorMessages);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toEqual({
+      role: 'system',
+      content: 'STATIC',
+      providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } }
+    });
+    expect(messages[1]).toEqual({
+      role: 'system',
+      content: 'DYNAMIC',
+      providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } }
+    });
+    // The conversation itself is left uncached — no providerOptions added.
+    expect(messages[2]).toBe(priorMessages[0]);
+  });
 });

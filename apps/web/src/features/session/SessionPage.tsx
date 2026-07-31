@@ -313,6 +313,7 @@ export function SessionPage(): ReactNode {
           </div>
         ) : (
           <ChatPane
+            sessionId={sessionId}
             messages={chat.messages}
             activeToolName={chat.activeToolName}
             isThinking={chat.isThinking}

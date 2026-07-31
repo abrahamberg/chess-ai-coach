@@ -143,6 +143,25 @@ export async function getThreads(db: Kysely<Database>, id: string): Promise<Thre
   return (row?.threads as Thread[] | undefined) ?? [];
 }
 
+/** Latest-turn-only debug snapshot (coach debug mode design doc) — same
+ * latest-state-on-the-row pattern as `threads`/`updateThreads` above, so it
+ * works across pods and process restarts instead of the in-memory Map it
+ * replaced. `snapshot` is an opaque JSON value to this layer; the caller
+ * (coach-agent.ts) owns its shape. */
+export function updateDebugSnapshot(db: Kysely<Database>, id: string, snapshot: unknown): Promise<void> {
+  return db
+    .updateTable('sessions')
+    .set({ debugSnapshot: JSON.stringify(snapshot) })
+    .where('id', '=', id)
+    .execute()
+    .then(() => undefined);
+}
+
+export async function getDebugSnapshot(db: Kysely<Database>, id: string): Promise<unknown> {
+  const row = await db.selectFrom('sessions').select('debugSnapshot').where('id', '=', id).executeTakeFirst();
+  return row?.debugSnapshot ?? undefined;
+}
+
 export interface CompletedSessionWithGame {
   sessionId: string;
   gameId: string;

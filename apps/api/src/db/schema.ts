@@ -57,6 +57,7 @@ export interface SessionsTable {
   status: 'active' | 'completed' | 'paused_no_credits' | 'abandoned';
   currentPly: Generated<number>;
   threads: ColumnType<unknown, string | undefined, string>;
+  debugSnapshot: ColumnType<unknown, string | null | undefined, string | null>;
   contextDigest: string | null;
   digestThroughMessageId: string | null;
   summary: string | null;

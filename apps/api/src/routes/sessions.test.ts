@@ -343,8 +343,12 @@ describe('sessions routes', () => {
 
       expect(doStream).toHaveBeenCalledOnce();
       const options = doStream.mock.calls[0]?.[0] as { prompt: Array<{ role: string; content: unknown }> };
-      const system = options.prompt.find((m) => m.role === 'system');
-      const systemText = JSON.stringify(system);
+      // Cache breakpoints (design doc, "Backend: wiring up real caching") split
+      // the system prompt into two leading system-role messages — static
+      // instructions, then per-session dynamic context.
+      const systemMessages = options.prompt.filter((m) => m.role === 'system');
+      expect(systemMessages).toHaveLength(2);
+      const systemText = JSON.stringify(systemMessages);
       expect(systemText).toContain('What was your opponent threatening?'); // plan moment
       expect(systemText).toContain('none yet'); // empty-focus-areas fallback
     }, 15000);
@@ -504,6 +508,139 @@ describe('sessions routes', () => {
       expect(replayedPrefix.map((m) => ({ role: m.role, content: m.content }))).toEqual(
         afterFirstTurn.map((m) => ({ role: m.role, content: m.content }))
       );
+    }, 15000);
+  });
+
+  describe('GET /api/sessions/:id/debug/last-turn', () => {
+    test('404s before any turn has completed', async () => {
+      const { user, game } = await setupReadyGame('debug-404@example.com');
+      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/sessions',
+        headers: headersFor(user),
+        payload: { gameId: game.id }
+      });
+      const sessionId = created.json().id;
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/sessions/${sessionId}/debug/last-turn`,
+        headers: headersFor(user)
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+
+    test('404s for a session that does not belong to the requesting user', async () => {
+      const { user, game } = await setupReadyGame('debug-owner@example.com');
+      const other = await usersRepo.insert(db, { email: 'debug-other@example.com', displayName: 'Other' });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/sessions',
+        headers: headersFor(user),
+        payload: { gameId: game.id }
+      });
+      const sessionId = created.json().id;
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/sessions/${sessionId}/debug/last-turn`,
+        headers: headersFor(other)
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+
+    test('returns the literal request/response snapshot after a turn completes, with real cache-read numbers on the second turn', async () => {
+      const { user, game } = await setupReadyGame('debug-snapshot@example.com');
+      const doStream = vi.fn().mockImplementation((options: unknown) =>
+        Promise.resolve({
+          stream: new ReadableStream({
+            start(controller) {
+              controller.enqueue({ type: 'text-delta', textDelta: 'Hello!' });
+              controller.enqueue({
+                type: 'finish',
+                finishReason: 'stop',
+                usage: { promptTokens: 300, completionTokens: 40 },
+                providerMetadata: { anthropic: { cacheCreationInputTokens: 900, cacheReadInputTokens: 0 } }
+              });
+              controller.close();
+            }
+          }),
+          rawCall: { rawPrompt: options, rawSettings: {} }
+        })
+      );
+      const model = new MockLanguageModelV1({ doStream });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/sessions',
+        headers: headersFor(user),
+        payload: { gameId: game.id }
+      });
+      const sessionId = created.json().id;
+
+      await app.inject({
+        method: 'POST',
+        url: `/api/sessions/${sessionId}/messages`,
+        headers: headersFor(user),
+        payload: { content: 'hi coach' }
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/sessions/${sessionId}/debug/last-turn`,
+        headers: headersFor(user)
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.request.provider).toBe('anthropic');
+      expect(body.request.messages.filter((m: { role: string }) => m.role === 'system')).toHaveLength(2);
+      expect(body.request.tools.some((t: { name: string }) => t.name === 'show_position')).toBe(true);
+      expect(body.response.usage).toEqual({
+        freshInputTokens: 300,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 900,
+        outputTokens: 40
+      });
+      expect(body.response.finishReason).toBe('stop');
+    }, 15000);
+
+    test('a second, independent app instance sharing only the database sees the same snapshot — proves this survives a process restart / lands on a different k8s pod than the one that produced it', async () => {
+      const { user, game } = await setupReadyGame('debug-cross-instance@example.com');
+      const producerApp = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('From producer pod.').model) });
+      const created = await producerApp.inject({
+        method: 'POST',
+        url: '/api/sessions',
+        headers: headersFor(user),
+        payload: { gameId: game.id }
+      });
+      const sessionId = created.json().id;
+
+      await producerApp.inject({
+        method: 'POST',
+        url: `/api/sessions/${sessionId}/messages`,
+        headers: headersFor(user),
+        payload: { content: 'hi coach' }
+      });
+
+      // A brand-new app/module instance, backed by the same Postgres — nothing
+      // JS-object-identity-shared with producerApp. If the snapshot were still
+      // an in-memory Map keyed inside coach-agent.ts, this would 404 even
+      // though a turn genuinely completed, since the Map lives on the process
+      // that produced it, not this one.
+      const readerApp = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('unused').model) });
+      const response = await readerApp.inject({
+        method: 'GET',
+        url: `/api/sessions/${sessionId}/debug/last-turn`,
+        headers: headersFor(user)
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.stringify(response.json())).toContain('From producer pod.');
     }, 15000);
   });
 });
