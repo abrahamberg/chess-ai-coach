@@ -158,7 +158,26 @@ session_messages (
   session_id  uuid FK→sessions NOT NULL,
   role        text NOT NULL CHECK (role IN ('user','assistant','tool')),
   content     jsonb NOT NULL,                  -- AI-SDK message format, stored verbatim
+  ply         int,                             -- current_ply when this row was written
+                                                -- (§7.4/§8.1: episode boundary tag)
   created_at  timestamptz NOT NULL DEFAULT now()
+)
+-- append-only: never mutated, never reordered, never deleted (§8.1).
+
+-- coach context restructure (docs/superpowers/specs/2026-07-31-coach-
+-- context-restructure-design.md): one rolling note per (session, ply),
+-- replacing the old sessions.context_digest/digest_through_message_id
+-- whole-session digest columns (dropped by migration 0006). Written either
+-- by the coach's own record_move_note tool call, or automatically when an
+-- episode closes with no such call (§7.4).
+session_move_notes (
+  id          uuid PK,
+  session_id  uuid FK→sessions NOT NULL,
+  ply         int NOT NULL,
+  note        text NOT NULL,                  -- ≤300 chars if coach-authored (tools.ts)
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (session_id, ply)
 )
 
 -- progress memory (what makes the coach "know the user")
@@ -353,6 +372,8 @@ Model          = via llm/gateway.ts → user's BYOK provider, else platform key 
 | `record_finding` | `Finding` (schema §6.4) | Server tool: insert into `findings`. |
 | `propose_focus_area_update` | `FocusAreaUpdate` (§6.4) | Server tool: applied by `progress.ts` service (enforces max-3-active). |
 | `update_threads` | `{ threads: Thread[] }` (§6.5) | Server tool: full-replace of the session's conversation-thread ledger (`sessions.threads`). Service enforces: ≤8 threads, ≤1 `active`, valid statuses. Returns the stored ledger. Backstage only — never rendered to the student. |
+| `record_move_note` | `{ moveNumber, color, note: string }` (same address as `show_position`, note ≤300 chars) | Server tool: coach-authored one-sentence note on a move it's about to leave, upserted into `session_move_notes`. Discretionary, like `record_finding`. |
+| `recall_move` | `{ moveNumber: number, color: 'white' \| 'black' \| null }` (same address as `show_position`) | Server tool: on-demand deeper lookup for a specific past move — a fresh light-tier digest of that episode's raw messages, richer than the always-present other-moves-summary line. Budgeted at 3 calls/turn (§8.3). |
 | `end_session` | `{ summary: string, homework: string \| null }` | Server tool: marks session completed, enqueues `summarize-session` job. |
 
 Client tools (`show_position`, `annotate_board`) execute on the frontend: the SSE
@@ -409,19 +430,23 @@ keep that model's context **small, stable, and cache-friendly**, and to push eve
 mechanical subtask down to cheap light-tier subagents. These four mechanisms are the
 implementation contract for the agent loop (details in §8.1–8.3):
 
-1. **Input caching (§8.1).** The coach's prompt is three cache-stable segments —
-   static instructions+tools (identical for everyone) → session block (identical
-   within a session) → append-only conversation. Cache breakpoints after segments
-   1 and 2. From turn 2 onward the coach pays cache-read prices for ~90% of input.
-   Anything that would vary per-turn (credit balance, timestamps) is **banned** from
-   the system prompt.
+1. **Input caching (§8.1).** As of the coach context restructure
+   (docs/superpowers/specs/2026-07-31-coach-context-restructure-design.md), the
+   coach's prompt is five layers, four of them cache-stable: static
+   instructions+tools → dynamic session block → annotated PGN → other-moves
+   summary → uncached current-position/thread-ledger block → the current
+   episode's own conversation. Cache breakpoints after each of the first four
+   (Anthropic's per-request maximum — see prompts.md §2.7 for the full layer
+   contract). From turn 2 onward the coach pays cache-read prices for most of
+   its input. Anything that would vary per-turn (credit balance, timestamps)
+   is **banned** from the cached layers.
 
-2. **Context management (§8.2).** The conversation replayed to the coach is bounded
-   (24k-token budget). Older turns are folded into a ≤300-token rolling digest by a
-   light-model subagent; the coach always sees: system prompt → digest → recent
-   turns verbatim. The coach never receives raw engine dumps, full PGNs of other
-   games, or full profile history — tools return pre-digested summaries sized for
-   conversation, never rows.
+2. **Context management (§8.2).** Each episode's own conversation is bounded
+   (6k-token budget); when it grows too large mid-episode, its older turns are
+   folded into a short digest by a light-model subagent. The coach never
+   receives raw engine dumps, full PGNs of other games, or full profile
+   history — tools return pre-digested summaries sized for conversation, never
+   rows.
 
 3. **Loop management (§8.3).** `maxSteps: 8`, per-turn tool budgets (2 engine
    checks, 1 profile read), a repeat-call breaker, an engine LRU, and a per-session
@@ -433,7 +458,7 @@ implementation contract for the agent loop (details in §8.1–8.3):
    | Subagent | Tier | Trigger | Contract |
    |----------|------|---------|----------|
    | Engine interpreter | light | inside `get_engine_analysis` | raw engine lines + coach's question → ≤80-word chess answer (prompts.md §4) |
-   | Context compactor | light | budget exceeded (§8.2) | old turns → rolling digest |
+   | Episode compactor | light | episode closes, or its budget is exceeded (§8.2) | old turns → one-move digest |
    | Analysis planner | light | before the session (worker) | engine data → CoachingPlan — the session's "prep" so the coach rarely needs live engine calls at all |
    | Progress summarizer | light | after the session (worker) | transcript → findings/focus-area updates — the coach doesn't spend expensive turns on bookkeeping it already did via `record_finding` |
 
@@ -482,14 +507,25 @@ no dangling conversations. The ledger is never rendered in the student UI.
 The coach system prompt is large (~2–3k tokens) and every turn resends the whole
 conversation, so caching is mandatory, not an optimization:
 
-- **Stable-prefix ordering.** The system prompt is built in two parts:
-  (1) the static coaching instructions + tool definitions — byte-identical for every
-  user and every turn; (2) the dynamic block (user profile, game, coaching plan) —
-  identical for every turn *within a session*. Static part first, dynamic second,
-  conversation last. Never interleave per-turn data into the system prompt.
+- **Stable-prefix ordering, five layers** (`services/coach-context.ts`'s
+  `buildEpisodeMessages`; full contract in prompts.md §2.7):
+  1. static coaching instructions + tool definitions — byte-identical for every
+     user and every turn;
+  2. dynamic block (user profile, game, coaching plan) — identical for every
+     turn *within a session*;
+  3. annotated PGN — the whole game as SAN with quality symbols, static per game;
+  4. other-moves-discussed summary — rebuilt from `session_move_notes`, but only
+     busts its own cache entry when a note actually changes;
+  5. the uncached current-position/thread-ledger block, then the current
+     episode's own raw conversation (never cached — it's the one part that
+     changes every turn).
+  Static-first, most-stable-to-least-stable ordering throughout; never interleave
+  per-turn data into a cached layer.
 - **Anthropic**: set a `cache_control: {type: "ephemeral"}` breakpoint (via AI SDK
-  `providerOptions.anthropic`) after the static block and after the dynamic block.
-  Turn N then pays cache-read price for everything except the newest messages.
+  `providerOptions.anthropic`) after each of layers 1–4 — four breakpoints, which
+  is Anthropic's exact per-request maximum (see the comment in
+  `buildEpisodeMessages`). Turn N then pays cache-read price for everything
+  except the newest messages.
 - **OpenAI**: automatic prefix caching — the same ordering rule gets the discount
   for free.
 - **Do not mutate history.** `session_messages` are append-only and replayed
@@ -498,25 +534,35 @@ conversation, so caching is mandatory, not an optimization:
   cached input at ¼ rate. The admin spend query must show cache hit-rate — a
   regression here is a cost bug.
 
-### 8.2 Context management (long sessions)
+### 8.2 Context management (episode-scoped, per-move)
 
-A full session can reach 60+ turns. Unbounded replay is slow and expensive:
+Whole-session rolling compaction (the original design) is retired — replaced by
+per-episode folding, scoped to one move at a time (design doc:
+docs/superpowers/specs/2026-07-31-coach-context-restructure-design.md §3/§5):
 
-- **Budget:** target ≤ 24k tokens of conversation history per request
-  (`SESSION_CONTEXT_BUDGET_TOKENS`, estimated at 4 chars/token — no tokenizer dep).
-- **Rolling compaction:** when the budget is exceeded, a light-tier call summarizes
-  the oldest ~50% of turns into a "session so far" digest (≤300 tokens: positions
-  covered, student's answers, findings recorded). The compactor MUST carry forward
-  the thread ledger's open/parked entries verbatim (they are the conversation's
-  live state); resolved threads may be dropped from the digest. The
-  digest is stored in `sessions.context_digest text` and injected at the top of the
-  message list; the summarized messages are excluded from replay (marked by
-  `sessions.digest_through_message_id bigint`). Raw messages are never deleted —
-  the UI still shows full history.
-- Compaction runs at most once per 20 turns and reuses the previous digest as input
-  (incremental, cheap). This is the same pattern as agent-framework "memory
-  compression" — implemented in `services/session-context.ts`, unit-testable pure
-  function over messages + budget.
+- An **episode** is the contiguous run of `session_messages` sharing the
+  session's current ply (`lib/episodes.ts`'s `currentEpisode`). Moving to a new
+  position (`show_position`, or the student navigating the move list) closes
+  the old episode.
+- **On close**, the coach's own `record_move_note` call for that ply wins if
+  present and succeeded; otherwise the episode's raw messages are folded
+  automatically into a one-sentence note (`coach-context.ts`'s
+  `closeEpisodeIfNeeded`, best-effort — a light-model failure here never aborts
+  the turn). Either way the result lands in `session_move_notes`, rendered as
+  one line per move in layer 4 (§8.1) on every subsequent turn.
+- **Within a still-open episode**, if its own conversation exceeds a 6k-token
+  budget (`EPISODE_BUDGET_TOKENS`), the same light-tier fold compacts its
+  oldest ~half into a digest, seeded from any note already on this ply (a
+  revisit's earlier closing note, or this same episode's own prior fold) —
+  never a hardcoded blank slate. The fold point never splits a tool-call from
+  its tool-result — both Anthropic and OpenAI reject that shape.
+- `recall_move` exists for on-demand deeper lookup: a fresh digest of a
+  specific past episode's full raw conversation, richer than the one-line
+  layer-4 summary.
+- Raw messages are never deleted — the UI still shows full history.
+  Implemented in `services/coach-context.ts` and `services/session-context.ts`
+  (the underlying budget/cooldown/fold primitives, reused from the original
+  whole-session design), unit-testable pure functions over messages + budget.
 
 ### 8.3 Loop management (agent-turn guardrails)
 
@@ -524,8 +570,9 @@ A full session can reach 60+ turns. Unbounded replay is slow and expensive:
 
 - `maxSteps: 8` per user turn (a normal turn uses 1–3).
 - **Per-turn tool budget** enforced in tool wrappers: max 2 `get_engine_analysis`
-  calls and 1 `get_user_profile` call per turn; over budget → the tool returns
-  `{error: "budget_exhausted — answer with what you have"}` instead of executing.
+  calls, 1 `get_user_profile` call, and 3 `recall_move` calls per turn; over
+  budget → the tool returns `{error: "budget_exhausted — answer with what you
+  have"}` instead of executing.
 - **Repeat-call breaker:** identical tool name + args twice in one turn → second
   call returns the cached first result with a note; three times → the turn is
   finalized with whatever text exists.
