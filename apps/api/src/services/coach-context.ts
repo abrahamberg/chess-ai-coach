@@ -158,17 +158,29 @@ async function resolveEpisodeReplay(
   const prepared = prepareContext(stored, initialDigest, EPISODE_BUDGET_TOKENS);
 
   if (!prepared.needsCompaction) {
-    return prepared.replayMessages.map(toCoreMessage);
+    return withEpisodeDigest(initialDigest, stored).map(toCoreMessage);
   }
 
   const keptCount = Math.ceil(stored.length / 2);
+  if (keptCount === stored.length) {
+    // Nothing left to fold (e.g. a single oversized message) — replay
+    // verbatim rather than compacting an empty slice and clobbering the
+    // note for no token savings.
+    return withEpisodeDigest(initialDigest, stored).map(toCoreMessage);
+  }
+
   const foldedMessages = stored.slice(0, stored.length - keptCount);
   const newDigest = await compact(foldedMessages, initialDigest, deps.callLightModel);
   await sessionMoveNotesRepo.upsert(deps.db, sessionId, currentPly, newDigest);
 
   const kept = stored.slice(stored.length - keptCount);
-  const digestMessage: StoredMessage = { id: 'digest', role: 'user', content: `[this move so far] ${newDigest}` };
-  return [digestMessage, ...kept].map(toCoreMessage);
+  return withEpisodeDigest(newDigest, kept).map(toCoreMessage);
+}
+
+function withEpisodeDigest(digest: string | null, messages: StoredMessage[]): StoredMessage[] {
+  if (!digest) return messages;
+  const digestMessage: StoredMessage = { id: 'digest', role: 'user', content: `[this move so far] ${digest}` };
+  return [digestMessage, ...messages];
 }
 
 function toStoredMessages(messages: SessionMessageRow[]): StoredMessage[] {

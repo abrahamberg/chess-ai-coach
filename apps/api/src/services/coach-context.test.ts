@@ -171,5 +171,61 @@ describe('coach-context', () => {
       expect(serialized).toContain('discussed the knight development');
       expect(messages.at(-1)).toEqual({ role: current.role, content: current.content });
     });
+
+    test('a revisit to a previously-closed ply seeds this episode\'s digest from that ply\'s earlier closing note, while still excluding that ply\'s earlier raw messages', async () => {
+      const { session } = await seedSession();
+      await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
+      await sessionMessagesRepo.insert(db, session.id, 'assistant', 'first visit raw message you should never see again', 4);
+      await sessionMoveNotesRepo.upsert(db, session.id, 4, 'first visit: discussed the pin');
+      await sessionMessagesRepo.insert(db, session.id, 'assistant', 'unrelated detour at another ply', 5);
+      await sessionMessagesRepo.insert(db, session.id, 'user', 'back again, second visit message', 4);
+
+      const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
+
+      const messages = await buildEpisodeContext({
+        db,
+        callLightModel: vi.fn(),
+        session,
+        currentPly: 4,
+        historyAfterTurn,
+        staticPart: 'STATIC',
+        dynamicPart: 'DYNAMIC'
+      });
+
+      const serialized = JSON.stringify(messages);
+      expect(serialized).toContain('[this move so far] first visit: discussed the pin');
+      expect(serialized).not.toContain('first visit raw message you should never see again');
+      expect(serialized).toContain('back again, second visit message');
+    });
+
+    test('a genuinely oversized still-open episode is folded via the light model, oldest messages first, with a consistently labeled digest', async () => {
+      const { session } = await seedSession();
+      const bigChunk = (marker: string) => `${marker} ${'x'.repeat(8000)}`;
+      await sessionMessagesRepo.insert(db, session.id, 'assistant', bigChunk('OLDEST_MARKER_XYZ'), 4);
+      await sessionMessagesRepo.insert(db, session.id, 'assistant', bigChunk('SECOND_MARKER'), 4);
+      await sessionMessagesRepo.insert(db, session.id, 'assistant', bigChunk('THIRD_MARKER'), 4);
+      await sessionMessagesRepo.insert(db, session.id, 'assistant', bigChunk('NEWEST_MARKER_ABC'), 4);
+
+      const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
+      const callLightModel = vi.fn().mockResolvedValue('short digest');
+
+      const messages = await buildEpisodeContext({
+        db,
+        callLightModel,
+        session,
+        currentPly: 4,
+        historyAfterTurn,
+        staticPart: 'STATIC',
+        dynamicPart: 'DYNAMIC'
+      });
+
+      const serialized = JSON.stringify(messages);
+      expect(serialized).toContain('[this move so far] short digest');
+      expect(serialized).not.toContain('OLDEST_MARKER_XYZ');
+      expect(serialized).toContain('NEWEST_MARKER_ABC');
+
+      const note = await sessionMoveNotesRepo.findByPly(db, session.id, 4);
+      expect(note?.note).toBe('short digest');
+    });
   });
 });
