@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { compact, prepareContext, type StoredMessage } from './session-context.js';
+import { compact, COMPACTOR_SYSTEM_PROMPT, prepareContext, type StoredMessage } from './session-context.js';
 
 function messagesOfSize(count: number, charsEach: number): StoredMessage[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -75,7 +75,7 @@ describe('compact', () => {
     const summarize = vi.fn().mockResolvedValue('Student worked on king safety; castled late twice.');
     const toFold: StoredMessage[] = messagesOfSize(4, 40);
 
-    const digest = await compact(toFold, null, summarize);
+    const digest = await compact(toFold, null, summarize, COMPACTOR_SYSTEM_PROMPT);
 
     expect(digest).toBe('Student worked on king safety; castled late twice.');
     expect(summarize).toHaveBeenCalledOnce();
@@ -85,7 +85,7 @@ describe('compact', () => {
     const summarize = vi.fn().mockResolvedValue('updated digest');
     const toFold: StoredMessage[] = messagesOfSize(2, 40);
 
-    await compact(toFold, 'earlier: worked on hanging pieces', summarize);
+    await compact(toFold, 'earlier: worked on hanging pieces', summarize, COMPACTOR_SYSTEM_PROMPT);
 
     const [prompt] = summarize.mock.calls[0] as [{ system: string; user: string }];
     expect(prompt.user).toContain('hanging pieces');
@@ -126,7 +126,7 @@ describe('compact', () => {
       }
     ];
 
-    const digest = await compact(toFold, null, summarize);
+    const digest = await compact(toFold, null, summarize, COMPACTOR_SYSTEM_PROMPT);
 
     expect(digest).toContain('LLM digest text');
     expect(digest).toContain('the h3 line');
@@ -138,8 +138,46 @@ describe('compact', () => {
     const summarize = vi.fn().mockResolvedValue('LLM digest text');
     const toFold: StoredMessage[] = messagesOfSize(2, 40);
 
-    const digest = await compact(toFold, null, summarize);
+    const digest = await compact(toFold, null, summarize, COMPACTOR_SYSTEM_PROMPT);
 
     expect(digest).toBe('LLM digest text');
+  });
+
+  test('uses the caller-supplied system prompt, not a hardcoded one (final review #4)', async () => {
+    const summarize = vi.fn().mockResolvedValue('a short episode note');
+    const toFold: StoredMessage[] = messagesOfSize(2, 40);
+    const customPrompt = 'CUSTOM PER-EPISODE PROMPT';
+
+    await compact(toFold, null, summarize, customPrompt);
+
+    const [prompt] = summarize.mock.calls[0] as [{ system: string; user: string }];
+    expect(prompt.system).toBe(customPrompt);
+  });
+
+  test('options.appendOpenThreads: false skips the OPEN THREADS block even when one exists (final review #4)', async () => {
+    const summarize = vi.fn().mockResolvedValue('LLM digest text');
+    const toFold: StoredMessage[] = [
+      ...messagesOfSize(2, 40),
+      {
+        id: '3',
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'update_threads',
+            result: [
+              { id: 1, topic: 'the h3 line', status: 'parked', hypothesis: null, anchorPly: null, anchorFen: null }
+            ]
+          }
+        ]
+      }
+    ];
+
+    const digest = await compact(toFold, null, summarize, COMPACTOR_SYSTEM_PROMPT, { appendOpenThreads: false });
+
+    expect(digest).toBe('LLM digest text');
+    expect(digest).not.toContain('OPEN THREADS');
+    expect(digest).not.toContain('the h3 line');
   });
 });

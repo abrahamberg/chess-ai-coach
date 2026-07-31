@@ -3,6 +3,7 @@ export * from './calibration.js';
 export * from './coach-system.js';
 export * from './engine-interpreter.js';
 export * from './episode-context.js';
+export * from './episode-fold.js';
 export * from './onboarding-profiler.js';
 export * from './progress-summarizer.js';
 export * from './render.js';
