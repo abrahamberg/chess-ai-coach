@@ -1643,6 +1643,7 @@ export interface BuildEpisodeContextInput extends CoachContextDependencies {
  * same layering with no in-memory state. */
 export async function buildEpisodeContext(input: BuildEpisodeContextInput): Promise<CoreMessage[]> {
   const episode = currentEpisode(input.historyAfterTurn, input.currentPly);
+  const orphanExtendedMessages = includeOrphanedToolCall(input.historyAfterTurn, episode.messages);
 
   const [position, classifiedMoves, otherNotes, threads] = await Promise.all([
     getPositionAtPly(input.db, input.session.gameId, input.currentPly),
@@ -1660,7 +1661,7 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
     renderThreadsBlock(threads)
   ].join('\n\n');
 
-  const episodeMessages = await resolveEpisodeReplay(input, input.session.id, episode.messages, input.currentPly);
+  const episodeMessages = await resolveEpisodeReplay(input, input.session.id, orphanExtendedMessages, input.currentPly);
 
   return buildEpisodeMessages(
     {
@@ -1731,6 +1732,52 @@ function isRecordMoveNoteCallForPly(part: unknown, ply: number): boolean {
   if (candidate.type !== 'tool-call' || candidate.toolName !== 'record_move_note') return false;
   return (candidate.args as { ply?: unknown } | undefined)?.ply === ply;
 }
+
+/**
+ * design doc §1 addendum (found in Task 12 review): a show_position
+ * tool-call is written at the OLD ply (messages in one turn are tagged
+ * uniformly with whatever was current when the turn started — the move
+ * isn't client-confirmed yet), while its tool-result is written at the NEW
+ * ply once the client confirms, one turn later. currentEpisode's plain
+ * ply-match scan then starts the new episode at the bare tool-result, with
+ * no tool-call earlier in the same episode — a shape both Anthropic and
+ * OpenAI reject. This reaches exactly one message further back, across the
+ * ply boundary, only when the episode's very first message is such an
+ * orphan.
+ */
+function includeOrphanedToolCall(
+  historyAfterTurn: SessionMessageRow[],
+  episodeMessages: SessionMessageRow[]
+): SessionMessageRow[] {
+  const first = episodeMessages[0];
+  const toolCallId = first ? firstToolResultCallId(first) : null;
+  if (!toolCallId) return episodeMessages;
+
+  const boundaryIndex = historyAfterTurn.length - episodeMessages.length;
+  const preceding = historyAfterTurn[boundaryIndex - 1];
+  if (!preceding || !hasToolCall(preceding, toolCallId)) return episodeMessages;
+
+  return [preceding, ...episodeMessages];
+}
+
+function firstToolResultCallId(message: SessionMessageRow): string | null {
+  if (message.role !== 'tool' || !Array.isArray(message.content)) return null;
+  for (const part of message.content) {
+    if (typeof part !== 'object' || part === null) continue;
+    const candidate = part as { type?: unknown; toolCallId?: unknown };
+    if (candidate.type === 'tool-result' && typeof candidate.toolCallId === 'string') return candidate.toolCallId;
+  }
+  return null;
+}
+
+function hasToolCall(message: SessionMessageRow, toolCallId: string): boolean {
+  if (!Array.isArray(message.content)) return false;
+  return message.content.some((part) => {
+    if (typeof part !== 'object' || part === null) return false;
+    const candidate = part as { type?: unknown; toolCallId?: unknown };
+    return candidate.type === 'tool-call' && candidate.toolCallId === toolCallId;
+  });
+}
 ```
 
 - [ ] **Step 4: Run it to confirm it passes**
@@ -1752,15 +1799,18 @@ git commit -m "feat: add coach-context service — jump resolution, episode clos
 **Files:**
 - Modify: `apps/api/src/services/coach-agent.ts`
 - Modify: `apps/api/src/services/coach-agent.test.ts`
+- Modify: `apps/api/src/services/coach-context.ts` (Task 11's file — adds `includeOrphanedToolCall` and two small helpers; no exported signature changes, see Step 3 below)
 
 **Interfaces:**
 - Consumes: everything from Task 11 (`resolvePositionContextJump`, `closeEpisodeIfNeeded`, `buildEpisodeContext`).
 - Removes: `buildCacheableMessages` and the private `toCoreMessage` helper (superseded by `coach-context.ts`'s own copy — no longer used from `coach-agent.ts`).
-- Changes: `sessionMessagesRepo.insert` call sites now pass an explicit `ply`; `applyClientToolResult`'s signature changes to `(deps, session, toolResult, currentPly) => Promise<number>` (returns the possibly-updated ply).
+- Changes: `sessionMessagesRepo.insert` call sites now pass an explicit `ply` (every message in a turn is tagged uniformly with that turn's `currentPly` — no per-message ply advancement); `applyClientToolResult`'s signature changes to `(deps, session, toolResult, currentPly) => Promise<number>` (returns the possibly-updated ply) and now validates the client's claimed ply via `getPositionAtPly` before trusting it; `coach-context.ts`'s `buildEpisodeContext` gains one internal step (`includeOrphanedToolCall`) that reaches back one message when an episode would otherwise start with an orphaned tool-result.
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `apps/api/src/services/coach-agent.test.ts`, inside (or alongside) the existing `describe('coach-agent startTurn concurrency', ...)` block so it can reuse the file's `deps()`/`drain()`/`controllableStreamModel`/`instantTextModel` helpers and `testDb`:
+Add `import * as sessionsRepo from '../db/repositories/sessions.js';` to this test file's imports if not already present (needed by the refetch pattern below).
+
+Add to `apps/api/src/services/coach-agent.test.ts`, inside (or alongside) the existing `describe('coach-agent startTurn concurrency', ...)` block so it can reuse the file's `deps()`/`drain()`/`controllableStreamModel`/`instantTextModel` helpers and `testDb`. Every test below that spans multiple turns refetches the session between them (`sessionsRepo.findById`) rather than reusing the original in-memory object — this matches what `routes/sessions.ts` actually does per HTTP request (a fresh `SessionRow` every time) and keeps these tests honest about state coming purely from the DB, not from a mutation the production code path doesn't have:
 
 ```ts
 test('a show_position tool-call and its later-confirmed tool-result stay in the same episode — no orphaned tool_result once the position moves', async () => {
@@ -1797,7 +1847,8 @@ test('a show_position tool-call and its later-confirmed tool-result stay in the 
   await drain1;
 
   // Turn 2: the client confirms the move actually happened.
-  const turn2 = await coachAgent.startTurn(deps(instantTextModel('Here it is.')), session, {
+  const sessionAfterTurn1 = (await sessionsRepo.findById(db, session.id))!;
+  const turn2 = await coachAgent.startTurn(deps(instantTextModel('Here it is.')), sessionAfterTurn1, {
     clientToolResult: { toolCallId: 'call-show-1', toolName: 'show_position', result: { moveNumber: 2, color: 'black', ply: 4 } }
   });
   await drain(turn2);
@@ -1805,7 +1856,8 @@ test('a show_position tool-call and its later-confirmed tool-result stay in the 
   // Turn 3: an ordinary follow-up in the same (now-current) episode. This is
   // the turn whose request would break if the tool-call landed in a
   // different episode than its tool-result.
-  const turn3 = await coachAgent.startTurn(deps(instantTextModel('Sure.')), session, { content: 'what about here?' });
+  const sessionAfterTurn2 = (await sessionsRepo.findById(db, session.id))!;
+  const turn3 = await coachAgent.startTurn(deps(instantTextModel('Sure.')), sessionAfterTurn2, { content: 'what about here?' });
   await drain(turn3);
 
   const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
@@ -1817,6 +1869,52 @@ test('a show_position tool-call and its later-confirmed tool-result stay in the 
   expect(conversation[0]).toMatchObject({ role: 'assistant' });
   const firstToolResultIndex = conversation.findIndex((m) => (m as { role: string }).role === 'tool');
   expect(firstToolResultIndex).toBeGreaterThan(0);
+
+  // The episode that closed when the move was confirmed (ply 0, the
+  // pre-move discussion) must have gotten an automatic note.
+  const closedEpisodeNote = await db
+    .selectFrom('sessionMoveNotes')
+    .selectAll()
+    .where('sessionId', '=', session.id)
+    .where('ply', '=', 0)
+    .executeTakeFirst();
+  expect(closedEpisodeNote).toBeDefined();
+}, 20000);
+
+test('an out-of-range client-reported ply from show_position does not brick the session', async () => {
+  const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+  await creditsRepo.insertSignupGrant(db, user.id);
+  const game = await gamesRepo.insert(db, {
+    userId: user.id,
+    pgn: PGN,
+    source: 'paste',
+    userColor: 'white',
+    whiteName: 'Ann',
+    blackName: 'Bob',
+    result: '1-0',
+    timeControl: '10+0',
+    eco: null,
+    playedAt: null
+  });
+  const analysis = await analysesRepo.insertQueued(db, game.id);
+  await analysesRepo.markReady(db, analysis.id, PLAN);
+  await analysesRepo.storeClassifiedMoves(db, analysis.id, []);
+  const session = await coachAgent.createSession(db, user.id, game.id);
+
+  // Claim a ply far beyond the game's actual length.
+  const badTurn = await coachAgent.startTurn(deps(instantTextModel('Got it.')), session, {
+    clientToolResult: { toolCallId: 'call-bad-1', toolName: 'show_position', result: { moveNumber: 999, color: 'white', ply: 1997 } }
+  });
+  await drain(badTurn);
+
+  const refetched = await sessionsRepo.findById(db, session.id);
+  expect(refetched?.currentPly).toBe(0);
+
+  // The session must still work normally afterward.
+  const followUp = await coachAgent.startTurn(deps(instantTextModel('Still here.')), refetched!, { content: 'hello?' });
+  await drain(followUp);
+  const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
+  expect(snapshot?.request.messages.length).toBeGreaterThan(0);
 }, 20000);
 
 test('a jump back to an earlier move closes the old episode into a note and the new turn\'s request excludes that episode\'s raw messages', async () => {
@@ -1846,7 +1944,8 @@ test('a jump back to an earlier move closes the old episode into a note and the 
   await drain(moveTurn);
 
   // Turn 2: student jumps back to the game start and sends a message.
-  const jumpTurn = await coachAgent.startTurn(deps(instantTextModel('Sure, back at the start.')), session, {
+  const sessionAfterMove = (await sessionsRepo.findById(db, session.id))!;
+  const jumpTurn = await coachAgent.startTurn(deps(instantTextModel('Sure, back at the start.')), sessionAfterMove, {
     content: '[position_context] Back at move 0 (white), after start: what about a different opening?'
   });
   await drain(jumpTurn);
@@ -1890,8 +1989,10 @@ test('a resumed session (fresh deps, no in-memory state) reconstructs the same f
   await drain(turn1);
 
   // Simulate a fresh process picking up the same session: a brand-new deps
-  // object, no closures or caches carried over from turn 1.
-  const turn2 = await coachAgent.startTurn(deps(instantTextModel('Welcome back.')), session, { content: 'hi again' });
+  // object and a freshly-fetched session row, no closures or caches carried
+  // over from turn 1.
+  const sessionAfterTurn1 = (await sessionsRepo.findById(db, session.id))!;
+  const turn2 = await coachAgent.startTurn(deps(instantTextModel('Welcome back.')), sessionAfterTurn1, { content: 'hi again' });
   await drain(turn2);
 
   const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
@@ -1909,7 +2010,7 @@ Also replace the old `describe('buildCacheableMessages', ...)` block (lines ~344
 - [ ] **Step 2: Run it to confirm it fails**
 
 Run: `npm test -w apps/api -- coach-agent.test`
-Expected: FAIL — `startTurn` still replays the whole transcript, doesn't parse `[position_context]`, and doesn't advance the write-time ply tag when a `show_position` tool-call streams in; `buildCacheableMessages` no longer being referenced from the deleted test is fine, but the three new tests fail against current behavior.
+Expected: FAIL — `startTurn` still replays the whole transcript, doesn't parse `[position_context]`, and `applyClientToolResult` doesn't validate the client's claimed ply; `buildCacheableMessages` no longer being referenced from the deleted test is fine, but the four new tests fail against current behavior.
 
 - [ ] **Step 3: Implement**
 
@@ -2053,26 +2154,8 @@ export async function startTurn(
             }
           } satisfies TurnDebugSnapshot);
 
-          // A show_position tool-call inside this turn's own response is the
-          // coach *deciding* to move to a new position, before the client
-          // round-trip that confirms it (that confirmation lands in a later
-          // turn's applyClientToolResult). The assistant message carrying
-          // that tool-call must be tagged with the ply it's ABOUT to move
-          // to, not the ply that was current when the turn started —
-          // otherwise it's tagged old-ply while the eventual tool-result
-          // (tagged new-ply, once confirmed) lands one episode later, and
-          // buildEpisodeContext's episode scan splits the tool-call from
-          // its tool-result across two episodes: a bare tool-result with no
-          // matching tool-call in the same request, which Anthropic and
-          // OpenAI both reject. moveRefToPly is deterministic from the tool
-          // call's own {moveNumber, color} args — no need to wait for the
-          // client's confirmed ply, and it always matches what the client
-          // later reports (both compute it from the same address).
-          let tagPly = currentPly;
           for (const message of event.response.messages) {
-            const jumpTargetPly = extractShowPositionTargetPly(message);
-            if (jumpTargetPly !== null) tagPly = jumpTargetPly;
-            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content, tagPly);
+            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content, currentPly);
           }
           await recordUsage(deps.db, {
             userId: session.userId,
@@ -2120,14 +2203,21 @@ async function applyClientToolResult(
   let result = toolResult.result;
   let ply = currentPly;
   if (toolResult.toolName === 'show_position') {
-    const { ply: newPly } = toolResult.result as { ply: number };
-    if (newPly !== currentPly) {
-      const historyBeforeTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
-      const closedEpisode = currentEpisode(historyBeforeTurn, currentPly);
-      await coachContext.closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, currentPly);
+    const { ply: claimedPly } = toolResult.result as { ply: number };
+    // Never trust the client's claimed ply outright (same principle as
+    // resolvePositionContextJump) — an invalid claim leaves `ply` at
+    // `currentPly` below, so the session is never wedged on a position
+    // that doesn't exist.
+    const position = await getPositionAtPly(deps.db, session.gameId, claimedPly);
+    if (position) {
+      if (claimedPly !== currentPly) {
+        const historyBeforeTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
+        const closedEpisode = currentEpisode(historyBeforeTurn, currentPly);
+        await coachContext.closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, currentPly);
+      }
+      ply = claimedPly;
+      await sessionsRepo.updateCurrentPly(deps.db, session.id, ply);
     }
-    ply = newPly;
-    await sessionsRepo.updateCurrentPly(deps.db, session.id, ply);
     result = await withAuthoritativeFen(deps.db, session.gameId, ply, toolResult.result);
   }
   await sessionMessagesRepo.insert(
@@ -2141,36 +2231,17 @@ async function applyClientToolResult(
 }
 ```
 
-Add the `currentEpisode` import and a `moveRefToPly` import:
+Add the `currentEpisode` import:
 
 ```ts
-import { moveRefToPly } from '@chess-coach/chess-analysis';
 import { currentEpisode } from '../lib/episodes.js';
 ```
 
-Add the helper `extractShowPositionTargetPly` (used by the `onFinish` loop above), placed near `toCoreMessage`/other small private helpers at the bottom of the file:
-
-```ts
-/** The onFinish tagging fix above: reads a show_position tool-call's own
- * {moveNumber, color} args to determine the ply it targets, without
- * waiting for the client's confirming round-trip. Returns null for any
- * message that isn't an assistant message containing a show_position call
- * (the overwhelmingly common case — most turns never move the position). */
-function extractShowPositionTargetPly(message: { role: string; content: unknown }): number | null {
-  if (!Array.isArray(message.content)) return null;
-  for (const part of message.content) {
-    if (typeof part !== 'object' || part === null) continue;
-    const candidate = part as { type?: unknown; toolName?: unknown; args?: unknown };
-    if (candidate.type !== 'tool-call' || candidate.toolName !== 'show_position') continue;
-    const args = candidate.args as { moveNumber?: unknown; color?: unknown };
-    if (typeof args.moveNumber !== 'number') continue;
-    return moveRefToPly(args.moveNumber, (args.color as 'white' | 'black' | null) ?? null);
-  }
-  return null;
-}
-```
+`getPositionAtPly` is already imported in this file (it's used by `withAuthoritativeFen`, unchanged) — confirm the import is present rather than adding a duplicate.
 
 Delete `buildCacheableMessages` and the private `toCoreMessage` function entirely (both superseded — `toCoreMessage` is now private to `coach-context.ts`, `buildCacheableMessages` is now `coach-context.ts`'s `buildEpisodeMessages`). Confirm nothing else in `coach-agent.ts` still references `toCoreMessage` (it doesn't, after the `priorMessages.map(toCoreMessage)` line — which itself no longer exists — is gone) or `CoreMessage`/`ProviderMetadata` imports that become unused; adjust the `import ... from 'ai'` line accordingly if `CoreMessage` is no longer referenced directly in this file (check — `TurnDebugSnapshot.request.messages: CoreMessage[]` still uses the type, so keep it).
+
+**Design note on why this isn't a write-time fix:** an earlier version of this task tagged the assistant message carrying a `show_position` tool-call with the ply it was *about* to move to (computed from the tool call's own args, before client confirmation), to keep it in the same episode as its eventual tool-result. That version was replaced after review: it broke `closeEpisodeIfNeeded`'s own episode-boundary scan (the very message that should close the *old* episode was already tagged with the *new* ply, so the backward scan found nothing to close), and a second, unrelated bug (an unvalidated client-reported ply from `show_position` could wedge a session permanently) surfaced alongside it. The fix that survived: keep write-time tagging uniform and simple (every message in a turn gets the same `currentPly` — see above), validate the client's claimed ply here, and instead teach the *read* side (`coach-context.ts`'s `buildEpisodeContext`, via `includeOrphanedToolCall`) to reach back one message when it finds a tool-call's result sitting alone at the start of an episode.
 
 - [ ] **Step 4: Run it to confirm it passes**
 
