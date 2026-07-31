@@ -1,7 +1,13 @@
 import type { CoreMessage } from 'ai';
 import type { Kysely } from 'kysely';
 import { moveRefToPly } from '@chess-coach/chess-analysis';
-import { renderAnnotatedPgn, renderCurrentMoveBlock, renderOtherMovesSummary, renderThreadsBlock } from '@chess-coach/prompts';
+import {
+  EPISODE_FOLD_SYSTEM_PROMPT,
+  renderAnnotatedPgn,
+  renderCurrentMoveBlock,
+  renderOtherMovesSummary,
+  renderThreadsBlock
+} from '@chess-coach/prompts';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import type { SessionMessageRow } from '../db/repositories/session-messages.js';
 import * as sessionMoveNotesRepo from '../db/repositories/session-move-notes.js';
@@ -44,6 +50,14 @@ export async function resolvePositionContextJump(
  * from `closedPly`) without a coach-authored record_move_note for that ply,
  * fold its raw messages into one automatically so the next turn's
  * other-moves-summary still has something to say about it.
+ *
+ * Best-effort (final review #3): this runs in the critical path of both its
+ * callers (coach-agent.ts's show_position jump-handling and
+ * applyClientToolResult), inside the session lock, BEFORE the ply advances
+ * and the tool-result is persisted. A transient light-model failure here
+ * must never abort the turn — losing one auto-note doesn't corrupt
+ * anything, it just leaves that episode's note missing until a later close
+ * or an explicit recall_move.
  */
 export async function closeEpisodeIfNeeded(
   deps: CoachContextDependencies,
@@ -52,10 +66,25 @@ export async function closeEpisodeIfNeeded(
   closedPly: number
 ): Promise<void> {
   if (closedEpisodeMessages.length === 0) return;
-  if (hasRecordMoveNoteCall(closedEpisodeMessages, closedPly)) return;
+  if (hasSuccessfulRecordMoveNoteCall(closedEpisodeMessages, closedPly)) return;
 
-  const note = await compact(toStoredMessages(closedEpisodeMessages), null, deps.callLightModel);
-  await sessionMoveNotesRepo.upsert(deps.db, sessionId, closedPly, note);
+  try {
+    // final review #6: seed from this ply's own earlier closing note (e.g.
+    // a previous visit's fold), never a hardcoded null — otherwise a
+    // revisit's close would silently discard what the first visit already
+    // established about this move.
+    const existingNote = await sessionMoveNotesRepo.findByPly(deps.db, sessionId, closedPly);
+    const note = await compact(
+      toStoredMessages(closedEpisodeMessages),
+      existingNote?.note ?? null,
+      deps.callLightModel,
+      EPISODE_FOLD_SYSTEM_PROMPT,
+      { appendOpenThreads: false }
+    );
+    await sessionMoveNotesRepo.upsert(deps.db, sessionId, closedPly, note);
+  } catch (error) {
+    console.error(`closeEpisodeIfNeeded: failed to auto-fold episode (session ${sessionId}, ply ${closedPly}):`, error);
+  }
 }
 
 export interface EpisodeLayers {
@@ -74,6 +103,11 @@ export interface EpisodeLayers {
  * buildCacheableMessages) — this extends the same pattern to five.
  */
 export function buildEpisodeMessages(layers: EpisodeLayers, episodeMessages: CoreMessage[]): CoreMessage[] {
+  // Four breakpoints below (static/dynamic/annotatedPgn/otherMovesSummary) is
+  // Anthropic's exact per-request cache-breakpoint maximum (final review
+  // #10) — a fifth cached layer can't just be added here without first
+  // dropping one of these four, or the request will start failing at the
+  // provider.
   const cacheControl = { anthropic: { cacheControl: { type: 'ephemeral' as const } } };
   return [
     { role: 'system', content: layers.staticPart, providerOptions: cacheControl },
@@ -115,11 +149,16 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
 
   const annotatedPgn = renderAnnotatedPgn(classifiedMoves ?? []);
   const otherMovesSummary = renderOtherMovesSummary(otherNotes, classifiedMoves ?? []);
-  const currentMoveBlock = [
-    renderCurrentMoveBlock(input.currentPly, position.fen, episode.previousPly),
-    '## Your thread ledger',
+  // final review #8: the thread-ledger heading is composed inside
+  // renderCurrentMoveBlock (packages/prompts), not here — all prompt text
+  // lives in packages/prompts, matching the pattern renderAnnotatedPgn/
+  // renderOtherMovesSummary already use for their own '## ' headings.
+  const currentMoveBlock = renderCurrentMoveBlock(
+    input.currentPly,
+    position.fen,
+    episode.previousPly,
     renderThreadsBlock(threads)
-  ].join('\n\n');
+  );
 
   const episodeMessages = await resolveEpisodeReplay(input, input.session.id, orphanExtendedMessages, input.currentPly);
 
@@ -170,11 +209,27 @@ async function resolveEpisodeReplay(
     return withEpisodeDigest(initialDigest, stored).map(toCoreMessage);
   }
 
-  const foldedMessages = stored.slice(0, stored.length - keptCount);
-  const newDigest = await compact(foldedMessages, initialDigest, deps.callLightModel);
+  // final review #2: the naive fold point (stored.length - keptCount) is
+  // purely positional — it can land between a server-executed tool-call and
+  // its tool-result (get_engine_analysis, check_position, record_finding,
+  // update_threads all persist that adjacent pair). If it does, `kept`
+  // would start with a bare tool_result, a shape both Anthropic and OpenAI
+  // reject — and since the provider rejection means onFinish never runs,
+  // the same bad cut would recur every subsequent turn. Same fix as
+  // includeOrphanedToolCall uses for the outer episode boundary: extend the
+  // cut back one message when it lands on an orphaned tool-result.
+  const keptStart = extendPastOrphanedToolResult(episodeMessages, stored.length - keptCount);
+  const foldedMessages = stored.slice(0, keptStart);
+  const newDigest = await compact(
+    foldedMessages,
+    initialDigest,
+    deps.callLightModel,
+    EPISODE_FOLD_SYSTEM_PROMPT,
+    { appendOpenThreads: false }
+  );
   await sessionMoveNotesRepo.upsert(deps.db, sessionId, currentPly, newDigest);
 
-  const kept = stored.slice(stored.length - keptCount);
+  const kept = stored.slice(keptStart);
   return withEpisodeDigest(newDigest, kept).map(toCoreMessage);
 }
 
@@ -192,17 +247,56 @@ function toCoreMessage(message: StoredMessage): CoreMessage {
   return { role: message.role, content: message.content } as CoreMessage;
 }
 
-function hasRecordMoveNoteCall(messages: SessionMessageRow[], ply: number): boolean {
-  return messages.some(
-    (message) => Array.isArray(message.content) && message.content.some((part) => isRecordMoveNoteCallForPly(part, ply))
-  );
+/**
+ * final review #7: trusts the tool-CALL and its RESULT, not just the call —
+ * if record_move_note returned `{ error: ... }` (e.g. an address that
+ * doesn't resolve to a real move in this game), the auto-fallback must
+ * still run, or the episode ends up with no note at all. Correlates a
+ * record_move_note tool-call for this ply with its tool-result via
+ * toolCallId, the same way includeOrphanedToolCall/
+ * extendPastOrphanedToolResult correlate a call with its result below.
+ */
+function hasSuccessfulRecordMoveNoteCall(messages: SessionMessageRow[], ply: number): boolean {
+  const callIds = collectRecordMoveNoteCallIds(messages, ply);
+  if (callIds.size === 0) return false;
+  return messages.some((message) => hasSuccessfulToolResult(message, callIds));
 }
 
-function isRecordMoveNoteCallForPly(part: unknown, ply: number): boolean {
+function collectRecordMoveNoteCallIds(messages: SessionMessageRow[], ply: number): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) continue;
+    for (const part of message.content) {
+      const callId = recordMoveNoteCallIdForPly(part, ply);
+      if (callId) ids.add(callId);
+    }
+  }
+  return ids;
+}
+
+function recordMoveNoteCallIdForPly(part: unknown, ply: number): string | null {
+  if (typeof part !== 'object' || part === null) return null;
+  const candidate = part as { type?: unknown; toolName?: unknown; toolCallId?: unknown; args?: unknown };
+  if (candidate.type !== 'tool-call' || candidate.toolName !== 'record_move_note') return null;
+  const args = candidate.args as { moveNumber?: unknown; color?: unknown } | undefined;
+  if (typeof args?.moveNumber !== 'number') return null;
+  const color = (args.color === 'white' || args.color === 'black' ? args.color : null) as 'white' | 'black' | null;
+  if (moveRefToPly(args.moveNumber, color) !== ply) return null;
+  return typeof candidate.toolCallId === 'string' ? candidate.toolCallId : null;
+}
+
+function hasSuccessfulToolResult(message: SessionMessageRow, callIds: Set<string>): boolean {
+  if (message.role !== 'tool' || !Array.isArray(message.content)) return false;
+  return message.content.some((part) => isSuccessfulRecordMoveNoteResult(part, callIds));
+}
+
+function isSuccessfulRecordMoveNoteResult(part: unknown, callIds: Set<string>): boolean {
   if (typeof part !== 'object' || part === null) return false;
-  const candidate = part as { type?: unknown; toolName?: unknown; args?: unknown };
-  if (candidate.type !== 'tool-call' || candidate.toolName !== 'record_move_note') return false;
-  return (candidate.args as { ply?: unknown } | undefined)?.ply === ply;
+  const candidate = part as { type?: unknown; toolCallId?: unknown; result?: unknown };
+  if (candidate.type !== 'tool-result' || typeof candidate.toolCallId !== 'string') return false;
+  if (!callIds.has(candidate.toolCallId)) return false;
+  const result = candidate.result as { recorded?: unknown } | undefined;
+  return result?.recorded === true;
 }
 
 /**
@@ -220,15 +314,30 @@ function includeOrphanedToolCall(
   historyAfterTurn: SessionMessageRow[],
   episodeMessages: SessionMessageRow[]
 ): SessionMessageRow[] {
-  const first = episodeMessages[0];
-  const toolCallId = first ? firstToolResultCallId(first) : null;
-  if (!toolCallId) return episodeMessages;
-
   const boundaryIndex = historyAfterTurn.length - episodeMessages.length;
-  const preceding = historyAfterTurn[boundaryIndex - 1];
-  if (!preceding || !hasToolCall(preceding, toolCallId)) return episodeMessages;
+  const adjustedStart = extendPastOrphanedToolResult(historyAfterTurn, boundaryIndex);
+  return adjustedStart === boundaryIndex ? episodeMessages : historyAfterTurn.slice(adjustedStart);
+}
 
-  return [preceding, ...episodeMessages];
+/**
+ * final review #2: shared by includeOrphanedToolCall (the outer episode
+ * boundary) and resolveEpisodeReplay's compaction fold point — both cut a
+ * message array at some index and both need the same guard: if the message
+ * the cut would start on is a tool-result whose toolCallId matches a
+ * tool-call in the message immediately before it, the cut lands between a
+ * tool-call and its result, a shape both Anthropic and OpenAI reject. In
+ * that case the start index moves one earlier, pulling the tool-call in;
+ * otherwise the index is returned unchanged.
+ */
+function extendPastOrphanedToolResult(all: SessionMessageRow[], startIndex: number): number {
+  const first = all[startIndex];
+  const toolCallId = first ? firstToolResultCallId(first) : null;
+  if (!toolCallId) return startIndex;
+
+  const preceding = all[startIndex - 1];
+  if (!preceding || !hasToolCall(preceding, toolCallId)) return startIndex;
+
+  return startIndex - 1;
 }
 
 function firstToolResultCallId(message: SessionMessageRow): string | null {

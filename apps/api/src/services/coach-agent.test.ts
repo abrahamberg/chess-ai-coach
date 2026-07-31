@@ -1,4 +1,5 @@
 import type { CoachingPlan, EngineEval } from '@chess-coach/shared';
+import { EPISODE_FOLD_SYSTEM_PROMPT } from '@chess-coach/prompts';
 import { MockLanguageModelV1 } from 'ai/test';
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -85,6 +86,46 @@ function instantTextModel(text: string) {
       rawCall: { rawPrompt: options, rawSettings: {} }
     })
   );
+  return new MockLanguageModelV1({ doStream });
+}
+
+/** A model that resolves each of `steps` synchronously in order — one
+ * doStream() call per step. Used for turns where the model calls a
+ * SERVER-executed tool (has an `execute`, e.g. record_move_note): the AI
+ * SDK auto-runs the tool and then calls doStream() again for the model's
+ * follow-up step, unlike client tools (show_position) which stop the turn
+ * after the tool-call. */
+function multiStepModel(
+  steps: Array<{ text?: string; toolCall?: { toolCallId: string; toolName: string; args: unknown }; finishReason: string }>
+) {
+  let call = 0;
+  const doStream = vi.fn().mockImplementation((options: unknown) => {
+    const step = steps[call++];
+    if (!step) throw new Error('multiStepModel: doStream called more times than steps provided');
+    return Promise.resolve({
+      stream: new ReadableStream({
+        start(controller) {
+          if (step.text) controller.enqueue({ type: 'text-delta', textDelta: step.text });
+          if (step.toolCall) {
+            controller.enqueue({
+              type: 'tool-call',
+              toolCallType: 'function',
+              toolCallId: step.toolCall.toolCallId,
+              toolName: step.toolCall.toolName,
+              args: JSON.stringify(step.toolCall.args)
+            });
+          }
+          controller.enqueue({
+            type: 'finish',
+            finishReason: step.finishReason,
+            usage: { promptTokens: 10, completionTokens: 5 }
+          });
+          controller.close();
+        }
+      }),
+      rawCall: { rawPrompt: options, rawSettings: {} }
+    });
+  });
   return new MockLanguageModelV1({ doStream });
 }
 
@@ -422,6 +463,134 @@ describe('coach-agent startTurn concurrency', () => {
       .where('ply', '=', 3)
       .executeTakeFirst();
     expect(note).toBeDefined();
+  }, 20000);
+
+  test('final review new test #2: a coach-authored record_move_note through the real tool path suppresses the auto-fallback when its episode closes', async () => {
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+    await creditsRepo.insertSignupGrant(db, user.id);
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '1-0',
+      timeControl: '10+0',
+      eco: null,
+      playedAt: null
+    });
+    const analysis = await analysesRepo.insertQueued(db, game.id);
+    await analysesRepo.markReady(db, analysis.id, PLAN);
+    await analysesRepo.storeClassifiedMoves(db, analysis.id, []);
+    const session = await coachAgent.createSession(db, user.id, game.id);
+
+    // Turn 1: the model calls record_move_note (a SERVER-executed tool —
+    // buildCoachTools wires up a real execute, not a hand-constructed
+    // message row) for the game start (moveNumber 0, color null), then
+    // continues with a text reply once the tool result comes back.
+    const recordModel = multiStepModel([
+      {
+        toolCall: {
+          toolCallId: 'call-note-1',
+          toolName: 'record_move_note',
+          args: { moveNumber: 0, color: null, note: 'coach note: discussed the opening plan' }
+        },
+        finishReason: 'tool-calls'
+      },
+      { text: 'Noted — now, before we start...', finishReason: 'stop' }
+    ]);
+    const turn1 = await coachAgent.startTurn(deps(recordModel), session, { content: 'hi coach' });
+    await drain(turn1);
+
+    // The auto-fallback would use whatever callLightModel returns — give it
+    // a distinctive, obviously-wrong value so the assertion below can tell
+    // the two apart unambiguously.
+    const agentDeps = deps(instantTextModel('Got it.'));
+    agentDeps.callLightModel = vi.fn().mockResolvedValue('AUTO-FALLBACK NOTE — should never appear');
+
+    const sessionAfterTurn1 = await sessionsRepo.findById(db, session.id);
+    if (!sessionAfterTurn1) throw new Error('session not found');
+
+    // Turn 2: the position moves on (client confirms show_position), closing
+    // the ply-0 episode that record_move_note was already called for.
+    const turn2 = await coachAgent.startTurn(agentDeps, sessionAfterTurn1, {
+      clientToolResult: { toolCallId: 'call-show-1', toolName: 'show_position', result: { moveNumber: 2, color: 'black', ply: 4 } }
+    });
+    await drain(turn2);
+
+    expect(agentDeps.callLightModel).not.toHaveBeenCalled();
+
+    const note = await db
+      .selectFrom('sessionMoveNotes')
+      .selectAll()
+      .where('sessionId', '=', session.id)
+      .where('ply', '=', 0)
+      .executeTakeFirst();
+    expect(note?.note).toBe('coach note: discussed the opening plan');
+  }, 20000);
+
+  test('final review new test #3: an AUTO-generated closing note (not a manual one) shows up in the other-moves-summary layer on the next turn', async () => {
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+    await creditsRepo.insertSignupGrant(db, user.id);
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '1-0',
+      timeControl: '10+0',
+      eco: null,
+      playedAt: null
+    });
+    const analysis = await analysesRepo.insertQueued(db, game.id);
+    await analysesRepo.markReady(db, analysis.id, PLAN);
+    await analysesRepo.storeClassifiedMoves(db, analysis.id, []);
+    const session = await coachAgent.createSession(db, user.id, game.id);
+
+    const agentDeps = deps(instantTextModel('Got it.'));
+    const callLightModel = vi.fn().mockResolvedValue('AUTO NOTE: discussed the opening move order.');
+    agentDeps.callLightModel = callLightModel;
+
+    // Turn 1: ordinary discussion at the game start (ply 0) — no
+    // record_move_note call, so closing this episode must fall back to the
+    // automatic fold.
+    const turn1 = await coachAgent.startTurn(agentDeps, session, { content: 'hi coach' });
+    await drain(turn1);
+
+    const sessionAfterTurn1 = await sessionsRepo.findById(db, session.id);
+    if (!sessionAfterTurn1) throw new Error('session not found');
+
+    // Turn 2: the position moves on, closing the ply-0 episode into the
+    // automatic note (no record_move_note was ever called for it).
+    const turn2 = await coachAgent.startTurn(agentDeps, sessionAfterTurn1, {
+      clientToolResult: { toolCallId: 'call-show-1', toolName: 'show_position', result: { moveNumber: 2, color: 'black', ply: 4 } }
+    });
+    await drain(turn2);
+
+    // final review #4 regression: the auto-fold must use the short
+    // per-episode prompt, not the whole-session COMPACTOR_SYSTEM_PROMPT.
+    const calls = callLightModel.mock.calls as unknown as Array<[{ system: string; user: string }]>;
+    const foldCall = calls.find(([prompt]) => prompt.system === EPISODE_FOLD_SYSTEM_PROMPT);
+    expect(foldCall).toBeDefined();
+
+    const sessionAfterTurn2 = await sessionsRepo.findById(db, session.id);
+    if (!sessionAfterTurn2) throw new Error('session not found');
+
+    // Turn 3: an ordinary follow-up at the now-current ply — its request's
+    // "Other moves discussed" layer (index 3) must include the AUTO note.
+    const turn3 = await coachAgent.startTurn(deps(instantTextModel('Sure.')), sessionAfterTurn2, {
+      content: 'what should I have played instead?'
+    });
+    await drain(turn3);
+
+    const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
+    const otherMovesLayer = snapshot?.request.messages[3] as { content: string } | undefined;
+    expect(otherMovesLayer?.content).toContain('## Other moves discussed');
+    expect(otherMovesLayer?.content).toContain('AUTO NOTE: discussed the opening move order.');
+    expect(otherMovesLayer?.content).toContain('the game start');
   }, 20000);
 
   test('a resumed session (fresh deps, no in-memory state) reconstructs the same five-layer request purely from the DB', async () => {
