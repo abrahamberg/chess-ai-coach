@@ -7,6 +7,7 @@ import * as analysesRepo from '../db/repositories/analyses.js';
 import * as creditsRepo from '../db/repositories/credits.js';
 import * as gamesRepo from '../db/repositories/games.js';
 import * as sessionMessagesRepo from '../db/repositories/session-messages.js';
+import * as sessionsRepo from '../db/repositories/sessions.js';
 import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import { createKeyVault } from '../llm/key-vault.js';
@@ -326,16 +327,27 @@ describe('coach-agent startTurn concurrency', () => {
     void showFinish();
     await drain1;
 
+    // Refetch between turns, matching what routes/sessions.ts actually does
+    // in production (a fresh SessionRow per HTTP request) — this test proves
+    // correctness purely from the DB, not from any in-memory session state.
+    const sessionAfterTurn1 = await sessionsRepo.findById(db, session.id);
+    if (!sessionAfterTurn1) throw new Error('session not found');
+
     // Turn 2: the client confirms the move actually happened.
-    const turn2 = await coachAgent.startTurn(deps(instantTextModel('Here it is.')), session, {
+    const turn2 = await coachAgent.startTurn(deps(instantTextModel('Here it is.')), sessionAfterTurn1, {
       clientToolResult: { toolCallId: 'call-show-1', toolName: 'show_position', result: { moveNumber: 2, color: 'black', ply: 4 } }
     });
     await drain(turn2);
 
+    const sessionAfterTurn2 = await sessionsRepo.findById(db, session.id);
+    if (!sessionAfterTurn2) throw new Error('session not found');
+
     // Turn 3: an ordinary follow-up in the same (now-current) episode. This is
     // the turn whose request would break if the tool-call landed in a
     // different episode than its tool-result.
-    const turn3 = await coachAgent.startTurn(deps(instantTextModel('Sure.')), session, { content: 'what about here?' });
+    const turn3 = await coachAgent.startTurn(deps(instantTextModel('Sure.')), sessionAfterTurn2, {
+      content: 'what about here?'
+    });
     await drain(turn3);
 
     const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
@@ -347,6 +359,17 @@ describe('coach-agent startTurn concurrency', () => {
     expect(conversation[0]).toMatchObject({ role: 'assistant' });
     const firstToolResultIndex = conversation.findIndex((m) => (m as { role: string }).role === 'tool');
     expect(firstToolResultIndex).toBeGreaterThan(0);
+
+    // Finding 1 regression: the episode that closed when show_position was
+    // confirmed (ply 0, the pre-move discussion) must have gotten an
+    // automatic note — this used to silently no-op.
+    const closedEpisodeNote = await db
+      .selectFrom('sessionMoveNotes')
+      .selectAll()
+      .where('sessionId', '=', session.id)
+      .where('ply', '=', 0)
+      .executeTakeFirst();
+    expect(closedEpisodeNote).toBeDefined();
   }, 20000);
 
   test('a jump back to an earlier move closes the old episode into a note and the new turn\'s request excludes that episode\'s raw messages', async () => {
@@ -375,8 +398,13 @@ describe('coach-agent startTurn concurrency', () => {
     });
     await drain(moveTurn);
 
+    // Refetch between turns, matching what routes/sessions.ts actually does
+    // in production (a fresh SessionRow per HTTP request).
+    const sessionAfterMoveTurn = await sessionsRepo.findById(db, session.id);
+    if (!sessionAfterMoveTurn) throw new Error('session not found');
+
     // Turn 2: student jumps back to the game start and sends a message.
-    const jumpTurn = await coachAgent.startTurn(deps(instantTextModel('Sure, back at the start.')), session, {
+    const jumpTurn = await coachAgent.startTurn(deps(instantTextModel('Sure, back at the start.')), sessionAfterMoveTurn, {
       content: '[position_context] Back at move 0 (white), after start: what about a different opening?'
     });
     await drain(jumpTurn);
@@ -420,8 +448,14 @@ describe('coach-agent startTurn concurrency', () => {
     await drain(turn1);
 
     // Simulate a fresh process picking up the same session: a brand-new deps
-    // object, no closures or caches carried over from turn 1.
-    const turn2 = await coachAgent.startTurn(deps(instantTextModel('Welcome back.')), session, { content: 'hi again' });
+    // object, no closures or caches carried over from turn 1 — and a
+    // freshly-fetched SessionRow, matching what routes/sessions.ts actually
+    // does in production (a fresh row per HTTP request).
+    const sessionAfterTurn1 = await sessionsRepo.findById(db, session.id);
+    if (!sessionAfterTurn1) throw new Error('session not found');
+    const turn2 = await coachAgent.startTurn(deps(instantTextModel('Welcome back.')), sessionAfterTurn1, {
+      content: 'hi again'
+    });
     await drain(turn2);
 
     const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
@@ -431,6 +465,42 @@ describe('coach-agent startTurn concurrency', () => {
     expect(systemPgn).toMatchObject({ role: 'system' });
     expect(systemOther).toMatchObject({ role: 'system' });
     expect(systemCurrent).toMatchObject({ role: 'system' });
+  }, 20000);
+
+  test('an out-of-range client-reported ply from show_position does not brick the session', async () => {
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+    await creditsRepo.insertSignupGrant(db, user.id);
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '1-0',
+      timeControl: '10+0',
+      eco: null,
+      playedAt: null
+    });
+    const analysis = await analysesRepo.insertQueued(db, game.id);
+    await analysesRepo.markReady(db, analysis.id, PLAN);
+    await analysesRepo.storeClassifiedMoves(db, analysis.id, []);
+    const session = await coachAgent.createSession(db, user.id, game.id);
+
+    // Claim a ply far beyond the game's actual length.
+    const badTurn = await coachAgent.startTurn(deps(instantTextModel('Got it.')), session, {
+      clientToolResult: { toolCallId: 'call-bad-1', toolName: 'show_position', result: { moveNumber: 999, color: 'white', ply: 1997 } }
+    });
+    await drain(badTurn);
+
+    const refetched = await sessionsRepo.findById(db, session.id);
+    expect(refetched?.currentPly).toBe(0);
+
+    // The session must still work normally afterward.
+    const followUp = await coachAgent.startTurn(deps(instantTextModel('Still here.')), session, { content: 'hello?' });
+    await drain(followUp);
+    const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
+    expect(snapshot?.request.messages.length).toBeGreaterThan(0);
   }, 20000);
 });
 

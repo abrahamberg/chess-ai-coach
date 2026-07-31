@@ -103,6 +103,7 @@ export interface BuildEpisodeContextInput extends CoachContextDependencies {
  * same layering with no in-memory state. */
 export async function buildEpisodeContext(input: BuildEpisodeContextInput): Promise<CoreMessage[]> {
   const episode = currentEpisode(input.historyAfterTurn, input.currentPly);
+  const orphanExtendedMessages = includeOrphanedToolCall(input.historyAfterTurn, episode.messages);
 
   const [position, classifiedMoves, otherNotes, threads] = await Promise.all([
     getPositionAtPly(input.db, input.session.gameId, input.currentPly),
@@ -120,7 +121,7 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
     renderThreadsBlock(threads)
   ].join('\n\n');
 
-  const episodeMessages = await resolveEpisodeReplay(input, input.session.id, episode.messages, input.currentPly);
+  const episodeMessages = await resolveEpisodeReplay(input, input.session.id, orphanExtendedMessages, input.currentPly);
 
   return buildEpisodeMessages(
     {
@@ -202,4 +203,49 @@ function isRecordMoveNoteCallForPly(part: unknown, ply: number): boolean {
   const candidate = part as { type?: unknown; toolName?: unknown; args?: unknown };
   if (candidate.type !== 'tool-call' || candidate.toolName !== 'record_move_note') return false;
   return (candidate.args as { ply?: unknown } | undefined)?.ply === ply;
+}
+
+/**
+ * design doc §1 addendum: a show_position tool-call is written at the OLD
+ * ply (messages in one turn are tagged uniformly with whatever was current
+ * when the turn started — the move isn't client-confirmed yet), while its
+ * tool-result is written at the NEW ply once the client confirms, one turn
+ * later. currentEpisode's plain ply-match scan then starts the new episode
+ * at the bare tool-result, with no tool-call earlier in the same episode —
+ * a shape both Anthropic and OpenAI reject. This reaches exactly one
+ * message further back, across the ply boundary, only when the episode's
+ * very first message is such an orphan.
+ */
+function includeOrphanedToolCall(
+  historyAfterTurn: SessionMessageRow[],
+  episodeMessages: SessionMessageRow[]
+): SessionMessageRow[] {
+  const first = episodeMessages[0];
+  const toolCallId = first ? firstToolResultCallId(first) : null;
+  if (!toolCallId) return episodeMessages;
+
+  const boundaryIndex = historyAfterTurn.length - episodeMessages.length;
+  const preceding = historyAfterTurn[boundaryIndex - 1];
+  if (!preceding || !hasToolCall(preceding, toolCallId)) return episodeMessages;
+
+  return [preceding, ...episodeMessages];
+}
+
+function firstToolResultCallId(message: SessionMessageRow): string | null {
+  if (message.role !== 'tool' || !Array.isArray(message.content)) return null;
+  for (const part of message.content) {
+    if (typeof part !== 'object' || part === null) continue;
+    const candidate = part as { type?: unknown; toolCallId?: unknown };
+    if (candidate.type === 'tool-result' && typeof candidate.toolCallId === 'string') return candidate.toolCallId;
+  }
+  return null;
+}
+
+function hasToolCall(message: SessionMessageRow, toolCallId: string): boolean {
+  if (!Array.isArray(message.content)) return false;
+  return message.content.some((part) => {
+    if (typeof part !== 'object' || part === null) return false;
+    const candidate = part as { type?: unknown; toolCallId?: unknown };
+    return candidate.type === 'tool-call' && candidate.toolCallId === toolCallId;
+  });
 }
