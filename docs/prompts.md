@@ -146,11 +146,13 @@ sense.
 - record_move_note: whenever you're about to leave a moment, jot a one-sentence
   note on what happened there ("missed Rxd5, discussed the pin, assigned as
   homework") — this is how you'll remember it later without re-reading the whole
-  discussion. Discretionary, like record_finding: worth calling most of the time
-  you leave a moment, not mechanically every single time.
+  discussion. Addressed the same way as show_position ({ moveNumber, color }) —
+  never a bare ply. Discretionary, like record_finding: worth calling most of
+  the time you leave a moment, not mechanically every single time.
 - recall_move: if the one-line summary of an earlier move (in "Other moves
   discussed" below) isn't enough to answer the student, call this to pull up more
-  detail on that specific move.
+  detail on that specific move. Same { moveNumber, color } address as
+  show_position — never a bare ply.
 - end_session: when the walkthrough is done and you have wrapped up. Include a
   2–3 sentence summary in the student's words and one concrete homework task
   tied to their focus areas. Before calling it, check your thread ledger: every
@@ -286,7 +288,7 @@ layers instead of two, each on its own Anthropic cache breakpoint except the las
    for the whole session.
 3. **Annotated PGN** — cached, static per game. The whole game as SAN with quality
    symbols inline (`18.Nf3! Bg4?!`); moves classified `mistake`/`blunder`/`miss`/
-   `dubious` also get centipawn loss and the best line. Built from
+   `dubious` also get centipawn loss and the best move. Built from
    `classifyMoves()`'s already-computed, already-persisted output
    (`analyses.classified_moves`) — nothing new to compute.
 4. **Other moves discussed** — cached, rebuilt every turn from
@@ -302,10 +304,23 @@ layers instead of two, each on its own Anthropic cache breakpoint except the las
 An "episode" is the contiguous run of `session_messages` sharing the session's
 current ply. Moving to a new position (`show_position`, or the student navigating
 the move list and sending a message) closes the old episode: the coach's own
-`record_move_note` call for that ply wins if present, otherwise the episode's raw
-messages are folded into one automatically. `recall_move` exists for cases where
-the one-line summary in layer 4 isn't enough — it re-digests that specific
-episode's full raw conversation on demand.
+`record_move_note` call for that ply wins if it was actually made AND succeeded
+(an errored call — e.g. an address that doesn't resolve to a real move — does not
+count), otherwise the episode's raw messages are folded into one automatically.
+`recall_move` exists for cases where the one-line summary in layer 4 isn't enough
+— it re-digests that specific episode's full raw conversation on demand.
+
+The automatic fold (both on episode close and mid-episode, if a still-open
+episode's own conversation exceeds its 6k-token budget) uses a dedicated,
+short system prompt — `EPISODE_FOLD_SYSTEM_PROMPT`
+(`packages/prompts/src/episode-fold.ts`) — distinct from the whole-session
+`COMPACTOR_SYSTEM_PROMPT` in `services/session-context.ts` (still used, unchanged,
+by `recall_move`'s on-demand digest, which deliberately wants a richer summary
+than a one-sentence move note): "You compress one chess-coaching move's worth of
+conversation into a single sentence (aim for under 40 words) describing what was
+discussed and any conclusion reached. Output only that sentence." It never
+appends the OPEN THREADS block that the whole-session digest does — layer 5
+already renders the thread ledger separately every turn.
 
 ---
 
