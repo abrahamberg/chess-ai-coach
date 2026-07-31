@@ -8,6 +8,7 @@ export interface SessionMessageRow {
   sessionId: string;
   role: SessionMessageRole;
   content: unknown;
+  ply: number | null;
   createdAt: Date;
 }
 
@@ -15,11 +16,12 @@ export function insert(
   db: Kysely<Database>,
   sessionId: string,
   role: SessionMessageRole,
-  content: unknown
+  content: unknown,
+  ply: number | null = null
 ): Promise<SessionMessageRow> {
   return db
     .insertInto('sessionMessages')
-    .values({ sessionId, role, content: JSON.stringify(content) })
+    .values({ sessionId, role, content: JSON.stringify(content), ply })
     .returningAll()
     .executeTakeFirstOrThrow();
 }
@@ -30,6 +32,22 @@ export function listBySession(db: Kysely<Database>, sessionId: string): Promise<
     .selectFrom('sessionMessages')
     .selectAll()
     .where('sessionId', '=', sessionId)
+    .orderBy('id', 'asc')
+    .execute();
+}
+
+/** recall_move tool (design doc §4): the raw transcript for one specific
+ * past episode, excluding whatever's currently open. */
+export function listBySessionAndPly(
+  db: Kysely<Database>,
+  sessionId: string,
+  ply: number
+): Promise<SessionMessageRow[]> {
+  return db
+    .selectFrom('sessionMessages')
+    .selectAll()
+    .where('sessionId', '=', sessionId)
+    .where('ply', '=', ply)
     .orderBy('id', 'asc')
     .execute();
 }
