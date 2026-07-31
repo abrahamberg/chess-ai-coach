@@ -1,9 +1,15 @@
 # Local dev setup
 
 Local dev uses `docker-compose.yml` for **postgres + engine + header-stub auth**
-(architecture.md §11) — no Kubernetes needed for daily work. `api`/`worker`/`web-dev`
-run via bind mount + `node --experimental-strip-types`, so edits on the host are
-picked up immediately (no image rebuild).
+(architecture.md §11) — no Kubernetes needed for daily work. `engine`/`api`/`worker`/`web-dev`
+all run via bind mount + a watch/dev-server process (`tsx watch` / Vite), so edits on
+the host are picked up immediately — no image rebuild, no container restart.
+
+`engine`'s dev image (`docker/Dockerfile.engine.dev`) only installs Stockfish on
+top of `node:22-slim`; it does not COPY source or run the typecheck build gate,
+so it builds in seconds and stays valid across code changes. The production
+image (`docker/Dockerfile.engine`, with the `tsc --build` typecheck gate) is
+unrelated to local dev — it's used by CI/deploy only.
 
 ## Prerequisites
 
@@ -25,7 +31,7 @@ This starts:
 | Service    | What                                            | Port |
 |------------|--------------------------------------------------|------|
 | `postgres` | Postgres 16                                       | 5432 |
-| `engine`   | Stockfish HTTP service (`docker/Dockerfile.engine`) | 8081 |
+| `engine`   | Stockfish HTTP service (`docker/Dockerfile.engine.dev`) | 8081 |
 | `migrate`  | Runs `kysely` migrations once, then exits         | —    |
 | `api`      | Fastify API (`apps/api`)                          | 3000 |
 | `worker`   | graphile-worker job runner (`apps/api/src/worker.ts`) | —    |

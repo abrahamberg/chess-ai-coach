@@ -34,9 +34,15 @@ services:
       retries: 20
 
   engine:
+    <<: *node-dev
     build:
       context: .
-      dockerfile: docker/Dockerfile.engine
+      dockerfile: docker/Dockerfile.engine.dev
+    environment:
+      <<: *node-dev-env
+      STOCKFISH_PATH: /usr/games/stockfish
+      PORT: '8081'
+    command: npm run dev --workspace=@chess-coach/engine
     ports:
       - '8081:8081'
 
