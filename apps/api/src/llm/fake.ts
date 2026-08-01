@@ -42,10 +42,10 @@ const FAKE_SESSION_OUTCOME = JSON.stringify({
  * (llm/gateway.ts) and bootstrap.ts's callLightModel, never on unless that
  * flag is explicitly set.
  *
- * The gateway is used by 3 call sites expecting different shapes from the
- * same "light-tier" call — the analysis planner and session summarizer both
- * JSON.parse the response against different schemas, while the coach chat
- * and engine-interpreter want plain prose. There's no clean signal to
+ * The gateway is used by several call sites expecting different shapes from
+ * the same "light-tier" call — the analysis planner and session summarizer
+ * both JSON.parse the response against different schemas, while the coach
+ * chat and episode-fold digests want plain prose. There's no clean signal to
  * distinguish them other than the prompt text itself, so this sniffs the
  * prompt for each schema's own distinctive required field name. */
 export function buildFakeModel(): LanguageModel {

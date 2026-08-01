@@ -7,6 +7,7 @@ import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerGamesRoutes } from './routes/games.js';
 import { registerLichessRoutes } from './routes/lichess.js';
 import { registerLlmKeysRoutes } from './routes/llm-keys.js';
+import { registerPositionAnalysisRoutes } from './routes/positions.js';
 import { registerSessionsRoutes } from './routes/sessions.js';
 import { authHeadersPlugin, type AuthHeadersOptions } from './plugins/auth-headers.js';
 import { errorMapperPlugin } from './plugins/error-mapper.js';
@@ -71,6 +72,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
     if (options.coachAgentDeps) {
       registerSessionsRoutes(app, options.db, options.coachAgentDeps);
+      registerPositionAnalysisRoutes(app, options.db, options.coachAgentDeps.analyzePosition);
     }
   }
 

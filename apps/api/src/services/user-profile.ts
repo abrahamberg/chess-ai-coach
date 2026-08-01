@@ -71,6 +71,7 @@ export async function toUserProfile(
     lichessUsername: user.lichessUsername,
     chesscomUsername: user.chesscomUsername,
     selfAssessment: user.selfAssessment,
+    showEngineAnalysis: user.showEngineAnalysis,
     creditBalance
   };
 }

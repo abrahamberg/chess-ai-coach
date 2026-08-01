@@ -5,6 +5,7 @@ import * as classifiedMoves from './migrations/0003_classified_moves.js';
 import * as sessionAbandonedStatus from './migrations/0004_session_abandoned_status.js';
 import * as sessionDebugSnapshot from './migrations/0005_session_debug_snapshot.js';
 import * as episodeContext from './migrations/0006_episode_context.js';
+import * as showEngineAnalysis from './migrations/0007_show_engine_analysis.js';
 
 const provider: MigrationProvider = {
   getMigrations: () =>
@@ -14,7 +15,8 @@ const provider: MigrationProvider = {
       '0003_classified_moves': classifiedMoves,
       '0004_session_abandoned_status': sessionAbandonedStatus,
       '0005_session_debug_snapshot': sessionDebugSnapshot,
-      '0006_episode_context': episodeContext
+      '0006_episode_context': episodeContext,
+      '0007_show_engine_analysis': showEngineAnalysis
     })
 };
 

@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@chess-coach/chess-analysis": "0.0.1",
     "@chess-coach/shared": "0.0.1",
     "chess.js": "^1.0.0",
     "fastify": "^5.0.0"

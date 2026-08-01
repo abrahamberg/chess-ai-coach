@@ -12,6 +12,7 @@ const PROFILE = {
   lichessUsername: null,
   chesscomUsername: null,
   selfAssessment: null,
+  showEngineAnalysis: false,
   creditBalance: 42
 };
 
@@ -69,6 +70,32 @@ describe('SettingsPage', () => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/users/me',
         expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ ratingBand: 'advanced' }) })
+      )
+    );
+  });
+
+  test('toggling engine analysis PATCHes the profile, off by default', async () => {
+    const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/users/me' && (!init || init.method === undefined)) return Promise.resolve(jsonResponse(PROFILE));
+      if (path === '/api/users/me/llm-keys') return Promise.resolve(jsonResponse([]));
+      if (path === '/api/users/me' && init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ ...PROFILE, showEngineAnalysis: true }));
+      }
+      throw new Error(`unexpected fetch: ${path} ${init?.method ?? 'GET'}`);
+    });
+    renderSettings(fetchMock);
+    const user = userEvent.setup();
+
+    await screen.findByText(/42/);
+    const toggle = screen.getByRole('checkbox', { name: /show engine analysis/i });
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/users/me',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ showEngineAnalysis: true }) })
       )
     );
   });

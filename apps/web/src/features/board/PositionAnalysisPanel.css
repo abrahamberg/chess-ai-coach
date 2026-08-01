@@ -1,0 +1,38 @@
+.position-analysis-panel {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid var(--annotate-2);
+  font-size: 13px;
+}
+
+.position-analysis-summary {
+  margin-bottom: 8px;
+}
+
+.position-analysis-eval {
+  margin: 0;
+  font-weight: 600;
+}
+
+.position-analysis-board-state,
+.position-analysis-line {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+
+.position-analysis-section {
+  margin-top: 8px;
+}
+
+.position-analysis-section h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.position-analysis-section ul {
+  margin: 0;
+  padding-left: 16px;
+}

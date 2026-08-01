@@ -24,6 +24,15 @@ export interface UseSessionBoardStateResult {
   isDocked: boolean;
   collapseDock: () => void;
   expandDock: () => void;
+  /** True while the board is showing the position BEFORE the move currently
+   * being discussed, with a red arrow for the move that was actually played
+   * (universal default — not gated behind showEngineAnalysis). False once
+   * revealPlayedMove() has been called, while peeking, or at the game's
+   * starting position (nothing to anchor before). */
+  isAnchoredPreMove: boolean;
+  /** Shows the actual post-move position in place of the pre-move anchor —
+   * purely a display flag, does not touch ply/coachPly/mode. */
+  revealPlayedMove: () => void;
   /** Immediately reflects a locally-dropped move (react-chessboard is a
    * fully-controlled component with no optimistic state of its own — see
    * CoachBoard's onLocalMove doc comment). Superseded by the next
@@ -58,6 +67,15 @@ function lastMoveHighlightsFor(moveUci: string | null | undefined): BoardHighlig
   ];
 }
 
+/** Same from/to slicing as lastMoveHighlightsFor, drawn as a red arrow
+ * instead of square highlights — used while anchored one position before
+ * the move being discussed (design decision: universal default, see
+ * useSessionBoardState's isAnchoredPreMove). */
+function playedMoveArrowFor(moveUci: string | null | undefined): BoardArrow[] {
+  if (!moveUci) return [];
+  return [{ from: moveUci.slice(0, 2), to: moveUci.slice(2, 4), color: 'var(--played-move)' }];
+}
+
 /**
  * Owns the board-facing consequences of the coach's tool calls (architecture
  * §7.1): show_position moves the board and auto-expands a docked mini-board
@@ -73,6 +91,10 @@ export function useSessionBoardState(
   const [mode, setMode] = useState<BoardMode>('answer');
   const [coachPly, setCoachPly] = useState(0);
   const [previewFen, setPreviewFen] = useState<string | null>(null);
+  // Universal default (not gated behind showEngineAnalysis): a fresh
+  // show_position anchors the board one ply BEFORE the move being discussed,
+  // with a red arrow for the move actually played — see isAnchoredPreMove.
+  const [revealResult, setRevealResult] = useState(true);
   const annotations = useAnnotationLayer();
   const dock = useBoardDock();
 
@@ -86,12 +108,18 @@ export function useSessionBoardState(
       seededRef.current = true;
       setPly(initialPly);
       setCoachPly(initialPly);
+      setRevealResult(initialPly === 0);
     }
   }, [initialPly]);
 
   const currentPosition = positions.find((position) => position.ply === ply) ?? positions[0];
-  const fen = previewFen ?? currentPosition?.fen ?? '';
-  const lastMoveHighlights = lastMoveHighlightsFor(currentPosition?.moveUci);
+  const isAnchoredPreMove = mode === 'answer' && !revealResult && ply > 0 && Boolean(currentPosition?.moveUci);
+  const displayPosition = isAnchoredPreMove
+    ? (positions.find((position) => position.ply === ply - 1) ?? currentPosition)
+    : currentPosition;
+  const fen = previewFen ?? displayPosition?.fen ?? '';
+  const lastMoveHighlights = isAnchoredPreMove ? [] : lastMoveHighlightsFor(currentPosition?.moveUci);
+  const playedMoveArrows = isAnchoredPreMove ? playedMoveArrowFor(currentPosition?.moveUci) : [];
 
   const previewMove = useCallback((newFen: string) => {
     setPreviewFen(newFen);
@@ -110,6 +138,7 @@ export function useSessionBoardState(
         setCoachPly(newPly);
         setMode('answer');
         setPreviewFen(null);
+        setRevealResult(newPly === 0);
         annotations.clear();
         dock.expand();
         return { moveNumber, color, ply: newPly };
@@ -134,21 +163,34 @@ export function useSessionBoardState(
     setPly(coachPly);
     setMode('answer');
     setPreviewFen(null);
+    // Re-anchor pre-move for the coach's position, same as a fresh
+    // show_position would — not whatever reveal state peeking left behind.
+    setRevealResult(coachPly === 0);
   }, [coachPly]);
 
   const anchorHere = useCallback(() => {
     setCoachPly(ply);
     setMode('answer');
+    // The student navigated here directly (peek/move-list/drag) and already
+    // saw this exact position — promoting it shouldn't suddenly swap the
+    // board to one move earlier behind their back.
+    setRevealResult(true);
   }, [ply]);
+
+  const revealPlayedMove = useCallback(() => {
+    setRevealResult(true);
+  }, []);
 
   return {
     fen,
     ply,
     mode,
     setMode,
-    arrows: annotations.arrows,
+    arrows: [...playedMoveArrows, ...annotations.arrows],
     highlights: [...lastMoveHighlights, ...annotations.highlights],
     setAnnotations: annotations.setAnnotations,
+    isAnchoredPreMove,
+    revealPlayedMove,
     isDocked: dock.isCollapsed,
     collapseDock: dock.collapse,
     expandDock: dock.expand,

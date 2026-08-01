@@ -1,7 +1,6 @@
 export * from './analysis-planner.js';
 export * from './calibration.js';
 export * from './coach-system.js';
-export * from './engine-interpreter.js';
 export * from './episode-context.js';
 export * from './episode-fold.js';
 export * from './onboarding-profiler.js';

@@ -56,6 +56,23 @@
   padding: 0 0 0 6px;
 }
 
+.played-move-pill {
+  align-self: center;
+  background: color-mix(in srgb, var(--played-move) 15%, var(--surface-2));
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 14px;
+  margin: 0;
+}
+
+.played-move-pill button {
+  background: none;
+  border: none;
+  color: var(--played-move);
+  font-weight: 600;
+  padding: 0 0 0 6px;
+}
+
 .session-paused-card,
 .session-summary-card {
   margin: 16px;
@@ -139,6 +156,7 @@
 
 .session-body.desktop .undo-pill,
 .session-body.desktop .peek-pill,
+.session-body.desktop .played-move-pill,
 .session-body.desktop .move-strip,
 .session-body.desktop .explore-panel-toggle,
 .session-body.desktop .explore-panel {

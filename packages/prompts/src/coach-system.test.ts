@@ -36,6 +36,7 @@ function baseInput(overrides: Partial<CoachPromptInput> = {}): CoachPromptInput 
     plan: basePlan,
     focusAreas: [],
     recentFindings: [],
+    showEngineAnalysis: false,
     now,
     ...overrides
   };
@@ -149,5 +150,25 @@ describe('buildCoachSystemPrompt', () => {
     const { staticPart } = buildCoachSystemPrompt(baseInput());
     expect(staticPart).toContain('record_move_note');
     expect(staticPart).toContain('recall_move');
+  });
+
+  describe('engine visibility (docs/design.md principle 4 opt-in)', () => {
+    test('staticPart is identical regardless of showEngineAnalysis — it is per-user, so it lives in dynamicPart', () => {
+      const off = buildCoachSystemPrompt(baseInput({ showEngineAnalysis: false }));
+      const on = buildCoachSystemPrompt(baseInput({ showEngineAnalysis: true }));
+      expect(off.staticPart).toBe(on.staticPart);
+    });
+
+    test('off (default): dynamicPart tells the coach to keep the engine backstage, never citing numbers', () => {
+      const { dynamicPart } = buildCoachSystemPrompt(baseInput({ showEngineAnalysis: false }));
+      expect(dynamicPart).toContain('ENGINE IS BACKSTAGE');
+      expect(dynamicPart).toContain('Never mention centipawns');
+    });
+
+    test('on: dynamicPart tells the coach it may cite raw evaluations and lines', () => {
+      const { dynamicPart } = buildCoachSystemPrompt(baseInput({ showEngineAnalysis: true }));
+      expect(dynamicPart).not.toContain('ENGINE IS BACKSTAGE');
+      expect(dynamicPart).toContain('may cite evaluations, best lines');
+    });
   });
 });

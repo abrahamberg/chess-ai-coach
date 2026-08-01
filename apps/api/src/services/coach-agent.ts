@@ -1,5 +1,5 @@
 import { buildCoachSystemPrompt } from '@chess-coach/prompts';
-import type { ClientToolResult, EngineEval, LlmProvider } from '@chess-coach/shared';
+import type { ClientToolResult, LlmProvider, PositionAnalysis } from '@chess-coach/shared';
 import { streamText, zodSchema, type CoreMessage, type ProviderMetadata, type StreamTextResult, type ToolSet } from 'ai';
 import type { Kysely } from 'kysely';
 import * as analysesRepo from '../db/repositories/analyses.js';
@@ -81,7 +81,7 @@ export interface CoachAgentDependencies {
   db: Kysely<Database>;
   jobQueue: JobQueue;
   gatewayConfig: GatewayConfig;
-  analyzePosition: (fen: string) => Promise<EngineEval>;
+  analyzePosition: (fen: string) => Promise<PositionAnalysis>;
   callLightModel: (messages: { system: string; user: string }) => Promise<string>;
   /** Defaults to the real gateway; tests override with a MockLanguageModelV1. */
   resolveModel?: ModelResolver;
@@ -239,7 +239,7 @@ export async function startTurn(
       currentPly = await applyClientToolResult(deps, session, input.clientToolResult, currentPly);
     }
 
-    const { staticPart, dynamicPart } = await buildSystemPromptForSession(deps.db, session);
+    const { staticPart, dynamicPart, showEngineAnalysis } = await buildSystemPromptForSession(deps.db, session);
     const historyAfterTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
     const requestMessages = await coachContext.buildEpisodeContext({
       db: deps.db,
@@ -248,7 +248,9 @@ export async function startTurn(
       currentPly,
       historyAfterTurn,
       staticPart,
-      dynamicPart
+      dynamicPart,
+      analyzePosition: deps.analyzePosition,
+      showEngineAnalysis
     });
 
     const tools = buildCoachTools(
@@ -321,6 +323,14 @@ export async function startTurn(
         } finally {
           releaseOnce();
         }
+      },
+      // A stream-level provider error (e.g. a mid-stream 400) skips onFinish
+      // entirely (the AI SDK only calls onFinish once a step has completed),
+      // so without this the lock above would never release and every future
+      // message in this session would hang forever awaiting sessionLock.
+      onError: ({ error }) => {
+        console.error(`coach-agent stream error for session ${session.id}:`, error);
+        releaseOnce();
       }
     });
   } catch (error) {
@@ -385,7 +395,7 @@ async function withAuthoritativeFen(
 async function buildSystemPromptForSession(
   db: Kysely<Database>,
   session: SessionRow
-): Promise<{ staticPart: string; dynamicPart: string }> {
+): Promise<{ staticPart: string; dynamicPart: string; showEngineAnalysis: boolean }> {
   const [user, game, plan, profileSummary, sessionCount] = await Promise.all([
     usersRepo.findById(db, session.userId),
     gamesRepo.findById(db, session.gameId),
@@ -397,7 +407,7 @@ async function buildSystemPromptForSession(
   if (!game) throw new NotFoundError('Game not found');
   if (!plan) throw new NotFoundError('Coaching plan not found');
 
-  return buildCoachSystemPrompt({
+  const prompt = buildCoachSystemPrompt({
     user: { displayName: user.displayName, selfAssessment: user.selfAssessment, sessionCount },
     band: user.ratingBand,
     game: {
@@ -409,8 +419,10 @@ async function buildSystemPromptForSession(
     },
     plan,
     focusAreas: profileSummary.focusAreas,
-    recentFindings: profileSummary.recentFindings
+    recentFindings: profileSummary.recentFindings,
+    showEngineAnalysis: user.showEngineAnalysis
   });
+  return { ...prompt, showEngineAnalysis: user.showEngineAnalysis };
 }
 
 /** Providers occasionally report non-finite usage on multi-step tool-calling

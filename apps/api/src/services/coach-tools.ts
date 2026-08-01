@@ -1,6 +1,5 @@
 import {
   annotateBoardParameters,
-  buildInterpreterMessages,
   checkPositionParameters,
   endSessionParameters,
   getEngineAnalysisParameters,
@@ -15,7 +14,7 @@ import {
   updateThreadsParameters
 } from '@chess-coach/prompts';
 import { moveRefToPly } from '@chess-coach/chess-analysis';
-import type { EngineEval, EngineLine, Finding, FocusAreaUpdate, Thread } from '@chess-coach/shared';
+import type { Finding, FocusAreaUpdate, PositionAnalysis, Thread } from '@chess-coach/shared';
 import { tool, type ToolSet } from 'ai';
 import type { Kysely } from 'kysely';
 import * as sessionsRepo from '../db/repositories/sessions.js';
@@ -37,7 +36,7 @@ export interface CoachToolsDependencies {
   db: Kysely<Database>;
   jobQueue?: JobQueue;
   /** wraps `POST engine/analyze-position` (architecture §4). */
-  analyzePosition: (fen: string) => Promise<EngineEval>;
+  analyzePosition: (fen: string) => Promise<PositionAnalysis>;
   /** wraps the gateway's light-tier model call; returns the raw model text. */
   callLightModel: (messages: { system: string; user: string }) => Promise<string>;
 }
@@ -81,9 +80,9 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
     }),
     get_engine_analysis: tool({
       description:
-        "Check a position with the engine and get a plain-language answer to a specific chess question. Never returns raw evaluations.",
+        "Runs the engine on a position and returns the full structured analysis: best lines with eval and principal variation, hanging/under-defended pieces, forks, capture opportunities, pawn structure, mobility, and more. The CURRENT position (shown under '## Current position' above, if raw engine analysis is enabled for this student) is already analyzed for you — don't spend a call re-fetching it. Use this tool for OTHER positions: a candidate line, an earlier or later move (get its fen from check_position first), or anything you're comparing against the current one.",
       parameters: getEngineAnalysisParameters,
-      execute: withTurnGuards(guardState, 'get_engine_analysis', (args) => getEngineAnalysis(deps, args))
+      execute: withTurnGuards(guardState, 'get_engine_analysis', (args: EngineAnalysisArgs) => getEngineAnalysis(deps, args))
     }),
     get_user_profile: tool({
       description: "Read the student's focus areas, recent findings, and session history.",
@@ -158,25 +157,17 @@ function withTurnGuards<Args, Result>(
 
 interface EngineAnalysisArgs {
   fen: string;
-  question: string;
 }
 
-/** architecture §7.4.4: the coach never sees raw engine lines — the light-tier
- * interpreter subagent digests them into a short plain-language answer first. */
+/** Returns the full structured position analysis directly — see
+ * docs/design.md principle 4 (opt-in override of "engine invisible") and
+ * coach-system.ts's engineVisibility, which instructs the coach on whether
+ * it may repeat raw numbers to the student based on their preference. */
 async function getEngineAnalysis(
   deps: CoachToolsDependencies,
   args: EngineAnalysisArgs
-): Promise<{ text: string }> {
-  const engineEval = await deps.analyzePosition(args.fen);
-  const messages = buildInterpreterMessages({
-    fen: args.fen,
-    depth: engineEval.depth,
-    multiPv: engineEval.lines.length,
-    engineLines: renderEngineLines(engineEval.lines),
-    question: args.question
-  });
-  const text = await deps.callLightModel(messages);
-  return { text: `[engine check] ${text}` };
+): Promise<PositionAnalysis> {
+  return deps.analyzePosition(args.fen);
 }
 
 interface CheckPositionArgs {
@@ -204,15 +195,6 @@ async function recallMoveTool(
 ): Promise<{ text: string } | { error: string }> {
   const session = await sessionsRepo.findById(deps.db, ctx.sessionId);
   return recallMove(deps, { sessionId: ctx.sessionId, gameId: ctx.gameId, currentPly: session?.currentPly ?? 0 }, args);
-}
-
-function renderEngineLines(lines: EngineLine[]): string {
-  return lines
-    .map((line, index) => {
-      const score = line.mateIn !== null ? `mate in ${line.mateIn}` : `${(line.cp ?? 0) / 100}`;
-      return `${index + 1}. ${line.moveSan} (${score})`;
-    })
-    .join('\n');
 }
 
 async function getUserProfileText(db: Kysely<Database>, userId: string): Promise<string> {

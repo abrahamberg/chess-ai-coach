@@ -20,6 +20,37 @@ export interface UciEngineOptions {
   stockfishPath?: string;
 }
 
+/** An EngineLine plus its full principal variation (UCI moves, this line's
+ * first move included) — analyze()'s public EngineLine strips `pvUci`;
+ * analyzeDetailed() keeps it so callers can render the whole line, not just
+ * the first move. */
+export interface DetailedEngineLine extends EngineLine {
+  pvUci: string[];
+}
+
+/** Replays a UCI move sequence against one position to collect each move's
+ * SAN. Stops (returning whatever converted so far) rather than throwing if a
+ * move in the sequence turns out illegal/malformed — a partial PV is more
+ * useful than none, and this mirrors classify.ts's isSacrifice/hangsPiece
+ * convention of never letting one bad move blow up the whole analysis. */
+export function pvUciToSan(fen: string, pvUci: string[]): string[] {
+  const chess = new Chess(fen);
+  const sans: string[] = [];
+  for (const uciMove of pvUci) {
+    const from = uciMove.slice(0, 2);
+    const to = uciMove.slice(2, 4);
+    const promotion = uciMove.length > 4 ? uciMove.slice(4) : undefined;
+    let move;
+    try {
+      move = chess.move({ from, to, promotion });
+    } catch {
+      break;
+    }
+    sans.push(move.san);
+  }
+  return sans;
+}
+
 /** Wraps a single Stockfish process over UCI. Lazily spawns the process on the
  * first `analyze()` call and reuses it for subsequent calls until `quit()`. */
 export class UciEngine {
@@ -34,6 +65,13 @@ export class UciEngine {
   }
 
   async analyze(fen: string, options: AnalyzeOptions = {}): Promise<EngineLine[]> {
+    const lines = await this.analyzeDetailed(fen, options);
+    return lines.map(stripPv);
+  }
+
+  /** Same search as analyze(), but keeps each line's full principal
+   * variation instead of just its first move. */
+  async analyzeDetailed(fen: string, options: AnalyzeOptions = {}): Promise<DetailedEngineLine[]> {
     const depth = options.depth ?? DEFAULT_DEPTH;
     const multiPv = options.multiPv ?? DEFAULT_MULTI_PV;
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -72,11 +110,11 @@ export class UciEngine {
     depth: number,
     multiPv: number,
     timeoutMs: number
-  ): Promise<EngineLine[]> {
+  ): Promise<DetailedEngineLine[]> {
     const proc = mustBeStarted(this.process);
     const lines = mustBeStarted(this.lines);
     const mover = fenMoverColor(fen);
-    const collected = new Map<number, EngineLine>();
+    const collected = new Map<number, DetailedEngineLine>();
 
     proc.stdin.write(`setoption name MultiPV value ${multiPv}\n`);
     proc.stdin.write('isready\n');
@@ -106,7 +144,7 @@ export class UciEngine {
 }
 
 function recordInfoLine(
-  collected: Map<number, EngineLine>,
+  collected: Map<number, DetailedEngineLine>,
   info: NonNullable<ReturnType<typeof parseInfoLine>>,
   fen: string,
   mover: 'white' | 'black'
@@ -118,11 +156,12 @@ function recordInfoLine(
     moveUci,
     moveSan: uciToSan(fen, moveUci),
     cp: info.cp === null ? null : info.cp * sign,
-    mateIn: info.mateIn === null ? null : info.mateIn * sign
+    mateIn: info.mateIn === null ? null : info.mateIn * sign,
+    pvUci: info.pvUci
   });
 }
 
-function sortedLines(collected: Map<number, EngineLine>): EngineLine[] {
+function sortedLines(collected: Map<number, DetailedEngineLine>): DetailedEngineLine[] {
   return Array.from(collected.keys())
     .sort((a, b) => a - b)
     .map((key) => {
@@ -130,6 +169,11 @@ function sortedLines(collected: Map<number, EngineLine>): EngineLine[] {
       if (!line) throw new Error(`unreachable: no line for multipv ${key}`);
       return line;
     });
+}
+
+function stripPv(line: DetailedEngineLine): EngineLine {
+  const { pvUci: _pvUci, ...rest } = line;
+  return rest;
 }
 
 function uciToSan(fen: string, moveUci: string): string {

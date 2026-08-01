@@ -40,11 +40,9 @@ describe('coach agent tool parameter schemas (architecture §7.1)', () => {
     expect(annotateBoardParameters.safeParse({ arrows: [], highlights: [] }).success).toBe(true);
   });
 
-  test('get_engine_analysis: { fen, question }', () => {
-    expect(
-      getEngineAnalysisParameters.safeParse({ fen: 'startpos', question: 'is Nxd5 sound?' }).success
-    ).toBe(true);
-    expect(getEngineAnalysisParameters.safeParse({ fen: 'startpos' }).success).toBe(false);
+  test('get_engine_analysis: { fen }', () => {
+    expect(getEngineAnalysisParameters.safeParse({ fen: 'startpos' }).success).toBe(true);
+    expect(getEngineAnalysisParameters.safeParse({}).success).toBe(false);
   });
 
   test('get_user_profile: {}', () => {

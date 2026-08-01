@@ -1,6 +1,6 @@
 import type { ClassifiedMove } from '@chess-coach/chess-analysis';
 import { isSoundQuality } from '@chess-coach/chess-analysis';
-import { MOVE_QUALITY_SYMBOLS, type MoveQuality } from '@chess-coach/shared';
+import { MOVE_QUALITY_SYMBOLS, type MoveQuality, type PositionAnalysis } from '@chess-coach/shared';
 import { describeMoveRef } from './render.js';
 
 /**
@@ -70,8 +70,31 @@ function renderOtherMoveLine(entry: MoveNoteEntry, qualityByPly: Map<number, Mov
  * (final review #8), so the '## Your thread ledger' heading stays prompt
  * text owned by packages/prompts, matching how this function already owns
  * its own '## Current position' heading.
+ *
+ * `fen` is the position actually on the student's board — since the board
+ * now anchors one ply BEFORE a played move by default (universal default,
+ * not gated behind showEngineAnalysis — see useSessionBoardState.ts), this
+ * is the pre-move fen whenever `playedMove` is non-null, matching what's
+ * shown with a red arrow client-side. `playedMove` (SAN, null only at the
+ * game's start) names the move that was actually played, since the board no
+ * longer shows the outcome directly. `analysis` is the opt-in raw engine
+ * analysis of that same fen (showEngineAnalysis toggle) — omitted entirely
+ * when the toggle is off, so the block is byte-for-byte what it always was
+ * for every other student.
  */
-export function renderCurrentMoveBlock(ply: number, fen: string, previousPly: number | null, threadsBlock: string): string {
+export function renderCurrentMoveBlock(
+  ply: number,
+  fen: string,
+  previousPly: number | null,
+  threadsBlock: string,
+  playedMove: string | null,
+  analysis?: PositionAnalysis
+): string {
   const arrival = previousPly !== null ? ` You reached this position from ${describeMoveRef(previousPly)}.` : '';
-  return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board. FEN: ${fen}.${arrival}\n\n## Your thread ledger\n\n${threadsBlock}`;
+  const playedMoveSentence =
+    playedMove !== null ? ` The move actually played here was ${playedMove} — shown as a red arrow on the board.` : '';
+  const analysisBlock = analysis
+    ? `\n\nFull engine analysis of this position (you may cite this directly — raw engine analysis is enabled for this student):\n\`\`\`json\n${JSON.stringify(analysis)}\n\`\`\``
+    : '';
+  return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board.${playedMoveSentence} FEN: ${fen}.${arrival}${analysisBlock}\n\n## Your thread ledger\n\n${threadsBlock}`;
 }

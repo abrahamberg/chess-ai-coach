@@ -92,6 +92,27 @@ function mockFetch(session: SessionFixture = {}, extra: (path: string) => Respon
         )
       );
     }
+    // Backs the PositionAnalysisPanel visibility check — showEngineAnalysis
+    // off by default means the panel never fires its own fetch in these
+    // tests, so no test needs to know this call happens.
+    if (path === '/api/users/me') {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'user-1',
+            email: 'daniel@example.com',
+            displayName: 'daniel',
+            ratingBand: 'club',
+            lichessUsername: null,
+            chesscomUsername: null,
+            selfAssessment: null,
+            showEngineAnalysis: false,
+            creditBalance: 100
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      );
+    }
     throw new Error(`unexpected fetch: ${path}`);
   });
 }
@@ -253,8 +274,46 @@ describe('SessionPage', () => {
     const divider = within(screen.getByTestId('message-list')).getByText(/move 1 \(black\)/i).closest('.position-divider');
     expect(divider).toHaveTextContent('e5');
 
+    // The board anchors one ply BEFORE the move being discussed (universal
+    // default — a red arrow marks the played move instead), so this reopens
+    // showing the position after 1.e4, not after 1...e5.
     const options = capturedOptions.at(-1);
-    expect(options?.position).toBe('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2');
+    expect(options?.position).toBe('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
+    expect(options?.arrows).toEqual([{ startSquare: 'e7', endSquare: 'e5', color: 'var(--played-move)' }]);
+  });
+
+  test('the played-move reveal pill shows the real outcome on click', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch({
+        messages: [
+          { id: 'm1', role: 'user', content: '[session_start]' },
+          {
+            id: 'm2',
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'Let me show you.' },
+              {
+                type: 'tool-call',
+                toolName: 'show_position',
+                args: { moveNumber: 1, color: 'black' },
+                toolCallId: 'call-1'
+              }
+            ]
+          }
+        ]
+      })
+    );
+    renderSessionPage();
+    const user = userEvent.setup();
+
+    await screen.findByText(/let's dive into your game|let me show you/i);
+    expect(capturedOptions.at(-1)?.position).toBe('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
+
+    await user.click(screen.getByRole('button', { name: /reveal/i }));
+
+    expect(capturedOptions.at(-1)?.position).toBe('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2');
+    expect(screen.queryByRole('button', { name: /reveal/i })).not.toBeInTheDocument();
   });
 
   test('a persisted show_position tool-call in the OLD {ply} shape (pre-move-number-fix data) still reopens correctly, not as NaN', async () => {
@@ -280,8 +339,12 @@ describe('SessionPage', () => {
     const divider = within(screen.getByTestId('message-list')).getByText(/move 1 \(black\)/i).closest('.position-divider');
     expect(divider).toHaveTextContent('e5');
 
+    // The board anchors one ply BEFORE the move being discussed (universal
+    // default — a red arrow marks the played move instead), so this reopens
+    // showing the position after 1.e4, not after 1...e5.
     const options = capturedOptions.at(-1);
-    expect(options?.position).toBe('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2');
+    expect(options?.position).toBe('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
+    expect(options?.arrows).toEqual([{ startSquare: 'e7', endSquare: 'e5', color: 'var(--played-move)' }]);
   });
 
   test('a fresh session (only the internal [session_start] marker, no assistant reply yet) auto-kicks off the coach opening turn', async () => {

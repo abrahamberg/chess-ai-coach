@@ -234,13 +234,76 @@ describe('coach-context', () => {
         currentPly: 6,
         historyAfterTurn,
         staticPart: 'STATIC',
-        dynamicPart: 'DYNAMIC'
+        dynamicPart: 'DYNAMIC',
+        analyzePosition: vi.fn(),
+        showEngineAnalysis: false
       });
 
       const serialized = JSON.stringify(messages);
       expect(serialized).not.toContain('raw talk about move 18');
       expect(serialized).toContain('discussed the knight development');
       expect(messages.at(-1)).toEqual({ role: current.role, content: current.content });
+    });
+
+    test('the "## Current position" block describes the pre-move fen and names the move played, matching the board\'s universal pre-move-anchor default', async () => {
+      const { session, gameId } = await seedSession();
+      await analysesRepo.insertQueued(db, gameId).then((a) => analysesRepo.storeClassifiedMoves(db, a.id, []));
+      await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
+      const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
+
+      const messages = await buildEpisodeContext({
+        db,
+        callLightModel: vi.fn(),
+        session,
+        currentPly: 2,
+        historyAfterTurn,
+        staticPart: 'STATIC',
+        dynamicPart: 'DYNAMIC',
+        analyzePosition: vi.fn(),
+        showEngineAnalysis: false
+      });
+
+      const currentMoveBlock = messages.find(
+        (message) => typeof message.content === 'string' && message.content.includes('## Current position')
+      );
+      // ply 2 is after 1.e4 e5 — the pre-move fen is after 1.e4 only.
+      expect(currentMoveBlock?.content).toContain('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
+      expect(currentMoveBlock?.content).toContain('The move actually played here was e5');
+      expect(currentMoveBlock?.content).not.toContain('Full engine analysis');
+    });
+
+    test('showEngineAnalysis true calls analyzePosition on the pre-move fen and embeds the full analysis as JSON', async () => {
+      const { session, gameId } = await seedSession();
+      await analysesRepo.insertQueued(db, gameId).then((a) => analysesRepo.storeClassifiedMoves(db, a.id, []));
+      await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
+      const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
+      const analysis = {
+        fen: 'irrelevant',
+        depth: 16,
+        multiPv: 1,
+        bestMove: 'Nc3',
+        eval: { cp: 25, mateIn: null },
+        lines: [],
+        features: { turn: 'white', boardState: 'none' }
+      };
+      const analyzePosition = vi.fn().mockResolvedValue(analysis);
+
+      const messages = await buildEpisodeContext({
+        db,
+        callLightModel: vi.fn(),
+        session,
+        currentPly: 2,
+        historyAfterTurn,
+        staticPart: 'STATIC',
+        dynamicPart: 'DYNAMIC',
+        analyzePosition,
+        showEngineAnalysis: true
+      });
+
+      expect(analyzePosition).toHaveBeenCalledWith('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
+      const serialized = JSON.stringify(messages);
+      expect(serialized).toContain('Full engine analysis');
+      expect(serialized).toContain('Nc3');
     });
 
     test('a revisit to a previously-closed ply seeds this episode\'s digest from that ply\'s earlier closing note, while still excluding that ply\'s earlier raw messages', async () => {
@@ -260,7 +323,9 @@ describe('coach-context', () => {
         currentPly: 4,
         historyAfterTurn,
         staticPart: 'STATIC',
-        dynamicPart: 'DYNAMIC'
+        dynamicPart: 'DYNAMIC',
+        analyzePosition: vi.fn(),
+        showEngineAnalysis: false
       });
 
       const serialized = JSON.stringify(messages);
@@ -287,7 +352,9 @@ describe('coach-context', () => {
         currentPly: 4,
         historyAfterTurn,
         staticPart: 'STATIC',
-        dynamicPart: 'DYNAMIC'
+        dynamicPart: 'DYNAMIC',
+        analyzePosition: vi.fn(),
+        showEngineAnalysis: false
       });
 
       const serialized = JSON.stringify(messages);
@@ -338,7 +405,9 @@ describe('coach-context', () => {
         currentPly: 4,
         historyAfterTurn,
         staticPart: 'STATIC',
-        dynamicPart: 'DYNAMIC'
+        dynamicPart: 'DYNAMIC',
+        analyzePosition: vi.fn(),
+        showEngineAnalysis: false
       });
 
       assertNoOrphanedToolResults(messages);

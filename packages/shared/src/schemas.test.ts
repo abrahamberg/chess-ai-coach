@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { AnalyzeGameRequestSchema, AnalyzePositionRequestSchema, ClassifiedMoveSchema, EngineEvalSchema } from './analysis.js';
+import {
+  AnalyzeGameRequestSchema,
+  AnalyzePositionRequestSchema,
+  ClassifiedMoveSchema,
+  EngineEvalSchema,
+  PositionAnalysisSchema
+} from './analysis.js';
 import { CoachingPlanSchema, type CoachingPlan } from './coaching-plan.js';
 import { CreditPackSchema } from './credits.js';
 import { DashboardResponseSchema } from './dashboard.js';
@@ -115,6 +121,74 @@ describe('AnalyzePositionRequestSchema', () => {
   });
   test('rejects a missing fen', () => {
     expect(AnalyzePositionRequestSchema.safeParse({ depth: 12 }).success).toBe(false);
+  });
+});
+
+function validPositionFeaturesFixture() {
+  return {
+    turn: 'white',
+    boardState: 'none',
+    availableMoves: ['Nf3', 'e4'],
+    mobility: { white: 20, black: 20 },
+    controlledSquares: [{ square: 'g1', piece: 'n', color: 'white', squares: ['f3', 'h3'] }],
+    piecesUnderAttack: [],
+    hangingPieces: [],
+    underDefendedPieces: [],
+    overloadedDefenders: [],
+    centerControlScore: { white: 2, black: 2 },
+    openFiles: ['a', 'h'],
+    semiOpenFiles: [{ file: 'c', openFor: 'black' }],
+    doubledPawns: [],
+    isolatedPawns: [],
+    passedPawns: [],
+    targetsAttacked: [],
+    forks: [],
+    captureOpportunities: []
+  };
+}
+
+function validPositionAnalysisFixture() {
+  return {
+    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    depth: 16,
+    multiPv: 2,
+    bestMove: 'Nf3',
+    eval: { cp: 20, mateIn: null },
+    lines: [
+      { moveUci: 'g1f3', moveSan: 'Nf3', pvSan: ['Nf3', 'd5', 'd4'], cp: 20, mateIn: null },
+      { moveUci: 'e2e4', moveSan: 'e4', pvSan: ['e4', 'e5'], cp: 18, mateIn: null }
+    ],
+    features: validPositionFeaturesFixture()
+  };
+}
+
+describe('PositionAnalysisSchema', () => {
+  test('accepts a valid rich position analysis', () => {
+    const result = PositionAnalysisSchema.safeParse(validPositionAnalysisFixture());
+    expect(result.success).toBe(true);
+  });
+  test('accepts a mate eval with null cp', () => {
+    const mate = { ...validPositionAnalysisFixture(), eval: { cp: null, mateIn: 3 } };
+    expect(PositionAnalysisSchema.safeParse(mate).success).toBe(true);
+  });
+  test('accepts bestMove: null (no legal moves)', () => {
+    const noMoves = { ...validPositionAnalysisFixture(), bestMove: null };
+    expect(PositionAnalysisSchema.safeParse(noMoves).success).toBe(true);
+  });
+  test('rejects a line missing pvSan', () => {
+    const bad = validPositionAnalysisFixture();
+    bad.lines = [{ moveUci: 'g1f3', moveSan: 'Nf3', cp: 20, mateIn: null } as unknown as (typeof bad.lines)[number]];
+    expect(PositionAnalysisSchema.safeParse(bad).success).toBe(false);
+  });
+  test('rejects an unknown piece symbol in features', () => {
+    const bad = validPositionAnalysisFixture();
+    bad.features.controlledSquares = [{ square: 'g1', piece: 'x', color: 'white', squares: [] }];
+    expect(PositionAnalysisSchema.safeParse(bad).success).toBe(false);
+  });
+  test('rejects an unknown boardState', () => {
+    const bad = validPositionAnalysisFixture();
+    bad.features.boardState = 'draw';
+    expect(PositionAnalysisSchema.safeParse(bad).success).toBe(false);
   });
 });
 
@@ -253,6 +327,7 @@ describe('UserProfileSchema', () => {
       lichessUsername: null,
       chesscomUsername: 'daniel_c',
       selfAssessment: null,
+      showEngineAnalysis: false,
       creditBalance: 100
     };
     expect(UserProfileSchema.safeParse(profile).success).toBe(true);
@@ -267,6 +342,7 @@ describe('UserProfileSchema', () => {
         lichessUsername: null,
         chesscomUsername: null,
         selfAssessment: null,
+        showEngineAnalysis: false,
         creditBalance: 0
       }).success
     ).toBe(false);

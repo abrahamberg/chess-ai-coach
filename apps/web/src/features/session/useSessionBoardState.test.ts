@@ -8,6 +8,14 @@ const POSITIONS = [
   { ply: 1, fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1', moveUci: 'e2e4' }
 ];
 
+// Contiguous plies (unlike POSITIONS above) so the pre-move anchor's ply-1
+// lookup actually finds a position instead of falling back to the current one.
+const ANCHOR_POSITIONS = [
+  { ply: 0, fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', moveUci: null },
+  { ply: 1, fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1', moveUci: 'e2e4' },
+  { ply: 2, fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2', moveUci: 'e7e5' }
+];
+
 describe('useSessionBoardState', () => {
   test('starts at ply 0, undocked, no annotations', () => {
     const { result } = renderHook(() => useSessionBoardState(POSITIONS));
@@ -92,7 +100,9 @@ describe('useSessionBoardState', () => {
     });
 
     expect(result.current.fen).toBe(POSITIONS[1]?.fen);
-    expect(result.current.arrows).toEqual([]);
+    // The old coach-drawn annotate_board arrow is cleared — the only arrow
+    // left is the new auto pre-move red arrow for the move being discussed.
+    expect(result.current.arrows).toEqual([{ from: 'g1', to: 'f3', color: 'var(--played-move)' }]);
     expect(result.current.isDocked).toBe(false);
     expect(toolResult).toEqual({ moveNumber: 2, color: 'black', ply: 4 });
   });
@@ -256,5 +266,132 @@ describe('useSessionBoardState', () => {
 
     expect(result.current.fen).toBe(POSITIONS[0]?.fen);
     expect(result.current.mode).toBe('answer');
+  });
+});
+
+describe('pre-move anchor + red arrow (universal default, not gated behind showEngineAnalysis)', () => {
+  test('a show_position landing on a real move anchors the board one ply before it, with a red arrow for the move played', () => {
+    const { result } = renderHook(() => useSessionBoardState(ANCHOR_POSITIONS));
+
+    act(() => {
+      result.current.handleToolCall({
+        toolCallId: '1',
+        toolName: 'show_position',
+        args: { moveNumber: 1, color: 'black' }
+      });
+    });
+
+    expect(result.current.isAnchoredPreMove).toBe(true);
+    expect(result.current.fen).toBe(ANCHOR_POSITIONS[1]?.fen);
+    expect(result.current.arrows).toEqual([{ from: 'e7', to: 'e5', color: 'var(--played-move)' }]);
+    expect(result.current.highlights).toEqual([]);
+  });
+
+  test('show_position to the game start (ply 0) never anchors — nothing to show before it', () => {
+    const { result } = renderHook(() => useSessionBoardState(ANCHOR_POSITIONS));
+
+    act(() => {
+      result.current.handleToolCall({
+        toolCallId: '1',
+        toolName: 'show_position',
+        args: { moveNumber: 0, color: null }
+      });
+    });
+
+    expect(result.current.isAnchoredPreMove).toBe(false);
+    expect(result.current.fen).toBe(ANCHOR_POSITIONS[0]?.fen);
+    expect(result.current.arrows).toEqual([]);
+  });
+
+  test('revealPlayedMove shows the actual post-move position and its normal last-move highlight', () => {
+    const { result } = renderHook(() => useSessionBoardState(ANCHOR_POSITIONS));
+
+    act(() => {
+      result.current.handleToolCall({
+        toolCallId: '1',
+        toolName: 'show_position',
+        args: { moveNumber: 1, color: 'black' }
+      });
+    });
+    act(() => {
+      result.current.revealPlayedMove();
+    });
+
+    expect(result.current.isAnchoredPreMove).toBe(false);
+    expect(result.current.fen).toBe(ANCHOR_POSITIONS[2]?.fen);
+    expect(result.current.arrows).toEqual([]);
+    expect(result.current.highlights).toEqual(
+      expect.arrayContaining([
+        { square: 'e7', color: 'var(--last-move)' },
+        { square: 'e5', color: 'var(--last-move)' }
+      ])
+    );
+  });
+
+  test('backToCoach re-anchors pre-move for the coach position, discarding whatever reveal state peeking left behind', () => {
+    const { result } = renderHook(() => useSessionBoardState(ANCHOR_POSITIONS));
+
+    act(() => {
+      result.current.handleToolCall({
+        toolCallId: '1',
+        toolName: 'show_position',
+        args: { moveNumber: 1, color: 'black' }
+      });
+    });
+    act(() => {
+      result.current.revealPlayedMove();
+    });
+    act(() => {
+      result.current.peekAt(0);
+    });
+    expect(result.current.mode).toBe('peek');
+
+    act(() => {
+      result.current.backToCoach();
+    });
+
+    expect(result.current.mode).toBe('answer');
+    expect(result.current.isAnchoredPreMove).toBe(true);
+    expect(result.current.fen).toBe(ANCHOR_POSITIONS[1]?.fen);
+    expect(result.current.arrows).toEqual([{ from: 'e7', to: 'e5', color: 'var(--played-move)' }]);
+  });
+
+  test('anchorHere (promoting a peeked position) never anchors pre-move — the student already looked at exactly this position', () => {
+    const { result } = renderHook(() => useSessionBoardState(ANCHOR_POSITIONS));
+
+    act(() => {
+      result.current.peekAt(2);
+    });
+    act(() => {
+      result.current.anchorHere();
+    });
+
+    expect(result.current.mode).toBe('answer');
+    expect(result.current.isAnchoredPreMove).toBe(false);
+    expect(result.current.fen).toBe(ANCHOR_POSITIONS[2]?.fen);
+  });
+
+  test('a coach-drawn annotate_board arrow is layered after, not instead of, the pre-move red arrow', () => {
+    const { result } = renderHook(() => useSessionBoardState(ANCHOR_POSITIONS));
+
+    act(() => {
+      result.current.handleToolCall({
+        toolCallId: '1',
+        toolName: 'show_position',
+        args: { moveNumber: 1, color: 'black' }
+      });
+    });
+    act(() => {
+      result.current.handleToolCall({
+        toolCallId: '2',
+        toolName: 'annotate_board',
+        args: { arrows: [{ from: 'g1', to: 'f3', color: '#4a7fb5' }], highlights: [] }
+      });
+    });
+
+    expect(result.current.arrows).toEqual([
+      { from: 'e7', to: 'e5', color: 'var(--played-move)' },
+      { from: 'g1', to: 'f3', color: '#4a7fb5' }
+    ]);
   });
 });

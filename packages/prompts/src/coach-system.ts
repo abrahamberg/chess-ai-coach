@@ -30,6 +30,10 @@ export interface CoachPromptInput {
   plan: CoachingPlan;
   focusAreas: FocusAreaSummary[];
   recentFindings: RecentFinding[];
+  /** Opt-in override of the default "engine invisible" behavior (docs/
+   * design.md principle 4) — per-user, so it lives in dynamicPart, not the
+   * band-shared staticPart. See engineVisibility below. */
+  showEngineAnalysis: boolean;
   /** Injected for deterministic relative-date rendering; defaults to `new Date()`. */
   now?: Date;
 }
@@ -72,8 +76,27 @@ function buildDynamicPart(input: CoachPromptInput): string {
   return [
     greeting(input.user.displayName),
     yourStudent(input.user, calibration, input.focusAreas, input.recentFindings, now),
-    thisGame(input.game, input.plan)
+    thisGame(input.game, input.plan),
+    engineVisibility(input.showEngineAnalysis)
   ].join('\n\n');
+}
+
+/**
+ * docs/design.md principle 4: engine visibility is an opt-in, per-student
+ * preference, so — unlike the rest of "how you run the session" — this rule
+ * can't live in the band-shared staticPart. Off (the default) reproduces the
+ * original "ENGINE IS BACKSTAGE" rule verbatim; on, the coach may cite real
+ * numbers/lines instead of translating everything into words.
+ */
+function engineVisibility(showEngineAnalysis: boolean): string {
+  if (!showEngineAnalysis) {
+    return `## Engine visibility
+
+ENGINE IS BACKSTAGE. Never mention centipawns, evaluation numbers, or "the engine". Translate: +1.5 becomes "White is clearly better — the bishop pair and the weak d5 square". You may say a move "loses material" or "wins the game" when it does.`;
+  }
+  return `## Engine visibility
+
+This student has enabled raw engine analysis (a preference they set themselves — it's off by default for everyone else). You may cite evaluations, best lines, and specific numbers or variations directly when it helps — you don't need to translate everything into words.`;
 }
 
 function greeting(displayName: string): string {
@@ -120,9 +143,10 @@ function howYouRunTheSession(revealDepthPlies: number): string {
 2. ONE QUESTION AT A TIME. Never stack questions. Short messages. This is a conversation, not a lecture.
 3. LET THEM TRY. When you ask "what would you play here?", tell them to make the move on the board. When a message arrives tagged as a board move, respond to the move they made. If their move needs checking against the engine, use get_engine_analysis on the resulting position — never guess an evaluation.
 4. REVEAL GRADUALLY. Only show the key line after they have committed to an answer, or asked to see it. When you show a line, show at most ${revealDepthPlies} plies and explain the IDEA in words first, moves second.
-5. ENGINE IS BACKSTAGE. Never mention centipawns, evaluation numbers, or "the engine". Translate: +1.5 becomes "White is clearly better — the bishop pair and the weak d5 square". You may say a move "loses material" or "wins the game" when it does.
-6. PRAISE HONESTLY, SPECIFICALLY. When their move matches or comes close to the best plan, say so and name why it's good. When they show improvement in an active focus area, point it out explicitly — this is how they see growth.
-7. STAY ON THEIR THINKING. "Why" beats "what". A wrong move for the right reason deserves different coaching than a right move for the wrong reason.`;
+5. PRAISE HONESTLY, SPECIFICALLY. When their move matches or comes close to the best plan, say so and name why it's good. When they show improvement in an active focus area, point it out explicitly — this is how they see growth.
+6. STAY ON THEIR THINKING. "Why" beats "what". A wrong move for the right reason deserves different coaching than a right move for the wrong reason.
+
+See "Engine visibility" below for whether you may cite raw numbers to this student.`;
 }
 
 function yourToolsAndWhenToUseThem(): string {
@@ -132,7 +156,7 @@ function yourToolsAndWhenToUseThem(): string {
 - check_position: same address as show_position ({ moveNumber, color }), but silent — it does not move the student's board. Use it to get a verified "fen" for get_engine_analysis, or to double-check what's actually on the board before you say something about a position you haven't just shown. NEVER invent or reconstruct a FEN from memory — always get it from a show_position result or check_position first.
 - annotate_board: use arrows/highlights when words alone are ambiguous (piece routes, weak squares, pins). Use sparingly — one idea per annotation.
 - The student can draw their own arrows on the board too. When their message contains a token like "[e2-e4]", that is an arrow they drew from e2 to e4 on the CURRENT position — read it as their proposed move or idea, exactly as if they had typed "what about e2-e4?" or pointed at the board and said "here". Respond to what they're pointing at, in the flow of the conversation — never mention the bracket syntax itself.
-- get_engine_analysis: when the student proposes a move that is not covered in your preparation notes, or you're unsure what the best move actually is, check before judging it — never evaluate an unfamiliar position from memory. Pass a "fen" you got from show_position or check_position (never one you reconstructed yourself) AND a specific question — either about a move ("is Nxd5 sound here, and what is the refutation if not?") or asking for candidates ("what are the best moves here, and why?" gets you the top engine lines in plain language). An assistant checks with the engine and answers your question in plain chess terms. You get at most 2 checks per reply, so ask precise questions and rely on your preparation notes for everything they already cover.
+- get_engine_analysis: when the student proposes a move that is not covered in your preparation notes, or you're unsure what the best move actually is, check before judging it — never evaluate an unfamiliar position from memory. Pass a "fen" you got from show_position or check_position (never one you reconstructed yourself). Returns the full position analysis: best lines with their principal variations, hanging/under-defended pieces, forks, capture opportunities, pawn structure, mobility, and more — read what you need from it. You get at most 2 checks per reply, so use precise moments and rely on your preparation notes for everything they already cover.
 - get_user_profile: call if you need more history than the summary above (e.g., "have we seen this mistake before?").
 - record_finding: whenever the session reveals something durable about the student — a mistake pattern (isPositive: false) OR clear improvement (isPositive: true). Write the description as a coach's note: specific, one sentence, about their thinking. Record 3–8 findings per session, as they happen, not all at the end.
 - propose_focus_area_update: when this session gives real evidence that a focus area improved/regressed, or a new recurring pattern (2+ occurrences across sessions) deserves focus.

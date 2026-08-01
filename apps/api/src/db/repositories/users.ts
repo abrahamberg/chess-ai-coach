@@ -10,6 +10,7 @@ export interface UserRow {
   lichessUsername: string | null;
   chesscomUsername: string | null;
   selfAssessment: string | null;
+  showEngineAnalysis: boolean;
   createdAt: Date;
 }
 
@@ -23,6 +24,7 @@ export interface UserPatch {
   lichessUsername?: string | null;
   chesscomUsername?: string | null;
   selfAssessment?: string | null;
+  showEngineAnalysis?: boolean;
 }
 
 export function findByEmail(db: Kysely<Database>, email: string): Promise<UserRow | undefined> {

@@ -1,4 +1,4 @@
-import type { CoachingPlan, EngineEval } from '@chess-coach/shared';
+import type { CoachingPlan, PositionAnalysis } from '@chess-coach/shared';
 import { EPISODE_FOLD_SYSTEM_PROMPT } from '@chess-coach/prompts';
 import { MockLanguageModelV1 } from 'ai/test';
 import type { Kysely } from 'kysely';
@@ -164,11 +164,33 @@ describe('coach-agent startTurn concurrency', () => {
       jobQueue: { enqueueAnalyzeGame: vi.fn(), enqueueSummarizeSession: vi.fn() },
       gatewayConfig,
       analyzePosition: vi.fn().mockResolvedValue({
-        ply: 0,
         fen: 'startpos',
         depth: 10,
-        lines: [{ moveUci: 'e2e4', moveSan: 'e4', cp: 20, mateIn: null }]
-      } satisfies EngineEval),
+        multiPv: 1,
+        bestMove: 'e4',
+        eval: { cp: 20, mateIn: null },
+        lines: [{ moveUci: 'e2e4', moveSan: 'e4', pvSan: ['e4'], cp: 20, mateIn: null }],
+        features: {
+          turn: 'white',
+          boardState: 'none',
+          availableMoves: ['e4'],
+          mobility: { white: 20, black: 20 },
+          controlledSquares: [],
+          piecesUnderAttack: [],
+          hangingPieces: [],
+          underDefendedPieces: [],
+          overloadedDefenders: [],
+          centerControlScore: { white: 0, black: 0 },
+          openFiles: [],
+          semiOpenFiles: [],
+          doubledPawns: [],
+          isolatedPawns: [],
+          passedPawns: [],
+          targetsAttacked: [],
+          forks: [],
+          captureOpportunities: []
+        }
+      } satisfies PositionAnalysis),
       callLightModel: vi.fn().mockResolvedValue('roughly equal.'),
       resolveModel: () => Promise.resolve({ model, metered: true, provider: 'anthropic', modelId: 'claude-standard' })
     };
@@ -244,6 +266,48 @@ describe('coach-agent startTurn concurrency', () => {
 
     expect(toolCallIndex).toBeGreaterThanOrEqual(0);
     expect(toolResultIndex).toBeGreaterThan(toolCallIndex);
+  }, 15000);
+
+  test('a stream-level provider error releases the session lock — a later turn does not hang forever', async () => {
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+    await creditsRepo.insertSignupGrant(db, user.id);
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '1-0',
+      timeControl: '10+0',
+      eco: null,
+      playedAt: null
+    });
+    const analysis = await analysesRepo.insertQueued(db, game.id);
+    await analysesRepo.markReady(db, analysis.id, PLAN);
+    const session = await coachAgent.createSession(db, user.id, game.id);
+
+    // No 'finish' part at all — mirrors a provider rejecting the request
+    // mid-stream, the case where the AI SDK never calls onFinish.
+    const doStream = vi.fn().mockImplementation((options: unknown) =>
+      Promise.resolve({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: 'error', error: new Error('provider rejected the request') });
+            controller.close();
+          }
+        }),
+        rawCall: { rawPrompt: options, rawSettings: {} }
+      })
+    );
+    const erroringModel = new MockLanguageModelV1({ doStream });
+
+    const turn1 = await coachAgent.startTurn(deps(erroringModel), session, { content: 'hi coach' });
+    await drain(turn1);
+
+    // If the lock leaked, this hangs until the test's own timeout fires.
+    const turn2 = await coachAgent.startTurn(deps(instantTextModel('Still here.')), session, { content: 'hello?' });
+    await drain(turn2);
   }, 15000);
 
   test("a metered turn's llm_call_log inputTokens covers fresh + cache-read tokens (matches computeCredits' total-input expectation)", async () => {
@@ -411,6 +475,133 @@ describe('coach-agent startTurn concurrency', () => {
       .where('ply', '=', 0)
       .executeTakeFirst();
     expect(closedEpisodeNote).toBeDefined();
+  }, 20000);
+
+  test('a show_position tool-call sharing an assistant step with another tool-call still reunites with its later-confirmed result (no orphaned tool_result even with a sibling tool-result in between)', async () => {
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+    await creditsRepo.insertSignupGrant(db, user.id);
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '1-0',
+      timeControl: '10+0',
+      eco: null,
+      playedAt: null
+    });
+    const analysis = await analysesRepo.insertQueued(db, game.id);
+    await analysesRepo.markReady(db, analysis.id, PLAN);
+    await analysesRepo.storeClassifiedMoves(db, analysis.id, []);
+    const session = await coachAgent.createSession(db, user.id, game.id);
+
+    // Turn 1: one assistant step makes TWO tool-calls — record_move_note
+    // (server-executed, its result lands in the same turn) and show_position
+    // (client-only, its result won't land until turn 2). This is the exact
+    // shape seen in production: the server-executed tool's result sits
+    // between the tool-call message and show_position's own later-confirmed
+    // result, so the naive "check one message back" guard misses it.
+    const doStream = vi.fn().mockImplementation((options: unknown) =>
+      Promise.resolve({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({
+              type: 'tool-call',
+              toolCallType: 'function',
+              toolCallId: 'call-note-1',
+              toolName: 'record_move_note',
+              args: JSON.stringify({ moveNumber: 1, color: 'white', note: 'Sharp opening.' })
+            });
+            controller.enqueue({
+              type: 'tool-call',
+              toolCallType: 'function',
+              toolCallId: 'call-show-2',
+              toolName: 'show_position',
+              args: JSON.stringify({ moveNumber: 2, color: 'black' })
+            });
+            controller.enqueue({
+              type: 'finish',
+              finishReason: 'tool-calls',
+              usage: { promptTokens: 10, completionTokens: 5 }
+            });
+            controller.close();
+          }
+        }),
+        rawCall: { rawPrompt: options, rawSettings: {} }
+      })
+    );
+    const model = new MockLanguageModelV1({ doStream });
+
+    const turn1 = await coachAgent.startTurn(deps(model), session, { content: 'hi coach' });
+    await drain(turn1);
+
+    const sessionAfterTurn1 = await sessionsRepo.findById(db, session.id);
+    if (!sessionAfterTurn1) throw new Error('session not found');
+
+    // Turn 2: the client confirms show_position's move, one turn later — the
+    // tool-result lands at a new ply, after record_move_note's own result.
+    const turn2 = await coachAgent.startTurn(deps(instantTextModel('Here it is.')), sessionAfterTurn1, {
+      clientToolResult: { toolCallId: 'call-show-2', toolName: 'show_position', result: { moveNumber: 2, color: 'black', ply: 4 } }
+    });
+    await drain(turn2);
+
+    const sessionAfterTurn2 = await sessionsRepo.findById(db, session.id);
+    if (!sessionAfterTurn2) throw new Error('session not found');
+
+    // Turn 3: an ordinary follow-up — this is the turn whose request would
+    // be rejected by a real provider if show_position's tool-result ended up
+    // in a different episode than its own tool-call.
+    const turn3 = await coachAgent.startTurn(deps(instantTextModel('Sure.')), sessionAfterTurn2, {
+      content: 'what about here?'
+    });
+    await drain(turn3);
+
+    const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
+    const conversation = (snapshot?.request.messages ?? []).filter((m) => (m as { role: string }).role !== 'system');
+
+    expect(conversation[0]).toMatchObject({ role: 'assistant' });
+    const toolResultToolCallIds = conversation
+      .filter((m) => (m as { role: string }).role === 'tool')
+      .flatMap((m) => (m as { content: Array<{ toolCallId: string }> }).content.map((part) => part.toolCallId));
+    expect(toolResultToolCallIds).toContain('call-show-2');
+  }, 20000);
+
+  test('showEngineAnalysis on the user row flows through to buildEpisodeContext — the request embeds the full analysis, computed on the pre-move fen', async () => {
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+    await usersRepo.update(db, user.id, { showEngineAnalysis: true });
+    await creditsRepo.insertSignupGrant(db, user.id);
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '1-0',
+      timeControl: '10+0',
+      eco: null,
+      playedAt: null
+    });
+    const analysis = await analysesRepo.insertQueued(db, game.id);
+    await analysesRepo.markReady(db, analysis.id, PLAN);
+    const session = await coachAgent.createSession(db, user.id, game.id);
+
+    const testDeps = deps(instantTextModel('Sure.'));
+    const turn = await coachAgent.startTurn(testDeps, session, {
+      clientToolResult: { toolCallId: 'call-1', toolName: 'show_position', result: { moveNumber: 1, color: 'white', ply: 1 } }
+    });
+    await drain(turn);
+
+    expect(testDeps.analyzePosition).toHaveBeenCalledWith('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+    const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
+    const currentPositionMessage = (snapshot?.request.messages ?? []).find(
+      (m) => typeof (m as { content?: unknown }).content === 'string' && (m as { content: string }).content.includes('## Current position')
+    ) as { content: string } | undefined;
+    expect(currentPositionMessage?.content).toContain('Full engine analysis');
+    expect(currentPositionMessage?.content).toContain('"bestMove":"e4"');
+    expect(currentPositionMessage?.content).toContain('The move actually played here was e4');
   }, 20000);
 
   test('a jump back to an earlier move closes the old episode into a note and the new turn\'s request excludes that episode\'s raw messages', async () => {

@@ -1,5 +1,5 @@
 import { moveRefToPly, parsePgn } from '@chess-coach/chess-analysis';
-import { ClassifiedMoveSchema } from '@chess-coach/shared';
+import { ClassifiedMoveSchema, UserProfileSchema } from '@chess-coach/shared';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -14,9 +14,10 @@ import { ExplorePanel } from '../board/ExplorePanel.js';
 import { MiniBoard } from '../board/MiniBoard.js';
 import { MoveExplorer } from '../board/MoveExplorer.js';
 import { MoveStrip } from '../board/MoveStrip.js';
+import { PositionAnalysisPanel } from '../board/PositionAnalysisPanel.js';
 import type { ArrowRef } from '../chat/arrowToken.js';
 import { ChatPane } from '../chat/ChatPane.js';
-import { encodePositionContext, encodePositionDivider, sanForPly } from '../chat/positionDivider.js';
+import { describePly, encodePositionContext, encodePositionDivider, sanForPly } from '../chat/positionDivider.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
 import { SessionHeader } from './SessionHeader.js';
 import { useSessionBoardState } from './useSessionBoardState.js';
@@ -144,6 +145,11 @@ export function SessionPage(): ReactNode {
     queryKey: ['game', gameId],
     queryFn: ({ signal }) => apiGet(`/api/games/${gameId}`, GameDetailSchema, signal),
     enabled: gameId !== undefined
+  });
+
+  const profileQuery = useQuery({
+    queryKey: ['profile'],
+    queryFn: ({ signal }) => apiGet('/api/users/me', UserProfileSchema, signal)
   });
 
   const positions = gameQuery.data ? parsePgn(gameQuery.data.pgn).positions : [];
@@ -288,6 +294,14 @@ export function SessionPage(): ReactNode {
               </button>
             </p>
           )}
+          {boardState.isAnchoredPreMove && (
+            <p className="played-move-pill">
+              {describePly(boardState.ply).color} played {sanForPly(sanMoves, boardState.ply)}{' '}
+              <button type="button" onClick={boardState.revealPlayedMove}>
+                reveal →
+              </button>
+            </p>
+          )}
           {!isDesktop && (
             <MoveStrip
               sanMoves={sanMoves}
@@ -303,6 +317,7 @@ export function SessionPage(): ReactNode {
             onEnterPeekMode={() => boardState.setMode('peek')}
             engine={engine}
           />
+          <PositionAnalysisPanel fen={boardState.fen} enabled={profileQuery.data?.showEngineAnalysis ?? false} />
         </div>
         {session.status === 'paused_no_credits' ? (
           <div className="session-paused-card">

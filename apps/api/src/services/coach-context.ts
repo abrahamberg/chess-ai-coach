@@ -8,6 +8,7 @@ import {
   renderOtherMovesSummary,
   renderThreadsBlock
 } from '@chess-coach/prompts';
+import type { PositionAnalysis } from '@chess-coach/shared';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import type { SessionMessageRow } from '../db/repositories/session-messages.js';
 import * as sessionMoveNotesRepo from '../db/repositories/session-move-notes.js';
@@ -129,6 +130,14 @@ export interface BuildEpisodeContextInput extends CoachContextDependencies {
   historyAfterTurn: SessionMessageRow[];
   staticPart: string;
   dynamicPart: string;
+  /** wraps `POST engine/analyze-position` (architecture §4) — only called
+   * when `showEngineAnalysis` is true. */
+  analyzePosition: (fen: string) => Promise<PositionAnalysis>;
+  /** The student's opt-in raw-engine-analysis preference (docs/design.md
+   * principle 4) — gates the full JSON analysis appended to the "## Current
+   * position" block. Does NOT gate the pre-move fen/played-move sentence
+   * themselves, which are a universal default for every student. */
+  showEngineAnalysis: boolean;
 }
 
 /** Assembles the five-layer request in place of the old whole-transcript
@@ -139,8 +148,9 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
   const episode = currentEpisode(input.historyAfterTurn, input.currentPly);
   const orphanExtendedMessages = includeOrphanedToolCall(input.historyAfterTurn, episode.messages);
 
-  const [position, classifiedMoves, otherNotes, threads] = await Promise.all([
+  const [position, previousMovePosition, classifiedMoves, otherNotes, threads] = await Promise.all([
     getPositionAtPly(input.db, input.session.gameId, input.currentPly),
+    input.currentPly > 0 ? getPositionAtPly(input.db, input.session.gameId, input.currentPly - 1) : undefined,
     analysesRepo.findClassifiedMovesByGameId(input.db, input.session.gameId),
     sessionMoveNotesRepo.listOtherPlies(input.db, input.session.id, input.currentPly),
     sessionsRepo.getThreads(input.db, input.session.id)
@@ -149,15 +159,26 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
 
   const annotatedPgn = renderAnnotatedPgn(classifiedMoves ?? []);
   const otherMovesSummary = renderOtherMovesSummary(otherNotes, classifiedMoves ?? []);
+  // The board anchors one ply BEFORE a played move by default (universal
+  // default — see useSessionBoardState.ts's isAnchoredPreMove), with a red
+  // arrow for the move actually played. This block must describe what's
+  // really on the board, so it uses the same pre-move fen and names the
+  // played move in words; ply 0 (game start) has no "before" and is
+  // unaffected. The full structured analysis is opt-in (showEngineAnalysis).
+  const displayFen = previousMovePosition?.fen ?? position.fen;
+  const playedMove = previousMovePosition ? position.moveSan : null;
+  const analysis = input.showEngineAnalysis ? await input.analyzePosition(displayFen) : undefined;
   // final review #8: the thread-ledger heading is composed inside
   // renderCurrentMoveBlock (packages/prompts), not here — all prompt text
   // lives in packages/prompts, matching the pattern renderAnnotatedPgn/
   // renderOtherMovesSummary already use for their own '## ' headings.
   const currentMoveBlock = renderCurrentMoveBlock(
     input.currentPly,
-    position.fen,
+    displayFen,
     episode.previousPly,
-    renderThreadsBlock(threads)
+    renderThreadsBlock(threads),
+    playedMove,
+    analysis
   );
 
   const episodeMessages = await resolveEpisodeReplay(input, input.session.id, orphanExtendedMessages, input.currentPly);
@@ -324,20 +345,29 @@ function includeOrphanedToolCall(
  * boundary) and resolveEpisodeReplay's compaction fold point — both cut a
  * message array at some index and both need the same guard: if the message
  * the cut would start on is a tool-result whose toolCallId matches a
- * tool-call in the message immediately before it, the cut lands between a
- * tool-call and its result, a shape both Anthropic and OpenAI reject. In
- * that case the start index moves one earlier, pulling the tool-call in;
- * otherwise the index is returned unchanged.
+ * tool-call earlier in the array, the cut lands between a tool-call and its
+ * result, a shape both Anthropic and OpenAI reject. In that case the start
+ * index moves back to that tool-call's message, pulling it (and everything
+ * after it) in; otherwise the index is returned unchanged.
+ *
+ * The owning tool-call is usually the immediately preceding message, but one
+ * assistant step can make several tool-calls whose results land on separate
+ * messages/plies (e.g. a client tool's result, confirmed a turn later, sits
+ * after another tool's same-step result was already persisted) — so this
+ * walks back through any such sibling tool-result messages to find it,
+ * rather than only checking one message back.
  */
 function extendPastOrphanedToolResult(all: SessionMessageRow[], startIndex: number): number {
   const first = all[startIndex];
   const toolCallId = first ? firstToolResultCallId(first) : null;
   if (!toolCallId) return startIndex;
 
-  const preceding = all[startIndex - 1];
-  if (!preceding || !hasToolCall(preceding, toolCallId)) return startIndex;
-
-  return startIndex - 1;
+  for (let i = startIndex - 1; i >= 0; i--) {
+    const candidate = all[i];
+    if (hasToolCall(candidate, toolCallId)) return i;
+    if (candidate.role !== 'tool') break;
+  }
+  return startIndex;
 }
 
 function firstToolResultCallId(message: SessionMessageRow): string | null {

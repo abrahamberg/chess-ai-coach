@@ -27,7 +27,7 @@ describe('engine http server', () => {
     expect(response.json()).toEqual({ status: 'ok', poolSize: 1, busy: 0 });
   });
 
-  test('POST /analyze-position returns an eval using the configured default depth', async () => {
+  test('POST /analyze-position returns a rich analysis using the configured default depth', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/analyze-position',
@@ -36,10 +36,13 @@ describe('engine http server', () => {
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.eval.ply).toBe(0);
-    expect(body.eval.fen).toBe(START_FEN);
-    expect(body.eval.depth).toBe(6);
-    expect(body.eval.lines.length).toBeGreaterThan(0);
+    expect(body.analysis.fen).toBe(START_FEN);
+    expect(body.analysis.depth).toBe(6);
+    expect(body.analysis.lines.length).toBeGreaterThan(0);
+    expect(body.analysis.lines[0].pvSan.length).toBeGreaterThan(0);
+    expect(typeof body.analysis.bestMove).toBe('string');
+    expect(body.analysis.features.turn).toBe('white');
+    expect(body.analysis.features.boardState).toBe('none');
   }, 15000);
 
   test('POST /analyze-position with a malformed fen returns 400 problem+json', async () => {

@@ -45,6 +45,11 @@ export function SettingsPage(): ReactNode {
     onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
   });
 
+  const engineAnalysisMutation = useMutation({
+    mutationFn: (showEngineAnalysis: boolean) => apiPatch('/api/users/me', { showEngineAnalysis }, UserProfileSchema),
+    onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
+  });
+
   const saveKeyMutation = useMutation({
     mutationFn: ({ provider, apiKey }: { provider: LlmProvider; apiKey: string }) =>
       apiPut(`/api/users/me/llm-keys/${provider}`, { apiKey }),
@@ -70,6 +75,19 @@ export function SettingsPage(): ReactNode {
         <h2>Profile</h2>
         <p>{profile.displayName}</p>
         <BandSelect value={profile.ratingBand} onChange={(band) => bandMutation.mutate(band)} />
+      </section>
+
+      <section aria-label="Analysis">
+        <h2>Analysis</h2>
+        <label>
+          <input
+            type="checkbox"
+            checked={profile.showEngineAnalysis}
+            onChange={(event) => engineAnalysisMutation.mutate(event.target.checked)}
+          />
+          Show engine analysis
+        </label>
+        <p>See raw evaluations, best lines, and tactical details during your session — off by default so you learn to read positions yourself first.</p>
       </section>
 
       <section aria-label="API keys">

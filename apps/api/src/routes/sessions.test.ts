@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely';
 import { MockLanguageModelV1 } from 'ai/test';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import type { CoachingPlan, EngineEval } from '@chess-coach/shared';
+import type { CoachingPlan, PositionAnalysis } from '@chess-coach/shared';
 import { buildApp } from '../app.js';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import * as creditsRepo from '../db/repositories/credits.js';
@@ -125,11 +125,33 @@ describe('sessions routes', () => {
       jobQueue: { enqueueAnalyzeGame: vi.fn(), enqueueSummarizeSession: vi.fn() },
       gatewayConfig,
       analyzePosition: vi.fn().mockResolvedValue({
-        ply: 0,
         fen: 'startpos',
         depth: 10,
-        lines: [{ moveUci: 'e2e4', moveSan: 'e4', cp: 20, mateIn: null }]
-      } satisfies EngineEval),
+        multiPv: 1,
+        bestMove: 'e4',
+        eval: { cp: 20, mateIn: null },
+        lines: [{ moveUci: 'e2e4', moveSan: 'e4', pvSan: ['e4'], cp: 20, mateIn: null }],
+        features: {
+          turn: 'white',
+          boardState: 'none',
+          availableMoves: ['e4'],
+          mobility: { white: 20, black: 20 },
+          controlledSquares: [],
+          piecesUnderAttack: [],
+          hangingPieces: [],
+          underDefendedPieces: [],
+          overloadedDefenders: [],
+          centerControlScore: { white: 0, black: 0 },
+          openFiles: [],
+          semiOpenFiles: [],
+          doubledPawns: [],
+          isolatedPawns: [],
+          passedPawns: [],
+          targetsAttacked: [],
+          forks: [],
+          captureOpportunities: []
+        }
+      } satisfies PositionAnalysis),
       callLightModel: vi.fn().mockResolvedValue('engine says the position is roughly equal.'),
       resolveModel: () => Promise.resolve({ model, metered: true, provider: 'anthropic', modelId: 'claude-standard' })
     };

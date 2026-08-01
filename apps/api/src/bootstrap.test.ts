@@ -90,9 +90,18 @@ describe('buildCoachAgentDependencies', () => {
     };
   }
 
-  test('analyzePosition posts to {engineUrl}/analyze-position and returns the eval', async () => {
+  test('analyzePosition posts to {engineUrl}/analyze-position and returns the analysis', async () => {
+    const analysis = {
+      fen: 'f',
+      depth: 16,
+      multiPv: 0,
+      bestMove: null,
+      eval: { cp: null, mateIn: null },
+      lines: [],
+      features: { turn: 'white', boardState: 'none' }
+    };
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ eval: { ply: 0, fen: 'f', depth: 16, lines: [] } }), {
+      new Response(JSON.stringify({ analysis }), {
         status: 200,
         headers: { 'content-type': 'application/json' }
       })
@@ -106,7 +115,34 @@ describe('buildCoachAgentDependencies', () => {
       'http://engine:4001/analyze-position',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ fen: 'some-fen', multiPv: 3 }) })
     );
-    expect(result).toEqual({ ply: 0, fen: 'f', depth: 16, lines: [] });
+    expect(result).toEqual(analysis);
+  });
+
+  test('analyzePosition caches by exact fen — a repeat call for the same fen does not re-hit the engine', async () => {
+    const analysis = {
+      fen: 'f',
+      depth: 16,
+      multiPv: 0,
+      bestMove: null,
+      eval: { cp: null, mateIn: null },
+      lines: [],
+      features: { turn: 'white', boardState: 'none' }
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ analysis }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const deps = buildCoachAgentDependencies({} as never, noopJobQueue, gatewayConfig(), 'http://engine:4001');
+    const first = await deps.analyzePosition('some-fen');
+    const second = await deps.analyzePosition('some-fen');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(first).toEqual(analysis);
+    expect(second).toEqual(analysis);
   });
 
   test('analyzePosition throws on a non-2xx engine response', async () => {

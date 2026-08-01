@@ -60,20 +60,56 @@ describe('renderOtherMovesSummary', () => {
 
 describe('renderCurrentMoveBlock', () => {
   test('the first episode of a session has no "reached from" sentence', () => {
-    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '(empty — no parked topics right now)');
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '(empty — no parked topics right now)', null);
     expect(text).toContain('You are now discussing the game start');
     expect(text).not.toContain('You reached this position from');
+    expect(text).not.toContain('The move actually played here was');
   });
 
   test('a jump includes where the coach/student arrived from', () => {
-    const text = renderCurrentMoveBlock(35, 'fen-after-18', 8, '(empty — no parked topics right now)');
+    const text = renderCurrentMoveBlock(35, 'fen-after-18', 8, '(empty — no parked topics right now)', 'Nc3');
     expect(text).toContain("You are now discussing White's move 18");
     expect(text).toContain('FEN: fen-after-18');
     expect(text).toContain("You reached this position from Black's move 4");
   });
 
   test('folds the thread ledger in under its own heading (final review #8: heading owned by packages/prompts)', () => {
-    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '- [active] the h3 line');
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '- [active] the h3 line', null);
     expect(text).toContain('## Your thread ledger\n\n- [active] the h3 line');
+  });
+
+  test('names the move actually played — the board now shows the pre-move position, so this states the outcome in words', () => {
+    const text = renderCurrentMoveBlock(27, 'pre-move-fen', null, '(empty — no parked topics right now)', 'Bxd5');
+    expect(text).toContain('The move actually played here was Bxd5 — shown as a red arrow on the board.');
+    expect(text).toContain('FEN: pre-move-fen');
+  });
+
+  test('ply 0 (game start) never has a played-move sentence — nothing was played to reach it', () => {
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '(empty — no parked topics right now)', null);
+    expect(text).not.toContain('The move actually played here was');
+  });
+
+  test('omits the full analysis block by default (showEngineAnalysis off) — byte-identical to before', () => {
+    const text = renderCurrentMoveBlock(2, 'fen', null, '(empty — no parked topics right now)', 'e5');
+    expect(text).not.toContain('Full engine analysis');
+    expect(text).not.toContain('```json');
+  });
+
+  test('appends the full structured analysis as JSON when provided (showEngineAnalysis on)', () => {
+    const analysis = {
+      fen: 'fen',
+      depth: 16,
+      multiPv: 1,
+      bestMove: 'Qxh4',
+      eval: { cp: -637, mateIn: null },
+      lines: [],
+      features: { turn: 'black', boardState: 'none' }
+    } as unknown as Parameters<typeof renderCurrentMoveBlock>[5];
+    const text = renderCurrentMoveBlock(2, 'fen', null, '(empty — no parked topics right now)', 'e5', analysis);
+
+    expect(text).toContain('Full engine analysis of this position');
+    expect(text).toContain('raw engine analysis is enabled for this student');
+    expect(text).toContain('```json');
+    expect(text).toContain('"bestMove":"Qxh4"');
   });
 });

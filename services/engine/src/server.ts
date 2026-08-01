@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import { AnalyzeGameRequestSchema, AnalyzePositionRequestSchema } from '@chess-coach/shared';
-import { analyzeGame, analyzePosition, InvalidFenError } from './analyze.js';
+import { analyzeGame, analyzePositionDetailed, InvalidFenError } from './analyze.js';
 import { EnginePool } from './engine-pool.js';
 import { DEFAULT_DEPTH, DEFAULT_TIMEOUT_MS, UciEngine } from './uci.js';
 
@@ -43,12 +43,12 @@ export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
     if (!parsed.success) return sendValidationProblem(reply, parsed.error.issues);
 
     try {
-      const evaluation = await analyzePosition(pool, parsed.data.fen, 0, {
+      const analysis = await analyzePositionDetailed(pool, parsed.data.fen, {
         depth: parsed.data.depth ?? defaultDepth,
         multiPv: parsed.data.multiPv,
         timeoutMs: moveTimeoutMs
       });
-      return { eval: evaluation };
+      return { analysis };
     } catch (error) {
       return sendEngineErrorProblem(reply, error);
     }

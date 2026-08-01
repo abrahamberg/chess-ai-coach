@@ -41,8 +41,7 @@ export const annotateBoardParameters = z.object({
 });
 
 export const getEngineAnalysisParameters = z.object({
-  fen: z.string(),
-  question: z.string()
+  fen: z.string()
 });
 
 export const getUserProfileParameters = z.object({});

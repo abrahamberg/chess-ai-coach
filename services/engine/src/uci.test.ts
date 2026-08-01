@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { resolveTestStockfishPath } from '../test/helpers/stockfish-path.js';
-import { UciEngine } from './uci.js';
+import { pvUciToSan, UciEngine } from './uci.js';
 
 const STOCKFISH_PATH = resolveTestStockfishPath();
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -39,4 +39,37 @@ describe('UciEngine', () => {
     expect(lines.length).toBeGreaterThan(0);
     expect(typeof lines[0]?.moveSan).toBe('string');
   }, 20000);
+
+  test('analyzeDetailed keeps the full principal variation', async () => {
+    const [detailed] = await engine.analyzeDetailed(START_FEN, { depth: 8, multiPv: 1 });
+
+    expect(detailed?.pvUci.length).toBeGreaterThan(1);
+    expect(detailed?.pvUci[0]).toBe(detailed?.moveUci);
+  }, 20000);
+
+  test('analyze() strips the principal variation that analyzeDetailed keeps', async () => {
+    // Same single call underneath (search() is shared) — asserting the
+    // shapes differ without running two independent Stockfish searches,
+    // which can return slightly different scores at shallow depth.
+    const [plain] = await engine.analyze(START_FEN, { depth: 8, multiPv: 1 });
+
+    expect(plain).not.toHaveProperty('pvUci');
+    expect(plain).toEqual({ moveUci: plain?.moveUci, moveSan: plain?.moveSan, cp: plain?.cp, mateIn: plain?.mateIn });
+  }, 20000);
+});
+
+describe('pvUciToSan', () => {
+  test('converts a full UCI principal variation to SAN in order', () => {
+    const sans = pvUciToSan(START_FEN, ['e2e4', 'e7e5', 'g1f3']);
+    expect(sans).toEqual(['e4', 'e5', 'Nf3']);
+  });
+
+  test('stops at the first illegal move rather than throwing', () => {
+    const sans = pvUciToSan(START_FEN, ['e2e4', 'e2e4']);
+    expect(sans).toEqual(['e4']);
+  });
+
+  test('returns an empty array for an empty PV', () => {
+    expect(pvUciToSan(START_FEN, [])).toEqual([]);
+  });
 });

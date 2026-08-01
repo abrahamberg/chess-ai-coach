@@ -10,6 +10,10 @@ export class ValidationError extends HttpError {
   readonly status = 400;
 }
 
+export class ForbiddenError extends HttpError {
+  readonly status = 403;
+}
+
 export class InsufficientCreditsError extends HttpError {
   readonly status = 402;
 }

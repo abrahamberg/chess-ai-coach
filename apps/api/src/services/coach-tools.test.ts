@@ -1,18 +1,44 @@
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import type { EngineEval } from '@chess-coach/shared';
+import type { PositionAnalysis } from '@chess-coach/shared';
 import * as gamesRepo from '../db/repositories/games.js';
 import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
 import { buildCoachTools, type CoachToolsDependencies } from './coach-tools.js';
 
-const ENGINE_EVAL: EngineEval = {
-  ply: 4,
-  fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
-  depth: 18,
-  lines: [{ moveUci: 'f1b5', moveSan: 'Bb5', cp: 35, mateIn: null }]
-};
+function positionAnalysisFixture(fen: string): PositionAnalysis {
+  return {
+    fen,
+    depth: 18,
+    multiPv: 1,
+    bestMove: 'Bb5',
+    eval: { cp: 35, mateIn: null },
+    lines: [{ moveUci: 'f1b5', moveSan: 'Bb5', pvSan: ['Bb5', 'a6', 'Ba4'], cp: 35, mateIn: null }],
+    features: {
+      turn: 'white',
+      boardState: 'none',
+      availableMoves: ['Bb5', 'Bc4'],
+      mobility: { white: 20, black: 20 },
+      controlledSquares: [],
+      piecesUnderAttack: [],
+      hangingPieces: [],
+      underDefendedPieces: [],
+      overloadedDefenders: [],
+      centerControlScore: { white: 2, black: 2 },
+      openFiles: [],
+      semiOpenFiles: [],
+      doubledPawns: [],
+      isolatedPawns: [],
+      passedPawns: [],
+      targetsAttacked: [],
+      forks: [],
+      captureOpportunities: []
+    }
+  };
+}
+
+const ENGINE_EVAL = positionAnalysisFixture('r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3');
 
 describe('buildCoachTools', () => {
   let testDb: TestDb;
@@ -88,37 +114,30 @@ describe('buildCoachTools', () => {
   });
 
   describe('get_engine_analysis', () => {
-    test('returns the interpreter subagent\'s text, prefixed, with no raw UCI lines', async () => {
+    test('returns the full structured position analysis, not an interpreted summary', async () => {
       const ctx = await setupCtx();
       const deps = makeDeps();
       const tools = buildCoachTools(ctx, deps);
 
       const result = await tools.get_engine_analysis?.execute?.(
-        { fen: ENGINE_EVAL.fen, question: 'is Bb5 good here?' },
+        { fen: ENGINE_EVAL.fen },
         { toolCallId: '1', messages: [] }
       );
 
-      expect(result).toEqual({
-        text: '[engine check] Bb5 pins the knight; the idea is to double pawns after Bxc6.'
-      });
-      expect(JSON.stringify(result)).not.toMatch(/f1b5|moveUci|"cp":/);
-      expect(deps.callLightModel).toHaveBeenCalledOnce();
-      const [messages] = (deps.callLightModel as ReturnType<typeof vi.fn>).mock.calls[0] as [
-        { system: string; user: string }
-      ];
-      expect(messages.user).toContain('Bb5');
+      expect(result).toEqual(ENGINE_EVAL);
+      expect(deps.analyzePosition).toHaveBeenCalledWith(ENGINE_EVAL.fen);
+      expect(deps.callLightModel).not.toHaveBeenCalled();
     });
 
     test('3rd call in one turn returns a budget_exhausted error instead of executing', async () => {
       const ctx = await setupCtx();
       const deps = makeDeps();
       const tools = buildCoachTools(ctx, deps);
-      const call = (question: string) =>
-        tools.get_engine_analysis?.execute?.({ fen: ENGINE_EVAL.fen, question }, { toolCallId: '1', messages: [] });
+      const call = (fen: string) => tools.get_engine_analysis?.execute?.({ fen }, { toolCallId: '1', messages: [] });
 
-      await call('question 1');
-      await call('question 2');
-      const third = await call('question 3');
+      await call(`${ENGINE_EVAL.fen} 1`);
+      await call(`${ENGINE_EVAL.fen} 2`);
+      const third = await call(`${ENGINE_EVAL.fen} 3`);
 
       expect(third).toEqual({ error: 'budget_exhausted — answer with what you have' });
       expect(deps.analyzePosition).toHaveBeenCalledTimes(2);
@@ -128,14 +147,13 @@ describe('buildCoachTools', () => {
       const ctx = await setupCtx();
       const deps = makeDeps();
       const tools = buildCoachTools(ctx, deps);
-      const args = { fen: ENGINE_EVAL.fen, question: 'same question' };
+      const args = { fen: ENGINE_EVAL.fen };
 
       const first = await tools.get_engine_analysis?.execute?.(args, { toolCallId: '1', messages: [] });
       const second = await tools.get_engine_analysis?.execute?.(args, { toolCallId: '2', messages: [] });
 
       expect(second).toEqual(first);
       expect(deps.analyzePosition).toHaveBeenCalledTimes(1);
-      expect(deps.callLightModel).toHaveBeenCalledTimes(1);
     });
   });
 

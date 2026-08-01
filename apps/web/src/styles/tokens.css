@@ -16,6 +16,7 @@
   --annotate-1: #c9762a;
   --annotate-2: #4a7fb5;
   --last-move: rgb(130 190 130 / 55%);
+  --played-move: #c0392b;
   --quality-brilliant: #2f7dc4;
   --quality-best: #5b9c6a;
   --quality-interesting: #2f9e8f;
@@ -56,6 +57,7 @@
   --annotate-1: #c9762a;
   --annotate-2: #4a7fb5;
   --last-move: rgb(130 190 130 / 55%);
+  --played-move: #c0392b;
   --quality-brilliant: #2f7dc4;
   --quality-best: #5b9c6a;
   --quality-interesting: #2f9e8f;
@@ -79,6 +81,7 @@
   --annotate-1: #c9762a;
   --annotate-2: #4a7fb5;
   --last-move: rgb(130 190 130 / 55%);
+  --played-move: #c0392b;
   --quality-brilliant: #2f7dc4;
   --quality-best: #5b9c6a;
   --quality-interesting: #2f9e8f;
