@@ -7,13 +7,45 @@ here conflicts with your general habits, this file wins.
 
 A personal AI chess coach: users import their games, a Stockfish+LLM pipeline
 analyzes them, and a tool-calling coach agent walks the user through the game
-Socratically while tracking their progress over time. Read before coding:
+Socratically while tracking their progress over time. The initial build
+(Phases 0–9) is complete and merged — read before coding:
 
-- `docs/specs.md` — what we're building and why
-- `docs/architecture.md` — how it fits together (layout, DB, agent, K8s)
+- `docs/architecture.md` — how it fits together (layout, DB, agent, K8s). Always relevant.
 
   if something comming up to to lated append to the end of this doc.(dont read it if you are not working with it)
-- `docs/plan.md` — the build order; implement tasks in sequence
+- `docs/specs.md` — product invariants (differentiator, out-of-scope list, success
+  criteria). Read when adding a feature or scope is ambiguous — not for routine bug fixes.
+- `docs/plan.md` — remaining work only; the build is done and git log has that
+  history. Only two open deferred-work items live here now.
+
+## Commands
+
+- `npm run lint && npm run typecheck && npm test` — root-level, covers every
+  workspace; run before claiming any task done.
+- `npm run dev` — full local stack via docker compose (postgres, engine, api,
+  worker, web-dev); `npm run dev:down` to stop.
+- Single-workspace dev servers (bypass docker): `npm run dev -w apps/api`
+  (API), `npm run dev:worker -w apps/api` (worker), `npm run dev -w apps/web`
+  (Vite), `npm run dev -w services/engine` (Stockfish HTTP service).
+- `npm run migrate -w apps/api` — run DB migrations directly.
+- `npm run build:images` — build all Docker images (`scripts/build-images.sh`).
+
+## Directory map
+
+- `apps/api` — Fastify 5 API + worker: routes (thin adapters) → services
+  (business logic, incl. the coach agent) → db/repositories (all SQL,
+  Kysely). `llm/` is the only place allowed to call LLM provider SDKs.
+- `apps/web` — React 19 + Vite SPA, feature-folder pattern
+  (`features/{board,chat,dashboard,games,import,session,settings}`).
+- `packages/shared` — zod schemas + inferred types; single source of truth
+  for API/DB shapes.
+- `packages/chess-analysis` — pure chess logic (PGN parsing, move
+  classification, position features); no I/O.
+- `packages/prompts` — LLM prompt templates/builders; text must match
+  `docs/prompts.md`.
+- `services/engine` — standalone Stockfish/UCI HTTP microservice.
+- `deploy/helm` — Kubernetes Helm chart for deploy.
+- `docs/` — see the reading list above.
 
 ## Golden rules
 
