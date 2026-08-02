@@ -1,132 +1,20 @@
-import { moveRefToPly, parsePgn } from '@chess-coach/chess-analysis';
-import { ClassifiedMoveSchema, UserProfileSchema } from '@chess-coach/shared';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { z } from 'zod';
-import { apiGet, apiPost } from '../../api/client.js';
-import { useCoachChat, type CoachMessage } from '../../hooks/useCoachChat.js';
 import { useIsBoardSideBySide } from '../../hooks/useIsBoardSideBySide.js';
 import { useIsDesktop } from '../../hooks/useIsDesktop.js';
-import { useWasmEngine } from '../../hooks/useWasmEngine.js';
-import { CoachBoard } from '../board/CoachBoard.js';
-import { ExplorePanel } from '../board/ExplorePanel.js';
-import { MiniBoard } from '../board/MiniBoard.js';
 import { MoveExplorer } from '../board/MoveExplorer.js';
-import { MoveStrip } from '../board/MoveStrip.js';
-import { PositionAnalysisPanel } from '../board/PositionAnalysisPanel.js';
 import type { ArrowRef } from '../chat/arrowToken.js';
 import { ChatPane } from '../chat/ChatPane.js';
-import { describePly, encodePositionContext, encodePositionDivider, sanForPly } from '../chat/positionDivider.js';
+import { encodePositionContext, sanForPly } from '../chat/positionDivider.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
+import { SessionBoardColumn } from './SessionBoardColumn.js';
 import { SessionHeader } from './SessionHeader.js';
-import { useSessionBoardState } from './useSessionBoardState.js';
+import { useSessionPageData } from './useSessionPageData.js';
 import './SessionPage.css';
 
-const UNDO_PILL_MS = 2000;
-const SESSION_START_MARKER = '[session_start]';
-
-const SessionMessageSchema = z.object({
-  id: z.coerce.string(),
-  role: z.enum(['user', 'assistant', 'tool']),
-  content: z.unknown()
-});
-
-const SessionDetailSchema = z.object({
-  id: z.string(),
-  gameId: z.string(),
-  status: z.enum(['active', 'completed', 'paused_no_credits', 'abandoned']),
-  summary: z.string().nullable(),
-  homework: z.string().nullable(),
-  messages: z.array(SessionMessageSchema)
-});
-
-const ResetSessionResponseSchema = z.object({ id: z.string() });
-
-/** A persisted message's `content` is either the AI SDK's parts array or (for
- * plain user turns, e.g. the synthesized session-start marker) a bare string. */
-function extractText(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((part): part is { type: string; text: string } => {
-        return typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'text';
-      })
-      .map((part) => part.text)
-      .join('');
-  }
-  return '';
-}
-
-interface ToolCallPart {
-  type: 'tool-call';
-  toolName: string;
-  args: unknown;
-}
-
-function isToolCallPart(part: unknown): part is ToolCallPart {
-  return typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'tool-call';
-}
-
-/** Persisted show_position args are either the current {moveNumber, color}
- * shape, or the {ply} shape from before the move-number fix — old sessions'
- * history still contains the old shape, and must keep resolving to the
- * right position rather than NaN. */
-function plyFromShowPositionArgs(args: unknown): number {
-  const { ply, moveNumber, color } = args as { ply?: number; moveNumber?: number; color?: 'white' | 'black' | null };
-  if (typeof ply === 'number') return ply;
-  return moveRefToPly(moveNumber ?? 0, color ?? null);
-}
-
-/** design.md §5.3: a persisted show_position tool-call becomes a position
- * divider on reload too, matching the live-stream path in useCoachChat. */
-function showPositionPlies(content: unknown): number[] {
-  if (!Array.isArray(content)) return [];
-  return content
-    .filter(isToolCallPart)
-    .filter((part) => part.toolName === 'show_position')
-    .map((part) => plyFromShowPositionArgs(part.args));
-}
-
-/** Reopening a session should show the board where the coach last left it,
- * not the game's start — find the most recent show_position across the
- * whole transcript. */
-function lastShowPositionPly(messages: z.infer<typeof SessionMessageSchema>[]): number | undefined {
-  return messages.flatMap((message) => showPositionPlies(message.content)).at(-1);
-}
-
-function toCoachMessages(messages: z.infer<typeof SessionMessageSchema>[], sanMoves: string[]): CoachMessage[] {
-  return messages
-    .filter((message) => message.role !== 'tool')
-    .flatMap((message): CoachMessage[] => {
-      const role = message.role as 'user' | 'assistant';
-      const text = extractText(message.content);
-      const entries: CoachMessage[] = [];
-      if (text.trim() !== '' && text !== SESSION_START_MARKER) {
-        entries.push({ id: message.id, role, text });
-      }
-      if (role === 'assistant') {
-        for (const ply of showPositionPlies(message.content)) {
-          const san = sanForPly(sanMoves, ply);
-          if (san) entries.push({ id: `${message.id}-divider-${ply}`, role, text: encodePositionDivider(ply, san) });
-        }
-      }
-      return entries;
-    });
-}
-
-const GameDetailSchema = z.object({
-  id: z.string(),
-  pgn: z.string(),
-  userColor: z.enum(['white', 'black']),
-  whiteName: z.string().nullable(),
-  blackName: z.string().nullable(),
-  result: z.string().nullable(),
-  classifiedMoves: z.array(ClassifiedMoveSchema).nullable()
-});
-
 /** design.md §5: composes board + chat for an active coaching session.
- * Owns all fetching (AGENTS.md rule 7) — every child below is presentational. */
+ * All fetching lives in useSessionPageData (AGENTS.md rule 7); this is
+ * presentational — local UI state, a few small handlers, and the layout. */
 export function SessionPage(): ReactNode {
   const { id } = useParams<{ id: string }>();
   const sessionId = id ?? '';
@@ -134,62 +22,10 @@ export function SessionPage(): ReactNode {
   const isSideBySide = useIsBoardSideBySide();
   const isDesktop = useIsDesktop();
 
-  const sessionQuery = useQuery({
-    queryKey: ['session', sessionId],
-    queryFn: ({ signal }) => apiGet(`/api/sessions/${sessionId}`, SessionDetailSchema, signal),
-    enabled: sessionId !== ''
-  });
+  const { sessionQuery, gameQuery, profileQuery, sanMoves, boardState, engine, chat, handleReset } =
+    useSessionPageData(sessionId);
 
-  const gameId = sessionQuery.data?.gameId;
-  const gameQuery = useQuery({
-    queryKey: ['game', gameId],
-    queryFn: ({ signal }) => apiGet(`/api/games/${gameId}`, GameDetailSchema, signal),
-    enabled: gameId !== undefined
-  });
-
-  const profileQuery = useQuery({
-    queryKey: ['profile'],
-    queryFn: ({ signal }) => apiGet('/api/users/me', UserProfileSchema, signal)
-  });
-
-  const positions = gameQuery.data ? parsePgn(gameQuery.data.pgn).positions : [];
-  const sanMoves = positions.filter((position) => position.moveSan !== null).map((position) => position.moveSan as string);
-
-  const initialPly = sessionQuery.data ? lastShowPositionPly(sessionQuery.data.messages) : undefined;
-  const boardState = useSessionBoardState(positions, initialPly);
-  const engine = useWasmEngine();
-  const initialMessages =
-    sessionQuery.data && gameQuery.data ? toCoachMessages(sessionQuery.data.messages, sanMoves) : undefined;
-  const chat = useCoachChat(sessionId, { onToolCall: boardState.handleToolCall, initialMessages, sanMoves });
-
-  // A fresh session has only the internal [session_start] marker persisted
-  // at creation (coach-agent.ts) — nothing has ever triggered a model turn
-  // on it, so the coach otherwise never speaks until the student does.
-  const kickedOffRef = useRef(false);
-  useEffect(() => {
-    const messages = sessionQuery.data?.messages;
-    if (!kickedOffRef.current && messages && sessionQuery.data?.status === 'active') {
-      if (!messages.some((message) => message.role === 'assistant')) {
-        kickedOffRef.current = true;
-        void chat.kickoff();
-      }
-    }
-  }, [sessionQuery.data, chat]);
-
-  const [pendingMove, setPendingMove] = useState<{ san: string; fen: string } | null>(null);
-  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [boardArrows, setBoardArrows] = useState<ArrowRef[]>([]);
-
-  const resetMutation = useMutation({
-    mutationFn: () => apiPost(`/api/sessions/${sessionId}/reset`, {}, ResetSessionResponseSchema),
-    onSuccess: (freshSession) => navigate(`/session/${freshSession.id}`)
-  });
-
-  function handleReset(): void {
-    if (window.confirm('Reset this session? This ends the current conversation and starts a fresh one for this game.')) {
-      resetMutation.mutate();
-    }
-  }
 
   if (sessionQuery.isLoading || gameQuery.isLoading) return <p>Loading…</p>;
   if (sessionQuery.isError || !sessionQuery.data) return <p>Could not load this session.</p>;
@@ -218,14 +54,6 @@ export function SessionPage(): ReactNode {
     );
   }
 
-  function handleUserMove(san: string, fen: string): void {
-    setPendingMove({ san, fen });
-    pendingTimeoutRef.current = setTimeout(() => {
-      void chat.sendMessage(`[board_move] I played ${san} (position now: ${fen})`);
-      setPendingMove(null);
-    }, UNDO_PILL_MS);
-  }
-
   function handleSendMessage(content: string): void {
     if (boardState.mode === 'peek') {
       const san = sanForPly(sanMoves, boardState.ply) ?? '';
@@ -234,12 +62,6 @@ export function SessionPage(): ReactNode {
       return;
     }
     void chat.sendMessage(content);
-  }
-
-  function handleUndoMove(): void {
-    if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
-    setPendingMove(null);
-    boardState.clearPreview();
   }
 
   const orientation = gameQuery.data?.userColor ?? 'white';
@@ -263,62 +85,18 @@ export function SessionPage(): ReactNode {
             onSelect={boardState.peekAt}
           />
         )}
-        <div className="session-board-column">
-          {showMiniBoard ? (
-            <MiniBoard fen={boardState.fen} size={96} onExpand={boardState.expandDock} />
-          ) : (
-            <CoachBoard
-              fen={boardState.fen}
-              orientation={orientation}
-              mode={boardState.mode}
-              arrows={boardState.arrows}
-              highlights={boardState.highlights}
-              onUserMove={handleUserMove}
-              onLocalMove={boardState.previewMove}
-              onArrowsChange={setBoardArrows}
-            />
-          )}
-          {pendingMove && (
-            <p className="undo-pill">
-              Sending {pendingMove.san}…{' '}
-              <button type="button" onClick={handleUndoMove}>
-                ↩︎ undo
-              </button>
-            </p>
-          )}
-          {boardState.mode === 'peek' && (
-            <p className="peek-pill">
-              exploring —{' '}
-              <button type="button" onClick={boardState.backToCoach}>
-                ⟲ back to coach
-              </button>
-            </p>
-          )}
-          {boardState.isAnchoredPreMove && (
-            <p className="played-move-pill">
-              {describePly(boardState.ply).color} played {sanForPly(sanMoves, boardState.ply)}{' '}
-              <button type="button" onClick={boardState.revealPlayedMove}>
-                reveal →
-              </button>
-            </p>
-          )}
-          {!isDesktop && (
-            <MoveStrip
-              sanMoves={sanMoves}
-              classifiedMoves={gameQuery.data?.classifiedMoves ?? []}
-              currentPly={boardState.ply}
-              momentPlies={[]}
-              onSelect={boardState.peekAt}
-            />
-          )}
-          <ExplorePanel
-            fen={boardState.fen}
-            mode={boardState.mode}
-            onEnterPeekMode={() => boardState.setMode('peek')}
-            engine={engine}
-          />
-          <PositionAnalysisPanel fen={boardState.fen} enabled={profileQuery.data?.showEngineAnalysis ?? false} />
-        </div>
+        <SessionBoardColumn
+          boardState={boardState}
+          orientation={orientation}
+          showMiniBoard={showMiniBoard}
+          sanMoves={sanMoves}
+          classifiedMoves={gameQuery.data?.classifiedMoves}
+          isDesktop={isDesktop}
+          engine={engine}
+          showEngineAnalysis={profileQuery.data?.showEngineAnalysis ?? false}
+          sendMessage={(content) => void chat.sendMessage(content)}
+          onArrowsChange={setBoardArrows}
+        />
         {session.status === 'paused_no_credits' ? (
           <div className="session-paused-card">
             <p>The session is saved. Add credits or your own API key to continue.</p>
