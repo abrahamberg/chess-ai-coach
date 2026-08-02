@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint *)",
+      "Bash(npm run typecheck *)",
+      "Bash(npm test *)",
+      "Bash(export DOCKER_HOST=\"unix:///run/user/1000/podman/podman.sock\")",
+      "Bash(curl -s http://localhost:*)",
+      "Bash(curl -s -i http://localhost:*)",
+      "Bash(curl -s localhost:*)",
+      "Bash(docker compose ps)",
+      "Bash(docker compose version)"
+    ]
+  }
+}
