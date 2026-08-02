@@ -18,7 +18,7 @@ export function insertSignupGrant(db: Kysely<Database>, userId: string): Promise
     .then(() => undefined);
 }
 
-/** Grants purchased credits (specs.md F6.3). `stripeEventId` carries the Stripe
+/** Grants purchased credits. `stripeEventId` carries the Stripe
  * event id and is UNIQUE on `credit_ledger` — the ON CONFLICT DO NOTHING makes a
  * webhook replay of the same event a safe no-op instead of double-crediting. */
 export function insertPurchase(

@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const CreditPackSchema = z.enum(['small', 'medium', 'large']);
 export type CreditPack = z.infer<typeof CreditPackSchema>;
 
-/** specs.md F6.3: credits granted per one-time Stripe Checkout pack purchase. */
+/** Credits granted per one-time Stripe Checkout pack purchase. */
 export const CREDIT_PACK_CREDITS: Record<CreditPack, number> = {
   small: 300,
   medium: 1000,

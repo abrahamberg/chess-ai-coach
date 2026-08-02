@@ -5,9 +5,9 @@ export interface PgnUploadFormProps {
   onSubmit: (body: Pick<ImportGameRequest, 'pgn' | 'source'>) => void;
 }
 
-/** specs.md F1.1 / design.md §4.2: "Upload" segment of the import control —
- * reads a .pgn file's text and hands it to the caller. No fetching here
- * (ImportPage owns the mutation), matching PgnPasteForm's pattern. */
+/** design.md §4.2: "Upload" segment of the import control — reads a .pgn
+ * file's text and hands it to the caller. No fetching here (ImportPage owns
+ * the mutation), matching PgnPasteForm's pattern. */
 export function PgnUploadForm({ onSubmit }: PgnUploadFormProps): ReactNode {
   const [error, setError] = useState<string | null>(null);
 

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { PgnUploadForm } from './PgnUploadForm.js';
 
-describe('PgnUploadForm (design.md §4.2, specs.md F1.1)', () => {
+describe('PgnUploadForm (design.md §4.2)', () => {
   test('reads the selected .pgn file and submits its text content', async () => {
     const onSubmit = vi.fn();
     const user = userEvent.setup();

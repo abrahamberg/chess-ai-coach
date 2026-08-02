@@ -14,8 +14,8 @@ export interface StripeConfig {
 export interface CreateCheckoutSessionParams {
   pack: CreditPack;
   userId: string;
-  /** specs.md F6.3 pack size — carried as Checkout Session metadata so the
-   * webhook can credit the ledger without re-deriving it from the price id. */
+  /** Pack size — carried as Checkout Session metadata so the webhook can
+   * credit the ledger without re-deriving it from the price id. */
   credits: number;
 }
 

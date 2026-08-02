@@ -19,12 +19,13 @@ const KIND_PRIORITY: Record<CandidateMomentKind, number> = {
 
 /**
  * Finds candidate critical-moment plies for the analysis-planner LLM to
- * prioritize (specs.md §4.2.3 rules a and c; rule b's former multiPv
- * line-gap detection was folded into classify.ts's `miss` quality tier as
- * of the 2026-07-30 threshold-retuning spec -- any move it would have
- * flagged is already tagged `miss` and reaches the planner via rule a
- * instead. Rule d, planner-selected instructive moments with no eval swing,
- * is the LLM's job, not this pure function's).
+ * prioritize: user mistakes/blunders and turning points (eval swings). A
+ * third rule — multiPv line-gap detection for missed chances — was folded
+ * into classify.ts's `miss` quality tier as of the 2026-07-30
+ * threshold-retuning; any move it would have flagged is already tagged
+ * `miss` and reaches the planner via the user-mistake rule instead.
+ * Planner-selected instructive moments with no eval swing are the LLM's
+ * job, not this pure function's.
  *
  * `evals[i]` is the engine evaluation of the position at `moves[i - 1]`'s
  * "before" state (index-aligned the same way as `classifyMoves`), needed
