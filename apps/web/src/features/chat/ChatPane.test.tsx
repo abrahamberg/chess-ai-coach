@@ -39,6 +39,16 @@ describe('ChatPane', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  test('allows an empty-text send when a diverged line is pending', async () => {
+    const onSend = vi.fn();
+    const user = userEvent.setup();
+    render(<ChatPane sessionId="test-session" messages={[]} activeToolName={null} onSend={onSend} hasPendingLine />);
+
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    expect(onSend).toHaveBeenCalledWith('');
+  });
+
   test('forwards onSelectPly through to MessageList', () => {
     const onSelectPly = vi.fn();
     render(

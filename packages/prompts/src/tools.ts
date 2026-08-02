@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { FindingSchema, FocusAreaUpdateSchema, ThreadSchema } from '@chess-coach/shared';
 
-/** architecture §7.1 — parameter schemas for the coach agent's 11 tools. Pure
+/** architecture §7.1 — parameter schemas for the coach agent's 13 tools. Pure
  * (no execute functions here); apps/api/src/services/coach-tools.ts binds
  * these to real services to build the AI SDK ToolSet. */
 
@@ -73,3 +73,108 @@ export const recordMoveNoteParameters = z
  * { moveNumber, color } address as show_position/check_position (final
  * review #1). */
 export const recallMoveParameters = showPositionParameters;
+
+/** Armed right before a single-move Socratic question ("what would you play
+ * here?") so the client sends the student's next board move immediately
+ * instead of folding it into a diverged line. Takes no
+ * arguments — it's a pure signal, not an address. */
+export const expectMoveParameters = z.object({});
+
+/** Sets up or continues a hypothetical continuation off the CURRENT
+ * position — e.g. "if Black had played a4 instead". No { moveNumber, color }
+ * address like the other move-referencing tools: the base position is
+ * implicit (continues an already-active hypothetical on the client, or
+ * falls back to wherever the board currently is) rather than a real-game
+ * move, which a continuing hypothetical may no longer have. */
+export const hypotheticalLineParameters = z.object({
+  moves: z.array(z.string().min(1)).min(1).max(12)
+});
+
+export interface CoachToolSpec {
+  name: string;
+  description: string;
+}
+
+/**
+ * Single source of truth for what the model is told about each tool — one
+ * canonical description per tool, reused verbatim as both the `tool({
+ * description })` sent with the API's tool-calling schema
+ * (apps/api/src/services/coach-tools.ts) AND the "Your tools and when to use
+ * them" bullet rendered into the cached static system prompt
+ * (coach-system.ts's yourToolsAndWhenToUseThem()). Previously these were two
+ * hand-written copies that had already drifted apart; this is the fix. Order
+ * here is the order they're presented to the model in.
+ */
+export const COACH_TOOL_SPECS: readonly CoachToolSpec[] = [
+  {
+    name: 'show_position',
+    description:
+      'Move the student\'s board to a given position, addressed by move number and color. Use standard chess move-pair numbering everywhere, in your prose AND in this tool: "move 18" means White\'s 18th move, or say "move 18 for Black" — never a bare ply. show_position takes exactly that: { moveNumber, color } — e.g. White\'s move 18 is { moveNumber: 18, color: "white" }, Black\'s move 18 is { moveNumber: 18, color: "black" }. There is no arithmetic to do; say the same move you\'d say out loud. For the game\'s starting position, use { moveNumber: 0, color: null }. When in doubt, name the move by its SAN instead of a number. Always call this before discussing a new position. Its result includes the position\'s real "fen" — that is the ONLY position you actually know; treat it as ground truth and never assume you remember the board from the PGN or from earlier in the conversation.'
+  },
+  {
+    name: 'check_position',
+    description:
+      'Silently look up the FEN for any move in THIS game, addressed the same way as show_position ({ moveNumber, color }; the game start is { moveNumber: 0, color: null }). Does not move the student\'s board. Use this to get a verified fen before calling get_engine_analysis, or to check a claim about the position before you say it out loud. NEVER invent or reconstruct a FEN from memory — always get it from a show_position result or check_position first.'
+  },
+  {
+    name: 'annotate_board',
+    description:
+      'Draw arrows/highlights on the board when words alone are ambiguous (piece routes, weak squares, pins). Use sparingly — one idea per annotation. Cleared automatically on the next show_position.'
+  },
+  {
+    name: 'expect_move',
+    description:
+      "Call this right before asking a single 'what would you play here?' question, when you expect exactly one move as the answer — the student's next board move is sent to you immediately instead of them building a longer line first. Clears itself after that one move — call it again next time you want the same instant behavior."
+  },
+  {
+    name: 'hypothetical_line',
+    description:
+      'Set up or continue a diverged line off the CURRENT position (call show_position first if you haven\'t already) — e.g. "if Black had played a4 instead". Pass the SAN move(s) for the hypothetical; the client validates and applies them against real chess rules and reports back the resulting position — never invent a resulting FEN yourself. Pass further moves to keep extending a hypothetical already in progress. This never touches the real game or its move list.'
+  },
+  {
+    name: 'get_engine_analysis',
+    description:
+      "Runs the engine on a position and returns the full structured analysis: best lines with eval and principal variation, hanging/under-defended pieces, forks, capture opportunities, pawn structure, mobility, and more. The CURRENT position (shown under '## Current position' above, if raw engine analysis is enabled for this student) is already analyzed for you — don't spend a call re-fetching it. Use this tool for OTHER positions: a candidate line, an earlier or later move (get its fen from check_position first), or anything you're comparing against the current one. Pass a fen you got from show_position or check_position — never one you reconstructed yourself. You get at most 2 checks per reply, so use precise moments and rely on your preparation notes for everything they already cover."
+  },
+  {
+    name: 'get_user_profile',
+    description:
+      'Read the student\'s focus areas, recent findings, and session history — call if you need more history than the summary already given above (e.g., "have we seen this mistake before?").'
+  },
+  {
+    name: 'record_finding',
+    description:
+      'Record a durable observation about the student\'s thinking or habits — whenever the session reveals a mistake pattern (isPositive: false) or clear improvement (isPositive: true). Write the description as a coach\'s note: specific, one sentence, about their thinking. Record 3–8 findings per session, as they happen, not all at the end.'
+  },
+  {
+    name: 'propose_focus_area_update',
+    description:
+      'Create, progress, regress, or resolve a focus area based on evidence this session — when this session gives real evidence that a focus area improved/regressed, or a new recurring pattern (2+ occurrences across sessions) deserves focus.'
+  },
+  {
+    name: 'update_threads',
+    description:
+      'Backstage conversation-thread ledger (see Conversation threading below). Call it ONLY when you set a topic aside for later, resume one, or a parked one resolves. Ordinary back-and-forth on the current topic never touches the ledger. Silent; the student never sees it.'
+  },
+  {
+    name: 'record_move_note',
+    description:
+      'Save a one-sentence note on a move you\'re about to leave, for your own later reference (e.g. "missed Rxd5, discussed the pin, assigned as homework") — this is how you\'ll remember it later without re-reading the whole discussion. Addressed the same way as show_position/check_position ({ moveNumber, color }; e.g. White\'s move 12 is { moveNumber: 12, color: "white" }) — never a bare ply. Worth calling most of the time you leave a moment — not mechanically every single time.'
+  },
+  {
+    name: 'recall_move',
+    description:
+      'Look up more detail on a specific earlier move in THIS session than the one-line summary already gives you (in "Other moves discussed" below) — call this when that summary isn\'t enough to answer the student. Addressed the same way as show_position/check_position ({ moveNumber, color }) — never a bare ply.'
+  },
+  {
+    name: 'end_session',
+    description:
+      'Mark the session complete and trigger the post-session progress summary — call when the walkthrough is done and you have wrapped up. Include a 2–3 sentence summary in the student\'s words and one concrete homework task tied to their focus areas. Before calling it, check your thread ledger: every open or parked thread must be either resolved or deliberately let go (it is fine to close one briefly: "we didn\'t finish the h3 line — look at it at home, it\'s in your homework").'
+  }
+];
+
+export function coachToolDescription(name: string): string {
+  const spec = COACH_TOOL_SPECS.find((s) => s.name === name);
+  if (!spec) throw new Error(`no description registered for tool "${name}"`);
+  return spec.description;
+}

@@ -3,6 +3,9 @@ import type { CoachMessage } from '../../hooks/useCoachChat.js';
 import { AnnotationNote } from './AnnotationNote.js';
 import { ArrowToken } from './ArrowToken.js';
 import { splitArrowTokens } from './arrowToken.js';
+import { DivergedLineMessage } from './DivergedLineMessage.js';
+import { DivergedLineStart } from './DivergedLineStart.js';
+import { decodeDivergedLine, decodeDivergedLineStart } from './divergedLine.js';
 import { MoveCard } from './MoveCard.js';
 import { PositionContextMessage } from './PositionContextMessage.js';
 import { decodeAnnotationNote, decodePositionContext, decodePositionDivider } from './positionDivider.js';
@@ -79,6 +82,23 @@ export function MessageList({ messages, onScrollUp, onSelectPly }: MessageListPr
                 color={context.color}
                 san={context.san}
                 content={context.content}
+              />
+            );
+          }
+          const divergedLineStart = decodeDivergedLineStart(message.text);
+          if (divergedLineStart) {
+            return (
+              <DivergedLineStart key={message.id} basePly={divergedLineStart.basePly} sanMoves={divergedLineStart.sanMoves} />
+            );
+          }
+          const divergedLine = decodeDivergedLine(message.text);
+          if (divergedLine) {
+            return (
+              <DivergedLineMessage
+                key={message.id}
+                basePly={divergedLine.basePly}
+                sanText={divergedLine.sanText}
+                content={divergedLine.content}
               />
             );
           }

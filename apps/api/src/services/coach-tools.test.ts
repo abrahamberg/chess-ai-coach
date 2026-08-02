@@ -84,7 +84,7 @@ describe('buildCoachTools', () => {
     };
   }
 
-  test('exposes all 11 architecture §7.1 tools', async () => {
+  test('exposes all 13 architecture §7.1 tools', async () => {
     const ctx = await setupCtx();
     const tools = buildCoachTools(ctx, makeDeps());
 
@@ -93,8 +93,10 @@ describe('buildCoachTools', () => {
         'annotate_board',
         'check_position',
         'end_session',
+        'expect_move',
         'get_engine_analysis',
         'get_user_profile',
+        'hypothetical_line',
         'propose_focus_area_update',
         'recall_move',
         'record_finding',
@@ -105,12 +107,14 @@ describe('buildCoachTools', () => {
     );
   });
 
-  test('show_position and annotate_board have no execute (client tools)', async () => {
+  test('show_position, annotate_board, expect_move, and hypothetical_line have no execute (client tools)', async () => {
     const ctx = await setupCtx();
     const tools = buildCoachTools(ctx, makeDeps());
 
     expect(tools.show_position?.execute).toBeUndefined();
     expect(tools.annotate_board?.execute).toBeUndefined();
+    expect(tools.expect_move?.execute).toBeUndefined();
+    expect(tools.hypothetical_line?.execute).toBeUndefined();
   });
 
   describe('get_engine_analysis', () => {

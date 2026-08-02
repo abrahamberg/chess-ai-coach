@@ -30,7 +30,7 @@ describe('CoachBoard', () => {
     });
 
     expect(accepted).toBe(true);
-    expect(onUserMove).toHaveBeenCalledWith('e4', expect.stringContaining('4P3'));
+    expect(onUserMove).toHaveBeenCalledWith('e4', expect.stringContaining('4P3'), 'e2e4');
   });
 
   test('peek mode: a legal move updates the board locally but never calls onUserMove', () => {

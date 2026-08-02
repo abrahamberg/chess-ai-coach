@@ -1,9 +1,12 @@
 import {
   annotateBoardParameters,
   checkPositionParameters,
+  coachToolDescription,
   endSessionParameters,
+  expectMoveParameters,
   getEngineAnalysisParameters,
   getUserProfileParameters,
+  hypotheticalLineParameters,
   proposeFocusAreaUpdateParameters,
   recallMoveParameters,
   recordFindingParameters,
@@ -62,69 +65,71 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
 
   return {
     show_position: tool({
-      description:
-        "Move the student's board to a given position, addressed by move number and color (e.g. White's move 12 is { moveNumber: 12, color: 'white' }; the game start is { moveNumber: 0, color: null }). Always call this before discussing a new position.",
+      description: coachToolDescription('show_position'),
       parameters: showPositionParameters
     }),
     annotate_board: tool({
-      description: 'Draw arrows/highlights on the board. Cleared on the next show_position.',
+      description: coachToolDescription('annotate_board'),
       parameters: annotateBoardParameters
     }),
+    expect_move: tool({
+      description: coachToolDescription('expect_move'),
+      parameters: expectMoveParameters
+    }),
+    hypothetical_line: tool({
+      description: coachToolDescription('hypothetical_line'),
+      parameters: hypotheticalLineParameters
+    }),
     check_position: tool({
-      description:
-        "Silently look up the FEN for any move in THIS game, addressed the same way as show_position ({ moveNumber, color }; the game start is { moveNumber: 0, color: null }). Does not move the student's board. Use this to get a verified fen before calling get_engine_analysis, or to check a claim about the position before you say it out loud — never guess or reconstruct a FEN from memory.",
+      description: coachToolDescription('check_position'),
       parameters: checkPositionParameters,
       execute: withTurnGuards(guardState, 'check_position', (args: { moveNumber: number; color: 'white' | 'black' | null }) =>
         checkPosition(deps, ctx, args)
       )
     }),
     get_engine_analysis: tool({
-      description:
-        "Runs the engine on a position and returns the full structured analysis: best lines with eval and principal variation, hanging/under-defended pieces, forks, capture opportunities, pawn structure, mobility, and more. The CURRENT position (shown under '## Current position' above, if raw engine analysis is enabled for this student) is already analyzed for you — don't spend a call re-fetching it. Use this tool for OTHER positions: a candidate line, an earlier or later move (get its fen from check_position first), or anything you're comparing against the current one.",
+      description: coachToolDescription('get_engine_analysis'),
       parameters: getEngineAnalysisParameters,
       execute: withTurnGuards(guardState, 'get_engine_analysis', (args: EngineAnalysisArgs) => getEngineAnalysis(deps, args))
     }),
     get_user_profile: tool({
-      description: "Read the student's focus areas, recent findings, and session history.",
+      description: coachToolDescription('get_user_profile'),
       parameters: getUserProfileParameters,
       execute: withTurnGuards(guardState, 'get_user_profile', () => getUserProfileText(deps.db, ctx.userId))
     }),
     record_finding: tool({
-      description: "Record a durable observation about the student's thinking or habits.",
+      description: coachToolDescription('record_finding'),
       parameters: recordFindingParameters,
       execute: withTurnGuards(guardState, 'record_finding', (finding: Finding) =>
         recordFindingTool(deps.db, ctx, finding)
       )
     }),
     propose_focus_area_update: tool({
-      description: 'Create, progress, regress, or resolve a focus area based on evidence this session.',
+      description: coachToolDescription('propose_focus_area_update'),
       parameters: proposeFocusAreaUpdateParameters,
       execute: withTurnGuards(guardState, 'propose_focus_area_update', (update: FocusAreaUpdate) =>
         progressService.applyFocusAreaUpdate(deps.db, ctx.userId, update)
       )
     }),
     update_threads: tool({
-      description:
-        "Backstage conversation-thread ledger. Call only when parking, resuming, or resolving a topic.",
+      description: coachToolDescription('update_threads'),
       parameters: updateThreadsParameters,
       execute: withTurnGuards(guardState, 'update_threads', (args: { threads: Thread[] }) =>
         createThreadsService(deps.db).replace(ctx.sessionId, args.threads)
       )
     }),
     record_move_note: tool({
-      description:
-        "Save a one-sentence note on a move you're about to leave, for your own later reference (e.g. \"missed Rxd5, discussed the pin, assigned as homework\"). Addressed the same way as show_position/check_position ({ moveNumber, color }; e.g. White's move 12 is { moveNumber: 12, color: 'white' }) — never a bare ply. Worth calling most of the time you leave a moment — not mechanically every single time.",
+      description: coachToolDescription('record_move_note'),
       parameters: recordMoveNoteParameters,
       execute: withTurnGuards(guardState, 'record_move_note', (args: MoveNoteArgs) => recordMoveNote(deps.db, ctx, args))
     }),
     recall_move: tool({
-      description:
-        "Look up more detail on a specific earlier move in THIS session than the one-line summary already gives you. Addressed the same way as show_position/check_position ({ moveNumber, color }) — never a bare ply.",
+      description: coachToolDescription('recall_move'),
       parameters: recallMoveParameters,
       execute: withTurnGuards(guardState, 'recall_move', (args: MoveAddress) => recallMoveTool(deps, ctx, args))
     }),
     end_session: tool({
-      description: 'Mark the session complete and trigger the post-session progress summary.',
+      description: coachToolDescription('end_session'),
       parameters: endSessionParameters,
       execute: withTurnGuards(guardState, 'end_session', () => endSessionTool(deps, ctx))
     })

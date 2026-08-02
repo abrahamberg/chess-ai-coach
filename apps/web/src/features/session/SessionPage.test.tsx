@@ -153,12 +153,11 @@ describe('SessionPage', () => {
     expect(options?.boardOrientation).toBe('black');
   });
 
-  test('dragging a move in answer mode shows a 2s undo pill, then sends [board_move]', async () => {
+  test('dragging a move in answer mode (no expect_move signal) builds a diverged line locally, sending nothing', async () => {
     const fetchMock = mockFetch({}, (path) =>
       path === '/api/sessions/session-1/messages' ? streamResponse([formatDataStreamPart('text', 'ok')]) : undefined
     );
     vi.stubGlobal('fetch', fetchMock);
-    vi.useFakeTimers();
     renderSessionPage();
 
     await vi.waitFor(() => expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument());
@@ -171,49 +170,61 @@ describe('SessionPage', () => {
       } as PieceDropHandlerArgs);
     });
 
-    expect(screen.getByText(/sending e4/i)).toBeInTheDocument();
+    expect(screen.queryByText(/sending e4/i)).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some((call) => call[0] === '/api/sessions/session-1/messages')).toBe(false);
+    expect(await screen.findByText(/diverged line/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /undo last move/i })).toBeInTheDocument();
+  });
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
+  test('clicking "undo last move" pops the hypothetical move and, once empty, exits the hypothetical', async () => {
+    vi.stubGlobal('fetch', mockFetch());
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await vi.waitFor(() => expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument());
+    const options = capturedOptions.at(-1);
+    act(() => {
+      options?.onPieceDrop?.({
+        piece: { pieceType: 'wP' },
+        sourceSquare: 'e2',
+        targetSquare: 'e4'
+      } as PieceDropHandlerArgs);
     });
+    expect(await screen.findByRole('button', { name: /undo last move/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /undo last move/i }));
+
+    expect(screen.queryByText(/diverged line/i)).not.toBeInTheDocument();
+  });
+
+  test('sending a message while a diverged line is pending bundles the line + comment into one [diverged_line] message', async () => {
+    const fetchMock = mockFetch({}, (path) =>
+      path === '/api/sessions/session-1/messages' ? streamResponse([formatDataStreamPart('text', 'ok')]) : undefined
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await vi.waitFor(() => expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument());
+    const options = capturedOptions.at(-1);
+    act(() => {
+      options?.onPieceDrop?.({
+        piece: { pieceType: 'wP' },
+        sourceSquare: 'e2',
+        targetSquare: 'e4'
+      } as PieceDropHandlerArgs);
+    });
+    await screen.findByText(/diverged line/i);
+
+    await user.type(screen.getByRole('textbox', { name: /reply/i }), 'what about this instead?');
+    await user.click(screen.getByRole('button', { name: /send/i }));
 
     const messagesCall = fetchMock.mock.calls.find((call) => call[0] === '/api/sessions/session-1/messages');
     if (!messagesCall) throw new Error('expected a call to /api/sessions/session-1/messages');
     const body = JSON.parse((messagesCall[1] as RequestInit).body as string) as { content: string };
-    expect(body.content).toMatch(/^\[board_move\] I played e4 \(position now: .+\)$/);
-    vi.useRealTimers();
-  });
-
-  test('clicking undo within the 2s window cancels the send', async () => {
-    const fetchMock = mockFetch({}, (path) =>
-      path === '/api/sessions/session-1/messages' ? streamResponse([formatDataStreamPart('text', 'ok')]) : undefined
-    );
-    vi.stubGlobal('fetch', fetchMock);
-    vi.useFakeTimers();
-    renderSessionPage();
-
-    await vi.waitFor(() => expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument());
-    const options = capturedOptions.at(-1);
-    act(() => {
-      options?.onPieceDrop?.({
-        piece: { pieceType: 'wP' },
-        sourceSquare: 'e2',
-        targetSquare: 'e4'
-      } as PieceDropHandlerArgs);
-    });
-
-    act(() => {
-      screen.getByRole('button', { name: /undo/i }).click();
-    });
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
-    });
-
-    expect(fetchMock.mock.calls.some((call) => call[0] === '/api/sessions/session-1/messages')).toBe(false);
-    expect(screen.queryByText(/sending e4/i)).not.toBeInTheDocument();
-    vi.useRealTimers();
+    expect(body.content).toMatch(/^\[diverged_line\] Exploring from move 1 \(white\): 1\.e4 \(position now: .+\): what about this instead\?$/);
+    // The line stays active after send — the panel is still showing.
+    expect(screen.getByText(/diverged line/i)).toBeInTheDocument();
   });
 
   test('a completed session renders the summary card instead of the board and chat', async () => {

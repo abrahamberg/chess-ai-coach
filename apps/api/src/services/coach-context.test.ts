@@ -100,6 +100,16 @@ describe('coach-context', () => {
       const jump = await resolvePositionContextJump(db, gameId, 'what should I play here?');
       expect(jump).toBeNull();
     });
+
+    test('a [diverged_line] turn (client-only hypothetical) is never mistaken for a jump — the real game position must stay put', async () => {
+      const { gameId } = await seedSession();
+      const jump = await resolvePositionContextJump(
+        db,
+        gameId,
+        '[diverged_line] Exploring from move 3 (white): 3.Bc4 (position now: some-fen): what if instead?'
+      );
+      expect(jump).toBeNull();
+    });
   });
 
   describe('closeEpisodeIfNeeded', () => {

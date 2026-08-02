@@ -192,6 +192,76 @@ describe('useCoachChat', () => {
     expect(result.current.messages.some((m) => m.text.startsWith('[annotation_note]'))).toBe(false);
   });
 
+  test('a hypothetical_line tool call inserts a [diverged_line_start] announcement built from the tool RESULT, not the raw args', async () => {
+    const onToolCall = vi.fn().mockReturnValue({ ok: true, basePly: 4, moves: [{ san: 'a4' }], resultFen: 'result-fen' });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        streamResponse([
+          formatDataStreamPart('tool_call', {
+            toolCallId: 'call-7',
+            toolName: 'hypothetical_line',
+            args: { moves: ['a4'] }
+          })
+        ])
+      )
+      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
+    await act(async () => {
+      await result.current.sendMessage('what if a4 instead?');
+    });
+
+    const announcement = result.current.messages.find((m) => m.text.startsWith('[diverged_line_start]'));
+    expect(announcement?.text).toBe(
+      '[diverged_line_start]|{"basePly":4,"sanMoves":["a4"],"resultFen":"result-fen"}'
+    );
+  });
+
+  test('a hypothetical_line tool call that fails with no applied moves inserts no announcement', async () => {
+    const onToolCall = vi.fn().mockReturnValue({ ok: false, basePly: 4, moves: [], error: 'Illegal move: Zz9' });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        streamResponse([
+          formatDataStreamPart('tool_call', {
+            toolCallId: 'call-8',
+            toolName: 'hypothetical_line',
+            args: { moves: ['Zz9'] }
+          })
+        ])
+      )
+      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
+    await act(async () => {
+      await result.current.sendMessage('what if instead?');
+    });
+
+    expect(result.current.messages.some((m) => m.text.startsWith('[diverged_line_start]'))).toBe(false);
+  });
+
+  test('an expect_move tool call inserts no chat message', async () => {
+    const onToolCall = vi.fn().mockReturnValue({ acknowledged: true });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        streamResponse([formatDataStreamPart('tool_call', { toolCallId: 'call-9', toolName: 'expect_move', args: {} })])
+      )
+      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
+    await act(async () => {
+      await result.current.sendMessage('what would you play?');
+    });
+
+    expect(result.current.messages.some((m) => m.text.startsWith('[diverged_line_start]'))).toBe(false);
+    expect(onToolCall).toHaveBeenCalledWith({ toolCallId: 'call-9', toolName: 'expect_move', args: {} });
+  });
+
   test('design.md §5.3: activeToolName is set while a visible tool call is in flight, then cleared once text resumes', async () => {
     const encoder = new TextEncoder();
     let enqueueText: (() => void) | undefined;

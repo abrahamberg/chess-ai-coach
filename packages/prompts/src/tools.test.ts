@@ -2,9 +2,13 @@ import { describe, expect, test } from 'vitest';
 import {
   annotateBoardParameters,
   checkPositionParameters,
+  COACH_TOOL_SPECS,
+  coachToolDescription,
   endSessionParameters,
+  expectMoveParameters,
   getEngineAnalysisParameters,
   getUserProfileParameters,
+  hypotheticalLineParameters,
   recordFindingParameters,
   proposeFocusAreaUpdateParameters,
   recallMoveParameters,
@@ -78,6 +82,18 @@ describe('coach agent tool parameter schemas (architecture §7.1)', () => {
     );
     expect(endSessionParameters.safeParse({ summary: 'x' }).success).toBe(false);
   });
+
+  test('expect_move: {}', () => {
+    expect(expectMoveParameters.safeParse({}).success).toBe(true);
+  });
+
+  test('hypothetical_line: { moves }, a non-empty list of SAN strings, no { moveNumber, color } address (the base position is implicit)', () => {
+    expect(hypotheticalLineParameters.safeParse({ moves: ['a4'] }).success).toBe(true);
+    expect(hypotheticalLineParameters.safeParse({ moves: ['a4', 'Nf6'] }).success).toBe(true);
+    expect(hypotheticalLineParameters.safeParse({ moves: [] }).success).toBe(false);
+    expect(hypotheticalLineParameters.safeParse({ moves: [''] }).success).toBe(false);
+    expect(hypotheticalLineParameters.safeParse({}).success).toBe(false);
+  });
 });
 
 describe('record_move_note: { moveNumber, color, note } — same address as show_position, never a bare ply (final review #1)', () => {
@@ -108,5 +124,40 @@ describe('recall_move: { moveNumber, color } — same address as show_position, 
   test('rejects a bare ply and a missing address', () => {
     expect(recallMoveParameters.safeParse({ ply: 22 }).success).toBe(false);
     expect(recallMoveParameters.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('COACH_TOOL_SPECS / coachToolDescription — single source of truth for tool descriptions', () => {
+  const EXPECTED_NAMES = [
+    'show_position',
+    'check_position',
+    'annotate_board',
+    'expect_move',
+    'hypothetical_line',
+    'get_engine_analysis',
+    'get_user_profile',
+    'record_finding',
+    'propose_focus_area_update',
+    'update_threads',
+    'record_move_note',
+    'recall_move',
+    'end_session'
+  ];
+
+  test('has exactly the coach agent\'s 13 tools, each with a unique name and a non-empty description', () => {
+    expect(COACH_TOOL_SPECS.map((spec) => spec.name)).toEqual(EXPECTED_NAMES);
+    for (const spec of COACH_TOOL_SPECS) {
+      expect(spec.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('coachToolDescription returns the matching spec\'s description', () => {
+    expect(coachToolDescription('show_position')).toBe(
+      COACH_TOOL_SPECS.find((spec) => spec.name === 'show_position')?.description
+    );
+  });
+
+  test('coachToolDescription throws on an unregistered tool name', () => {
+    expect(() => coachToolDescription('not_a_real_tool')).toThrow(/not_a_real_tool/);
   });
 });

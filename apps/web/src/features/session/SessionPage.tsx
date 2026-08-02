@@ -2,9 +2,11 @@ import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useIsBoardSideBySide } from '../../hooks/useIsBoardSideBySide.js';
 import { useIsDesktop } from '../../hooks/useIsDesktop.js';
+import { DivergedLinePanel } from '../board/DivergedLinePanel.js';
 import { MoveExplorer } from '../board/MoveExplorer.js';
 import type { ArrowRef } from '../chat/arrowToken.js';
 import { ChatPane } from '../chat/ChatPane.js';
+import { encodeDivergedLine } from '../chat/divergedLine.js';
 import { encodePositionContext, sanForPly } from '../chat/positionDivider.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
 import { SessionBoardColumn } from './SessionBoardColumn.js';
@@ -22,8 +24,21 @@ export function SessionPage(): ReactNode {
   const isSideBySide = useIsBoardSideBySide();
   const isDesktop = useIsDesktop();
 
-  const { sessionQuery, gameQuery, profileQuery, sanMoves, boardState, engine, chat, handleReset } =
-    useSessionPageData(sessionId);
+  const {
+    sessionQuery,
+    gameQuery,
+    profileQuery,
+    sanMoves,
+    boardState,
+    divergedLine,
+    currentRealPosition,
+    peekAt,
+    autoplayIntervalMs,
+    setAutoplayIntervalMs,
+    engine,
+    chat,
+    handleReset
+  } = useSessionPageData(sessionId);
 
   const [boardArrows, setBoardArrows] = useState<ArrowRef[]>([]);
 
@@ -55,6 +70,11 @@ export function SessionPage(): ReactNode {
   }
 
   function handleSendMessage(content: string): void {
+    if (divergedLine.line) {
+      void chat.sendMessage(encodeDivergedLine(divergedLine.line, content));
+      // The line stays active — the coach may continue the hypothetical.
+      return;
+    }
     if (boardState.mode === 'peek') {
       const san = sanForPly(sanMoves, boardState.ply) ?? '';
       void chat.sendMessage(encodePositionContext(boardState.ply, san, content));
@@ -77,16 +97,28 @@ export function SessionPage(): ReactNode {
         onReset={handleReset}
       />
       <div className={isSideBySide ? 'session-body desktop' : 'session-body mobile'}>
-        {isDesktop && (
-          <MoveExplorer
-            sanMoves={sanMoves}
-            classifiedMoves={gameQuery.data?.classifiedMoves ?? []}
-            currentPly={boardState.ply}
-            onSelect={boardState.peekAt}
-          />
-        )}
+        {isDesktop &&
+          (divergedLine.line ? (
+            <DivergedLinePanel
+              line={divergedLine.line}
+              stepIndex={divergedLine.stepIndex}
+              onSelectStep={divergedLine.previewStep}
+              onExit={divergedLine.exit}
+              autoplayIntervalMs={autoplayIntervalMs}
+              onChangeAutoplayInterval={setAutoplayIntervalMs}
+            />
+          ) : (
+            <MoveExplorer
+              sanMoves={sanMoves}
+              classifiedMoves={gameQuery.data?.classifiedMoves ?? []}
+              currentPly={boardState.ply}
+              onSelect={peekAt}
+            />
+          ))}
         <SessionBoardColumn
           boardState={boardState}
+          divergedLine={divergedLine}
+          currentRealPosition={currentRealPosition}
           orientation={orientation}
           showMiniBoard={showMiniBoard}
           sanMoves={sanMoves}
@@ -94,6 +126,8 @@ export function SessionPage(): ReactNode {
           isDesktop={isDesktop}
           engine={engine}
           showEngineAnalysis={profileQuery.data?.showEngineAnalysis ?? false}
+          autoplayIntervalMs={autoplayIntervalMs}
+          onChangeAutoplayInterval={setAutoplayIntervalMs}
           sendMessage={(content) => void chat.sendMessage(content)}
           onArrowsChange={setBoardArrows}
         />
@@ -112,8 +146,9 @@ export function SessionPage(): ReactNode {
             isThinking={chat.isThinking}
             onSend={handleSendMessage}
             onScrollUp={boardState.collapseDock}
-            onSelectPly={boardState.peekAt}
+            onSelectPly={peekAt}
             boardArrows={boardArrows}
+            hasPendingLine={Boolean(divergedLine.line)}
           />
         )}
       </div>

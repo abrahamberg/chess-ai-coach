@@ -1,0 +1,46 @@
+.diverged-line-panel {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid var(--annotate-2);
+}
+
+.diverged-line-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.diverged-line-panel__list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diverged-line-panel__list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.diverged-line-panel__number {
+  color: var(--text-muted);
+  min-width: 24px;
+}
+
+.diverged-line-panel__autoplay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.diverged-line-panel__autoplay input {
+  width: 64px;
+}

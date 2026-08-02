@@ -22,7 +22,7 @@ export interface CoachBoardProps {
   mode: 'answer' | 'peek';
   arrows?: BoardArrow[];
   highlights?: BoardHighlight[];
-  onUserMove?: (san: string, fen: string) => void;
+  onUserMove?: (san: string, fen: string, uci: string) => void;
   /** Fired with the student's own right-click-drawn arrows (react-chessboard's
    * built-in drawing, separate from the coach-controlled `arrows` prop) —
    * design.md §5.4/§5.7: lets the composer turn a drawn arrow into an inline
@@ -66,7 +66,7 @@ export function CoachBoard({
 
     onLocalMove?.(chess.fen());
     if (mode === 'answer') {
-      onUserMove?.(move.san, chess.fen());
+      onUserMove?.(move.san, chess.fen(), `${move.from}${move.to}${move.promotion ?? ''}`);
     }
     return true;
   }

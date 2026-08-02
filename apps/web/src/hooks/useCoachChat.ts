@@ -1,6 +1,7 @@
 import { moveRefToPly } from '@chess-coach/chess-analysis';
 import { processDataStream } from 'ai';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { encodeDivergedLineStart } from '../features/chat/divergedLine.js';
 import { encodeAnnotationNote, encodePositionDivider, sanForPly, type AnnotationNoteState } from '../features/chat/positionDivider.js';
 
 export interface CoachMessage {
@@ -112,6 +113,23 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
               }
             }
             const result = options.onToolCall?.(toolCall);
+            if (toolCall.toolName === 'hypothetical_line' && result !== undefined) {
+              const hypothetical = result as { ok: boolean; basePly: number; moves: { san: string }[]; resultFen?: string };
+              if (hypothetical.moves.length > 0) {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    text: encodeDivergedLineStart({
+                      basePly: hypothetical.basePly,
+                      sanMoves: hypothetical.moves.map((move) => move.san),
+                      resultFen: hypothetical.resultFen ?? ''
+                    })
+                  }
+                ]);
+              }
+            }
             if (result !== undefined) {
               await postTurn({
                 clientToolResult: { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, result }

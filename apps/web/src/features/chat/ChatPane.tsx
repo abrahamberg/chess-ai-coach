@@ -25,6 +25,10 @@ export interface ChatPaneProps {
    * the reply box as chips — CoachBoard's onArrowsChange, lifted by the
    * parent (SessionPage). */
   boardArrows?: ArrowRef[];
+  /** True while a diverged line is pending — Send should be
+   * allowed even with an empty text draft, since the line itself (bundled
+   * in by the parent's onSend) is the content being submitted. */
+  hasPendingLine?: boolean;
 }
 
 /** Composes MessageList + ToolActivity + the reply input. No fetching — the
@@ -40,7 +44,8 @@ export function ChatPane({
   onSend,
   onScrollUp,
   onSelectPly,
-  boardArrows = NO_ARROWS
+  boardArrows = NO_ARROWS,
+  hasPendingLine = false
 }: ChatPaneProps): ReactNode {
   const [parts, setParts] = useState<DraftPart[]>(createEmptyDraft);
   const [isDebugOpen, setIsDebugOpen] = useState(false);
@@ -54,7 +59,7 @@ export function ChatPane({
 
   function handleSubmit(event: FormEvent): void {
     event.preventDefault();
-    if (isDraftEmpty(parts)) return;
+    if (isDraftEmpty(parts) && !hasPendingLine) return;
     onSend(serializeDraft(parts).trim());
     setParts(createEmptyDraft());
   }

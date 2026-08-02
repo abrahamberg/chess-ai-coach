@@ -145,6 +145,42 @@ describe('MessageList', () => {
     expect(screen.queryByText(/\[e2-e4\]/)).not.toBeInTheDocument();
   });
 
+  test('renders a [diverged_line_start] sentinel announcing a coach-proposed hypothetical', () => {
+    render(
+      <MessageList
+        messages={[
+          {
+            id: '1',
+            role: 'assistant',
+            text: '[diverged_line_start]|{"basePly":25,"sanMoves":["a3","f6"],"resultFen":"some-fen"}'
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByText(/move 13 \(black\)/i)).toBeInTheDocument();
+    expect(screen.getByText('13...a3 14.f6')).toBeInTheDocument();
+  });
+
+  test('renders a [diverged_line] sentinel as an "exploring from move N" note above the student message', () => {
+    render(
+      <MessageList
+        messages={[
+          {
+            id: '1',
+            role: 'user',
+            text: '[diverged_line] Exploring from move 13 (black): 13...a3 14.f6 a4 (position now: some-fen): what if instead?'
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByText(/move 13 \(black\)/i)).toBeInTheDocument();
+    expect(screen.getByText('13...a3 14.f6 a4')).toBeInTheDocument();
+    expect(screen.getByText('what if instead?')).toBeInTheDocument();
+    expect(screen.queryByText(/\[diverged_line\]/)).not.toBeInTheDocument();
+  });
+
   test('does not call onScrollUp while at the bottom', () => {
     const onScrollUp = vi.fn();
     render(<MessageList messages={[msg('1', 'hi')]} onScrollUp={onScrollUp} />);

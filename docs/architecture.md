@@ -367,6 +367,8 @@ Model          = via llm/gateway.ts → user's BYOK provider, else platform key 
 | `show_position` | `{ moveNumber: number, color: 'white' \| 'black' \| null }` | Client tool: board animates to that move (game start is `{ moveNumber: 0, color: null }`). Also updates `sessions.current_ply`. The persisted tool-result is stamped server-side with the position's authoritative `fen` (`services/game-positions.ts`, replayed straight from the game's PGN) before it re-enters the coach's context — this is the coach's only verified ground truth for a position, delivered in-band and cache-safe the same way the thread ledger is (§7.5), never trusted from the client or reconstructed by the model. |
 | `check_position` | `{ moveNumber: number, color: 'white' \| 'black' \| null }` | Server tool, same address shape as `show_position`: returns `{ fen, moveSan }` for any move in the game without moving the student's board. Lets the coach get a verified `fen` (e.g. for `get_engine_analysis`) or double-check a claim before making it, instead of guessing. |
 | `annotate_board` | `{ arrows: {from,to,color}[], highlights: {square,color}[] }` | Client tool: draw on the board. Cleared on next `show_position`. |
+| `expect_move` | `{}` | Client tool: arms a one-shot flag so the student's next board move is sent immediately (today's instant board-move path) instead of accumulating into a diverged line. Ephemeral, client-only — never touches `sessions.current_ply` or any table. |
+| `hypothetical_line` | `{ moves: string[] }` (1–12 SAN moves) | Client tool: sets up or continues a diverged line off the current position (or an already-active hypothetical) — e.g. "if Black had played a4 instead". The client resolves the SAN sequence via chess.js (never a coach-supplied FEN, same ground-truth discipline as `show_position`) and returns the resulting position. Purely client-side/ephemeral — no DB row, no PGN-sideline data model (that's the separate, deferred Task #44 in `docs/plan.md`); resets on page reload. |
 | `get_engine_analysis` | `{ fen: string, question: string }` | Server tool backed by a **light-model subagent**: calls the engine (requesting 3 principal variations — `COACH_ENGINE_MULTI_PV`), then the engine-interpreter subagent (prompts.md §4) digests the raw lines into ≤80 words answering the coach's `question`. Raw UCI/multiPV output never enters the coach's context. The coach is instructed to source `fen` from `show_position`/`check_position` only, never to reconstruct one itself, and can ask for top candidate moves directly ("what are the best moves here?"). |
 | `get_user_profile` | `{}` | Server tool: focus areas + last 15 findings + per-category counts (last 20 games) + session count. |
 | `record_finding` | `Finding` (schema §6.4) | Server tool: insert into `findings`. |
@@ -376,9 +378,10 @@ Model          = via llm/gateway.ts → user's BYOK provider, else platform key 
 | `recall_move` | `{ moveNumber: number, color: 'white' \| 'black' \| null }` (same address as `show_position`) | Server tool: on-demand deeper lookup for a specific past move — a fresh light-tier digest of that episode's raw messages, richer than the always-present other-moves-summary line. Budgeted at 3 calls/turn (§8.3). |
 | `end_session` | `{ summary: string, homework: string \| null }` | Server tool: marks session completed, enqueues `summarize-session` job. |
 
-Client tools (`show_position`, `annotate_board`) execute on the frontend: the SSE
-stream carries the tool call; the client executes and answers with a tool result
-(AI SDK client-tools pattern). Server tools execute inside the loop.
+Client tools (`show_position`, `annotate_board`, `expect_move`,
+`hypothetical_line`) execute on the frontend: the SSE stream carries the tool
+call; the client executes and answers with a tool result (AI SDK client-tools
+pattern). Server tools execute inside the loop.
 
 **Layering rule (hard):** tool `execute` functions contain **no SQL and no direct DB
 access**. They are thin adapters that call service functions (`services/progress.ts`,

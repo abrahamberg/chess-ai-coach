@@ -33,6 +33,22 @@ the flat mainline model, so nothing downstream breaks and sideline data is
 at least captured instead of silently dropped. Option (b) is the natural
 stepping stone to (a).
 
+Note: the diverged-line feature under Task #45 below is deliberately
+**not** this — it's an ephemeral, client-only hypothetical (never persisted,
+never touches `positions[]`/`ply`), not a step toward PGN sideline parsing.
+This task is still fully open.
+
 ### Task #45: Shared bidirectional coach/student board annotations
 
-Not yet scoped in this doc — see task tracker for current status.
+A first slice shipped: both the coach (`hypothetical_line` tool) and the
+student (dragging pieces in answer mode) can build a multi-move hypothetical
+line off the current position — `useDivergedLine.ts`
+(`apps/web/src/features/session/`), the `DivergedLinePanel` sidebar (step
+navigation + autoplay), and the `[diverged_line]`/`[diverged_line_start]`
+chat sentinels (`apps/web/src/features/chat/divergedLine.ts`). The
+`expect_move` tool preserves the original single-move-answer instant-submit
+path alongside it. Deliberately ephemeral/client-only per the scope decided
+for this slice — no DB row, no shared schema, `sessions.current_ply`
+untouched. Still open if ever wanted: persisting a diverged line (survive
+reload, revisit later) — would need its own schema decision and likely
+intersects with Task #44's above.

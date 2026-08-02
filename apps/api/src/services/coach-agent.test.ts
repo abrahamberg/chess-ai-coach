@@ -596,8 +596,11 @@ describe('coach-agent startTurn concurrency', () => {
 
     expect(testDeps.analyzePosition).toHaveBeenCalledWith('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
     const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
+    // "You are now discussing" is unique to episode-context.ts's per-turn current-position
+    // block — unlike the "## Current position" heading text alone, which a tool description
+    // in the static system prompt may also legitimately quote (get_engine_analysis's).
     const currentPositionMessage = (snapshot?.request.messages ?? []).find(
-      (m) => typeof (m as { content?: unknown }).content === 'string' && (m as { content: string }).content.includes('## Current position')
+      (m) => typeof (m as { content?: unknown }).content === 'string' && (m as { content: string }).content.includes('You are now discussing')
     ) as { content: string } | undefined;
     expect(currentPositionMessage?.content).toContain('Full engine analysis');
     expect(currentPositionMessage?.content).toContain('"bestMove":"e4"');
