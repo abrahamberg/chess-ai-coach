@@ -1,0 +1,293 @@
+# Default values for the chess-ai-coach umbrella chart.
+#
+# Nothing sensitive lives here. Every credential is read at runtime from a
+# Secret you create out-of-band (architecture.md §11 "templated existingSecret
+# pattern"); this file only ever names the Secret and the key inside it. The
+# five Secrets the chart expects are:
+#
+#   platform-llm-keys      anthropic-api-key, openai-api-key
+#   llm-key-master-key     master-key           (BYOK envelope key, base64 32B)
+#   stripe                 secret-key, webhook-secret, price-small,
+#                          price-medium, price-large
+#   oauth-clients          client-id, client-secret, cookie-secret
+#   postgres-credentials   postgres-password, password, replication-password
+#
+# See values.example.yaml for a filled-in deployment.
+#
+# Resource names are derived from the release name alone (there is no
+# nameOverride/fullnameOverride): the oauth2-proxy upstream URLs below are
+# release-name-derived strings and cannot call a chart helper.
+
+## Image defaults shared by web/api/worker/engine.
+image:
+  # Registry prefix applied to every repository below, e.g. "ghcr.io/acme".
+  # Empty means the repository is already fully qualified.
+  registry: ""
+  pullPolicy: IfNotPresent
+  # List of {name: <secret>} entries.
+  pullSecrets: []
+
+## nginx serving the Vite build (docker/Dockerfile.web).
+web:
+  image:
+    repository: chess-ai-coach/web
+    # Defaults to .Chart.AppVersion.
+    tag: ""
+  # architecture §11: 2 replicas.
+  replicaCount: 2
+  # nginx-unprivileged listens on 8080.
+  containerPort: 8080
+  service:
+    port: 80
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+  nodeSelector: {}
+  tolerations: []
+
+## Fastify HTTP API (docker/Dockerfile.api, apps/api/src/server.ts).
+api:
+  image:
+    repository: chess-ai-coach/api
+    tag: ""
+  # Used only when autoscaling is disabled; architecture §11: 2 replicas.
+  replicaCount: 2
+  containerPort: 3000
+  service:
+    port: 3000
+  # AUTH_MODE. "proxy" (the default posture) makes the API refuse requests that
+  # lack oauth2-proxy's identity headers. "dev-stub" is local-only — never set
+  # it in a cluster (§12).
+  authMode: proxy
+  # architecture §11: HPA on CPU.
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      memory: 768Mi
+  nodeSelector: {}
+  tolerations: []
+
+## graphile-worker job runner (same image as the api, apps/api/src/worker.ts).
+worker:
+  # architecture §11: 1 replica (scale by queue depth later).
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 384Mi
+    limits:
+      memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+
+## Stockfish HTTP wrapper (docker/Dockerfile.engine, services/engine).
+engine:
+  image:
+    repository: chess-ai-coach/engine
+    tag: ""
+  # Used only when autoscaling is disabled.
+  replicaCount: 1
+  containerPort: 8081
+  service:
+    port: 8081
+  # ENGINE_POOL_SIZE — concurrent Stockfish processes per pod.
+  poolSize: 2
+  # ENGINE_DEFAULT_DEPTH / ENGINE_MOVE_TIMEOUT_MS.
+  defaultDepth: 18
+  moveTimeoutMs: 3000
+  # STOCKFISH_PATH inside the engine image.
+  stockfishPath: /usr/games/stockfish
+  # architecture §11: 1–3 replicas, HPA on CPU.
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+  # Left empty on purpose: the engine Deployment then requests `poolSize` CPU
+  # cores, per architecture §11. Set this to override the whole block.
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+
+## LLM gateway configuration (architecture §8). Model ids are deployment
+## config, never hardcoded — set them explicitly, there is no sane default.
+llm:
+  standardModel:
+    anthropic: ""
+    openai: ""
+  lightModel:
+    anthropic: ""
+    openai: ""
+  # LLM_FAKE=1: short-circuit every model call. Smoke tests only.
+  fake: false
+  # Envelope key for user-supplied (BYOK) provider keys.
+  masterKey:
+    existingSecret: llm-key-master-key
+    key: master-key
+  # Platform-owned provider keys. Disable to run a BYOK-only deployment
+  # (apps/api/src/bootstrap.ts treats these as optional).
+  platformKeys:
+    enabled: true
+    existingSecret: platform-llm-keys
+    anthropicKey: anthropic-api-key
+    openaiKey: openai-api-key
+
+## Credit packs via Stripe Checkout (Task 8.1). All-or-nothing: with
+## stripe.enabled=false the API simply doesn't register the Stripe routes.
+stripe:
+  enabled: false
+  existingSecret: stripe
+  keys:
+    secretKey: secret-key
+    webhookSecret: webhook-secret
+    priceSmall: price-small
+    priceMedium: price-medium
+    priceLarge: price-large
+  # Where Stripe Checkout returns the user; must be absolute URLs on your host.
+  checkoutSuccessUrl: ""
+  checkoutCancelUrl: ""
+
+## Extra env vars appended to the api and worker containers, as a raw k8s env
+## list. Escape hatch for settings the chart doesn't model yet.
+extraEnv: []
+
+## Connection settings the app needs regardless of where Postgres lives.
+database:
+  # sslmode in DATABASE_URL. "disable" is fine for the in-cluster subchart;
+  # use "require" (or stricter) for a managed database.
+  sslMode: disable
+
+## Used only when postgresql.enabled is false.
+externalDatabase:
+  host: ""
+  port: 5432
+  user: chess_coach
+  database: chess_coach
+  existingSecret: postgres-credentials
+  existingSecretPasswordKey: password
+
+## kysely migrations, run as a Helm hook (architecture §11).
+migrate:
+  enabled: true
+  # See the note in templates/migrate-job.yaml about first installs with the
+  # bundled postgresql subchart.
+  hooks:
+    - pre-install
+    - pre-upgrade
+  backoffLimit: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+## architecture §11: api/worker/engine accept in-cluster traffic only; only
+## oauth2-proxy is ingress-exposed; engine accepts only api+worker.
+networkPolicy:
+  enabled: true
+
+## The single ingress-exposed route, pointing at oauth2-proxy.
+ingress:
+  enabled: true
+  className: ""
+  # Required when enabled — the public hostname of the deployment.
+  host: ""
+  annotations: {}
+  # e.g. [{secretName: chess-coach-tls, hosts: [coach.example.com]}]
+  tls: []
+
+## Applied to every pod/container this chart owns (§12).
+## runAsUser is NOT optional next to runAsNonRoot: with runAsNonRoot alone,
+## kubelet must derive the uid from the image and refuses to start any container
+## whose image runs as root or names its user non-numerically
+## ("image has non-numeric user (node), cannot verify user is non-root").
+## 1000 is the uid every image in docker/ declares (`USER 1000`); change both
+## together or pods will fail admission, not just misbehave.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+# ---------------------------------------------------------------------------
+# Subchart: PostgreSQL 16 (bitnami/postgresql 15.5.38 -> appVersion 16.4.0).
+# Set enabled: false and fill in externalDatabase to use a managed database.
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  auth:
+    username: chess_coach
+    database: chess_coach
+    # Passwords come from this pre-created Secret; the keys below are the ones
+    # the bitnami chart expects.
+    existingSecret: postgres-credentials
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
+      replicationPasswordKey: replication-password
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+
+# ---------------------------------------------------------------------------
+# Subchart: oauth2-proxy (architecture §11). This is the only component the
+# Ingress points at; it fans out to the api and the web bundle.
+# ---------------------------------------------------------------------------
+oauth2-proxy:
+  enabled: true
+  replicaCount: 2
+  config:
+    # client-id / client-secret / cookie-secret come from this Secret. The
+    # literal fields below stay empty so the subchart never renders a Secret.
+    existingSecret: oauth-clients
+    clientID: ""
+    clientSecret: ""
+    cookieSecret: ""
+    # Rendered through `tpl` by the subchart, so .Release.Name resolves — but
+    # subchart values cannot call this chart's helpers, so the service names and
+    # ports below are written out. Keep them in step with api.service.port and
+    # web.service.port if you change either.
+    configFile: |-
+      email_domains = [ "*" ]
+      upstreams = [
+        "http://{{ .Release.Name }}-api:3000/api/",
+        "http://{{ .Release.Name }}-web/"
+      ]
+  # A list (not a map) so --skip-auth-route can repeat.
+  extraArgs:
+    - --provider=google
+    # Forward the authenticated identity to the api as X-Auth-Request-* headers.
+    - --set-xauthrequest=true
+    # architecture §11: the Stripe webhook and the probes bypass auth. The
+    # webhook is still signature-verified in-app (§12).
+    - --skip-auth-route=^/api/stripe/webhook$
+    - --skip-auth-route=^/healthz$
+    - --skip-auth-route=^/readyz$
+  service:
+    portNumber: 80
+  # Our own templates/ingress.yaml owns the public route.
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi

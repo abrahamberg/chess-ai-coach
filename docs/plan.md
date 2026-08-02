@@ -426,7 +426,7 @@ behavior are specified there; do not invent visual design in code.
 **Interfaces:**
 - Produces: `POST /api/credits/checkout {pack: 'small'|'medium'|'large'}` → Stripe Checkout session URL (packs/prices from env `STRIPE_PRICE_SMALL=300credits`, etc.; metadata `{userId, credits}`); `POST /api/stripe/webhook` raw-body, `stripe.webhooks.constructEvent` signature check, `checkout.session.completed` → ledger `+credits` with `stripe_event_id` (unique → replay is a no-op 200).
 
-- [ ] **Steps 1–5:** failing tests (mock stripe lib; bad signature → 400; valid event → balance up; same event twice → balance up once) → implement → pass → commit `feat: stripe credit packs`.
+- [x] **Steps 1–5:** failing tests (mock stripe lib; bad signature → 400; valid event → balance up; same event twice → balance up once) → implement → pass → commit `feat: stripe credit packs`.
 
 ---
 
@@ -437,16 +437,16 @@ behavior are specified there; do not invent visual design in code.
 **Files:**
 - Create: `docker/Dockerfile.{web,api}` (engine exists from 2.1), `deploy/helm/chess-ai-coach/` per architecture §11 (Chart.yaml deps oauth2-proxy + bitnami postgresql; templates: web/api/worker/engine deployments+services, ingress, networkpolicies, migrate-job pre-install/pre-upgrade hook, existingSecret wiring), `values.yaml` + `values.example.yaml` documenting every key
 
-- [ ] **Step 1: Write `helm template` golden tests** (`deploy/helm/test.sh`): rendering with example values succeeds; api env includes `ENGINE_URL`; webhook path is in oauth2-proxy `skip-auth-route`; no secret literals in rendered output.
-- [ ] **Steps 2–4:** fail → implement chart → pass; validate with `helm lint` and `kubeconform`.
-- [ ] **Step 5: Commit** — `feat: helm umbrella chart`.
+- [x] **Step 1: Write `helm template` golden tests** (`deploy/helm/test.sh`): rendering with example values succeeds; api env includes `ENGINE_URL`; webhook path is in oauth2-proxy `skip-auth-route`; no secret literals in rendered output.
+- [x] **Steps 2–4:** fail → implement chart → pass; validate with `helm lint` and `kubeconform`.
+- [x] **Step 5: Commit** — `feat: helm umbrella chart`.
 
 ### Task 9.2: CI
 
 **Files:**
 - Create: `.github/workflows/ci.yml` (install stockfish, npm ci, lint, typecheck, test w/ Testcontainers, docker build all images, helm lint)
 
-- [ ] **Steps 1–5:** push branch → CI green → commit `chore: ci pipeline`.
+- [x] **Steps 1–5:** push branch → CI green → commit `chore: ci pipeline`.
 
 ---
 

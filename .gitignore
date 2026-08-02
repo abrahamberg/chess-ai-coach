@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-bundle/
 coverage/
 *.tsbuildinfo
 .vite/
@@ -8,3 +9,6 @@ coverage/
 .env.*
 !.env.example
 .claude/worktrees/
+
+# Helm subcharts vendored by `helm dependency build`; Chart.lock pins them.
+deploy/helm/*/charts/

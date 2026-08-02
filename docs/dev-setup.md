@@ -113,6 +113,13 @@ new migration file):
 docker compose run --rm migrate
 ```
 
+## Building the deployment images
+
+Everything above is the local dev loop, which runs TypeScript directly through
+`tsx`. The images that get deployed are built differently — compiled on the CI
+runner first, then copied into COPY-only Dockerfiles so they are portable to
+arm64 nodes. See [`docs/deploy-build.md`](./deploy-build.md).
+
 ## Podman instead of Docker
 
 If your `docker` CLI is actually a Podman shim (`docker --version` reports

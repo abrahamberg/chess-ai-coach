@@ -1,6 +1,11 @@
 import { pathToFileURL } from 'node:url';
 import { buildApp } from './app.js';
-import { buildCoachAgentDependencies, buildGatewayConfigFromEnv, requireEnv } from './bootstrap.js';
+import {
+  buildCoachAgentDependencies,
+  buildGatewayConfigFromEnv,
+  buildStripeClientFromEnv,
+  requireEnv
+} from './bootstrap.js';
 import { createDb } from './db/index.js';
 import { createGraphileJobQueue } from './jobs/queue.js';
 import { createKeyVault } from './llm/key-vault.js';
@@ -24,8 +29,9 @@ async function main(): Promise<void> {
 
   const { queue: jobQueue } = await createGraphileJobQueue(connectionString);
   const coachAgentDeps = buildCoachAgentDependencies(db, jobQueue, gatewayConfig, engineUrl);
+  const stripeClient = buildStripeClientFromEnv();
 
-  const app = buildApp({ db, jobQueue, keyVault, coachAgentDeps });
+  const app = buildApp({ db, jobQueue, keyVault, coachAgentDeps, stripeClient });
   const port = Number(process.env.PORT ?? 3000);
   await app.listen({ port, host: '0.0.0.0' });
 }

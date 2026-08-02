@@ -1,0 +1,28 @@
+{{- if .Values.networkPolicy.enabled }}
+{{/* architecture §11: only oauth2-proxy is ingress-exposed, so the api accepts
+     HTTP only from the proxy's pods. That includes the Stripe webhook, which
+     reaches the api through the proxy's skip-auth-route (§12: still
+     signature-verified in-app). Egress is intentionally unrestricted — the api
+     calls LLM providers and Stripe. */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "chess-ai-coach.componentName" (dict "ctx" . "component" "api") }}
+  labels:
+    {{- include "chess-ai-coach.labels" (dict "ctx" . "component" "api") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "api") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: oauth2-proxy
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.api.containerPort }}
+{{- end }}

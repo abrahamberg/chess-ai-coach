@@ -1,11 +1,13 @@
-node_modules
-**/node_modules
-**/dist
-**/coverage
+# Keep the build context small. Deliberately does NOT exclude node_modules or
+# apps/*/dist — docker/Dockerfile.api copies the pre-built production
+# node_modules and docker/Dockerfile.web copies apps/web/dist (see
+# docs/deploy-build.md).
 .git
+.gitignore
+.github
 .claude
 .superpowers
+coverage
 docs
-*.md
-.env
-.env.example
+deploy
+*.tsbuildinfo

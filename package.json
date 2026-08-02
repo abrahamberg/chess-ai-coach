@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "docker compose up -d --build postgres engine migrate api worker web-dev",
     "dev:down": "docker compose down",
+    "build:images": "scripts/build-images.sh",
     "test": "vitest run",
     "typecheck": "tsc -b",
     "lint": "eslint ."

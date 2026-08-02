@@ -1,0 +1,41 @@
+{{/* Same image as the api, different entrypoint (worker.mjs is the bundled
+     graphile-worker runner). architecture §11: 1 replica, no HPA. */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chess-ai-coach.componentName" (dict "ctx" . "component" "worker") }}
+  labels:
+    {{- include "chess-ai-coach.labels" (dict "ctx" . "component" "worker") | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "worker") | nindent 8 }}
+    spec:
+      {{- include "chess-ai-coach.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "chess-ai-coach.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "chess-ai-coach.image" (dict "ctx" . "image" .Values.api.image) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "dist-bundle/worker.mjs"]
+          securityContext:
+            {{- include "chess-ai-coach.containerSecurityContext" . | nindent 12 }}
+          env:
+            {{- include "chess-ai-coach.env.database" . | nindent 12 }}
+            {{- include "chess-ai-coach.env.app" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

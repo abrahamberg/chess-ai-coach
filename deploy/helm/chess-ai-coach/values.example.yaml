@@ -1,0 +1,164 @@
+# Worked example of a real deployment. Copy, adjust, and install with:
+#
+#   kubectl create secret generic postgres-credentials \
+#     --from-literal=postgres-password="$(openssl rand -base64 24)" \
+#     --from-literal=password="$(openssl rand -base64 24)" \
+#     --from-literal=replication-password="$(openssl rand -base64 24)"
+#   kubectl create secret generic llm-key-master-key \
+#     --from-literal=master-key="$(openssl rand -base64 32)"
+#   kubectl create secret generic platform-llm-keys \
+#     --from-literal=anthropic-api-key=... --from-literal=openai-api-key=...
+#   kubectl create secret generic oauth-clients \
+#     --from-literal=client-id=... --from-literal=client-secret=... \
+#     --from-literal=cookie-secret="$(openssl rand -base64 32 | head -c 32)"
+#   kubectl create secret generic stripe \
+#     --from-literal=secret-key=... --from-literal=webhook-secret=... \
+#     --from-literal=price-small=... --from-literal=price-medium=... \
+#     --from-literal=price-large=...
+#
+#   helm dependency build deploy/helm/chess-ai-coach
+#   helm upgrade --install chess-coach deploy/helm/chess-ai-coach \
+#     -f deploy/helm/chess-ai-coach/values.example.yaml
+#
+# No credential values appear in this file — only the names of the Secrets and
+# of the keys inside them (architecture §11).
+
+image:
+  registry: ghcr.io/example-org
+  pullPolicy: IfNotPresent
+
+web:
+  image:
+    repository: chess-ai-coach/web
+    tag: "0.0.1"
+
+api:
+  image:
+    repository: chess-ai-coach/api
+    tag: "0.0.1"
+  authMode: proxy
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+worker:
+  replicaCount: 1
+
+engine:
+  image:
+    repository: chess-ai-coach/engine
+    tag: "0.0.1"
+  poolSize: 4
+  defaultDepth: 20
+  moveTimeoutMs: 4000
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+# Model ids are deployment config (docs/plan.md global constraints) — pin the
+# exact ids you have entitlements for.
+llm:
+  standardModel:
+    anthropic: claude-sonnet-4-5
+    openai: gpt-5.5
+  lightModel:
+    anthropic: claude-haiku-4-5
+    openai: gpt-5.4-mini
+  fake: false
+  masterKey:
+    existingSecret: llm-key-master-key
+    key: master-key
+  platformKeys:
+    enabled: true
+    existingSecret: platform-llm-keys
+    anthropicKey: anthropic-api-key
+    openaiKey: openai-api-key
+
+stripe:
+  enabled: true
+  existingSecret: stripe
+  keys:
+    secretKey: secret-key
+    webhookSecret: webhook-secret
+    priceSmall: price-small
+    priceMedium: price-medium
+    priceLarge: price-large
+  checkoutSuccessUrl: https://coach.example.com/settings?checkout=success
+  checkoutCancelUrl: https://coach.example.com/settings?checkout=cancel
+
+database:
+  sslMode: disable
+
+migrate:
+  enabled: true
+  hooks:
+    - pre-install
+    - pre-upgrade
+
+networkPolicy:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: nginx
+  host: coach.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    - secretName: chess-coach-tls
+      hosts:
+        - coach.example.com
+
+postgresql:
+  enabled: true
+  auth:
+    username: chess_coach
+    database: chess_coach
+    existingSecret: postgres-credentials
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
+      replicationPasswordKey: replication-password
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+
+oauth2-proxy:
+  enabled: true
+  replicaCount: 2
+  config:
+    existingSecret: oauth-clients
+    clientID: ""
+    clientSecret: ""
+    cookieSecret: ""
+    configFile: |-
+      email_domains = [ "*" ]
+      cookie_secure = true
+      upstreams = [
+        "http://{{ .Release.Name }}-api:3000/api/",
+        "http://{{ .Release.Name }}-web/"
+      ]
+  extraArgs:
+    # Google OIDC. oauth2-proxy runs one provider per instance; to offer
+    # Lichess instead (architecture §11 names it as a generic OAuth2 provider),
+    # swap these for:
+    #   --provider=oidc --provider-display-name=Lichess
+    #   --login-url=https://lichess.org/oauth
+    #   --redeem-url=https://lichess.org/api/token
+    #   --profile-url=https://lichess.org/api/account
+    #   --scope=email:read
+    - --provider=google
+    - --set-xauthrequest=true
+    - --skip-auth-route=^/api/stripe/webhook$
+    - --skip-auth-route=^/healthz$
+    - --skip-auth-route=^/readyz$
+    - --redirect-url=https://coach.example.com/oauth2/callback
+  service:
+    portNumber: 80
+  ingress:
+    enabled: false

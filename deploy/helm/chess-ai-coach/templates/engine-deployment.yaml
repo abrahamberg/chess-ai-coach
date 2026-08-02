@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chess-ai-coach.componentName" (dict "ctx" . "component" "engine") }}
+  labels:
+    {{- include "chess-ai-coach.labels" (dict "ctx" . "component" "engine") | nindent 4 }}
+spec:
+  {{- if not .Values.engine.autoscaling.enabled }}
+  replicas: {{ .Values.engine.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "engine") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "engine") | nindent 8 }}
+    spec:
+      {{- include "chess-ai-coach.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "chess-ai-coach.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: engine
+          image: {{ include "chess-ai-coach.image" (dict "ctx" . "image" .Values.engine.image) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- include "chess-ai-coach.containerSecurityContext" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.engine.containerPort }}
+          env:
+            - name: PORT
+              value: {{ .Values.engine.containerPort | quote }}
+            - name: ENGINE_POOL_SIZE
+              value: {{ .Values.engine.poolSize | quote }}
+            - name: ENGINE_DEFAULT_DEPTH
+              value: {{ .Values.engine.defaultDepth | quote }}
+            - name: ENGINE_MOVE_TIMEOUT_MS
+              value: {{ .Values.engine.moveTimeoutMs | quote }}
+            - name: STOCKFISH_PATH
+              value: {{ .Values.engine.stockfishPath | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- if .Values.engine.resources }}
+            {{- toYaml .Values.engine.resources | nindent 12 }}
+            {{- else }}
+            # architecture §11: CPU requests = poolSize cores (one Stockfish
+            # process per pool slot). Override engine.resources to change.
+            requests:
+              cpu: {{ .Values.engine.poolSize | quote }}
+            {{- end }}
+      {{- with .Values.engine.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.engine.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
