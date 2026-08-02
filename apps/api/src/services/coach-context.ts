@@ -364,6 +364,7 @@ function extendPastOrphanedToolResult(all: SessionMessageRow[], startIndex: numb
 
   for (let i = startIndex - 1; i >= 0; i--) {
     const candidate = all[i];
+    if (!candidate) break;
     if (hasToolCall(candidate, toolCallId)) return i;
     if (candidate.role !== 'tool') break;
   }
