@@ -7,7 +7,7 @@ description: |
 type: application
 
 # Chart version — bump on every chart change.
-version: 0.1.1
+version: 0.1.2
 # Version of the application this chart deploys; overridden per-component by
 # `<component>.image.tag`.
 appVersion: "0.0.1"
