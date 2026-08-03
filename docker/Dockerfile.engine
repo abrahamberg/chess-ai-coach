@@ -1,4 +1,5 @@
 FROM node:22-slim
+LABEL org.opencontainers.image.source="https://github.com/abrahamberg/chess-ai-coach"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends stockfish \
