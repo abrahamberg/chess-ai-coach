@@ -10,7 +10,6 @@ await build({
   platform: 'node',
   format: 'esm',
   target: 'node22',
-  packages: 'bundle',
   sourcemap: true,
   logLevel: 'info'
 });
