@@ -66,6 +66,26 @@ describe('ChatPane', () => {
     expect(onSelectPly).toHaveBeenCalledWith(14);
   });
 
+  test('forwards fen and onHoverMove through to MessageList so it can resolve move mentions', async () => {
+    const onHoverMove = vi.fn();
+    const user = userEvent.setup();
+    const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    render(
+      <ChatPane
+        sessionId="test-session"
+        messages={[{ id: '1', role: 'assistant', text: 'what about b3 here?' }]}
+        activeToolName={null}
+        onSend={vi.fn()}
+        fen={fen}
+        onHoverMove={onHoverMove}
+      />
+    );
+
+    await user.hover(screen.getByText('b3'));
+
+    expect(onHoverMove).toHaveBeenCalledWith({ from: 'b2', to: 'b3' });
+  });
+
   test('shows tool activity for a visible tool', () => {
     render(<ChatPane sessionId="test-session" messages={[]} activeToolName="get_engine_analysis" onSend={vi.fn()} />);
     expect(screen.getByText(/checking a line/i)).toBeInTheDocument();

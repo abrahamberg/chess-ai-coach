@@ -18,7 +18,8 @@ const TOKENS = [
   '--board-light',
   '--board-dark',
   '--annotate-1',
-  '--annotate-2'
+  '--annotate-2',
+  '--annotate-hover'
 ];
 
 describe('tokens.css (design.md §2.1)', () => {
@@ -46,5 +47,9 @@ describe('tokens.css (design.md §2.1)', () => {
   test('--annotate-1 and --annotate-2 are identical across themes ("same" per design.md)', () => {
     expect(css).toContain('#c9762a');
     expect(css).toContain('#4a7fb5');
+  });
+
+  test('--annotate-hover is distinct from --annotate-1 and --annotate-2 (a third color for move-mention hover previews)', () => {
+    expect(css).toContain('#8a4fbf');
   });
 });

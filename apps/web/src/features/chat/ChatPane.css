@@ -213,6 +213,17 @@
   cursor: grab;
 }
 
+.move-mention {
+  border-bottom: 1px dotted var(--annotate-hover);
+  cursor: default;
+}
+
+.move-mention:hover,
+.move-mention:focus-visible {
+  background: color-mix(in srgb, var(--annotate-hover) 15%, transparent);
+  outline: none;
+}
+
 .arrow-chip button {
   border: none;
   background: none;

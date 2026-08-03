@@ -54,6 +54,7 @@
 | `--board-dark` | `#8ba173` | `#6e8258` | dark squares |
 | `--annotate-1` | `#c9762a` | same | coach arrows/highlights (warm orange, distinct from both square colors) |
 | `--annotate-2` | `#4a7fb5` | same | secondary annotation color |
+| `--annotate-hover` | `#8a4fbf` | same | preview arrow/highlight for a move mentioned in chat text, hovered/focused (§5.3) — distinct from both coach-drawn colors above |
 | `--quality-brilliant` | `#2f7dc4` | same | move-quality badge/text |
 | `--quality-best` | `#5b9c6a` | same | move-quality badge/text |
 | `--quality-interesting` | `#2f9e8f` | same | move-quality badge/text |
@@ -242,6 +243,18 @@ and see the position; chat-overlay-on-board hides the position mid-thought.
   result surfaces only through the coach's words). `update_threads` and
   profile/finding tool frames render **nothing at all** (backstage, per
   architecture §7.5).
+- **Move mentions are interactive.** Any SAN move the coach mentions in prose
+  (bare, or with a move number — "18.Nf3"/"18...Nf3") that resolves against
+  the position currently on the board is rendered as a hoverable/focusable
+  reference. Hovering (or tabbing to) it draws a preview arrow and highlights
+  both squares in `--annotate-hover` — a third color, distinct from the
+  coach's own `annotate_board` arrows (`--annotate-1`)/highlights
+  (`--annotate-2`), and layered on top of them rather than replacing them.
+  Moving off it (mouse-leave/blur) clears the preview. A move that isn't
+  legal in the current position (stale reference, malformed SAN) renders as
+  plain text instead. The coach never uses markdown for emphasis (see
+  prompts.md's Formatting rule) — any `**bold**` that does slip through is
+  still rendered as real emphasis, never literal asterisks.
 - Session start: system-style card with game header + the coach's opener.
 - Session end: summary card (coach summary + homework in a checkbox-style chip)
   with "Back to Games" / "View Progress" actions.

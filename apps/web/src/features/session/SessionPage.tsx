@@ -7,6 +7,7 @@ import { MoveExplorer } from '../board/MoveExplorer.js';
 import type { ArrowRef } from '../chat/arrowToken.js';
 import { ChatPane } from '../chat/ChatPane.js';
 import { encodeDivergedLine } from '../chat/divergedLine.js';
+import type { HoverMove } from '../chat/MessageList.js';
 import { encodePositionContext, sanForPly } from '../chat/positionDivider.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
 import { SessionBoardColumn } from './SessionBoardColumn.js';
@@ -41,6 +42,7 @@ export function SessionPage(): ReactNode {
   } = useSessionPageData(sessionId);
 
   const [boardArrows, setBoardArrows] = useState<ArrowRef[]>([]);
+  const [hoverMove, setHoverMove] = useState<HoverMove>(null);
 
   if (sessionQuery.isLoading || gameQuery.isLoading) return <p>Loading…</p>;
   if (sessionQuery.isError || !sessionQuery.data) return <p>Could not load this session.</p>;
@@ -86,6 +88,10 @@ export function SessionPage(): ReactNode {
 
   const orientation = gameQuery.data?.userColor ?? 'white';
   const showMiniBoard = !isSideBySide && boardState.isDocked;
+  // Same fen SessionBoardColumn computes for the board itself — needed here
+  // too so ChatPane can resolve move mentions against the position actually
+  // on screen (design.md §5.3).
+  const fen = divergedLine.fen ?? boardState.fen;
 
   return (
     <div className="session-page">
@@ -130,6 +136,7 @@ export function SessionPage(): ReactNode {
           onChangeAutoplayInterval={setAutoplayIntervalMs}
           sendMessage={(content) => void chat.sendMessage(content)}
           onArrowsChange={setBoardArrows}
+          hoverMove={hoverMove}
         />
         {session.status === 'paused_no_credits' ? (
           <div className="session-paused-card">
@@ -149,6 +156,8 @@ export function SessionPage(): ReactNode {
             onSelectPly={peekAt}
             boardArrows={boardArrows}
             hasPendingLine={Boolean(divergedLine.line)}
+            fen={fen}
+            onHoverMove={setHoverMove}
           />
         )}
       </div>

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { CoachMessage } from '../../hooks/useCoachChat.js';
 import { MessageList } from './MessageList.js';
@@ -179,6 +180,45 @@ describe('MessageList', () => {
     expect(screen.getByText('13...a3 14.f6 a4')).toBeInTheDocument();
     expect(screen.getByText('what if instead?')).toBeInTheDocument();
     expect(screen.queryByText(/\[diverged_line\]/)).not.toBeInTheDocument();
+  });
+
+  test('renders a coach ** bold ** span as real emphasis, not literal asterisks', () => {
+    render(<MessageList messages={[msg('1', 'that was **not** the right idea')]} />);
+
+    expect(screen.getByText('not').tagName).toBe('STRONG');
+    expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+  });
+
+  const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+  test('a SAN move mention resolvable against the current fen is hoverable and calls onHoverMove', async () => {
+    const onHoverMove = vi.fn();
+    const user = userEvent.setup();
+    render(<MessageList messages={[msg('1', 'what about b3 here?')]} fen={START_FEN} onHoverMove={onHoverMove} />);
+
+    await user.hover(screen.getByText('b3'));
+    expect(onHoverMove).toHaveBeenCalledWith({ from: 'b2', to: 'b3' });
+
+    await user.unhover(screen.getByText('b3'));
+    expect(onHoverMove).toHaveBeenCalledWith(null);
+  });
+
+  test('a move mention illegal in the current position renders as plain text, not hoverable', () => {
+    render(<MessageList messages={[msg('1', 'what about Nf6 here?')]} fen={START_FEN} />);
+
+    expect(screen.getByText(/what about/)).toBeInTheDocument();
+    expect(document.querySelector('.move-mention')).not.toBeInTheDocument();
+  });
+
+  test('a bold move mention stays bold while also being hoverable', async () => {
+    const onHoverMove = vi.fn();
+    const user = userEvent.setup();
+    render(<MessageList messages={[msg('1', 'what about **b3** here?')]} fen={START_FEN} onHoverMove={onHoverMove} />);
+
+    const move = screen.getByText('b3');
+    expect(move.tagName).toBe('STRONG');
+    await user.hover(move);
+    expect(onHoverMove).toHaveBeenCalledWith({ from: 'b2', to: 'b3' });
   });
 
   test('does not call onScrollUp while at the bottom', () => {

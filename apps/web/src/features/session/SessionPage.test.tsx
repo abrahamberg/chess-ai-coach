@@ -153,6 +153,32 @@ describe('SessionPage', () => {
     expect(options?.boardOrientation).toBe('black');
   });
 
+  test('design.md §5.3: hovering a move mention in chat previews it on the board in a distinct color from the coach\'s own arrows', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch({
+        messages: [
+          { id: 'm1', role: 'user', content: '[session_start]' },
+          { id: 'm2', role: 'assistant', content: 'What about e4 here?' }
+        ]
+      })
+    );
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    const messageList = await screen.findByTestId('message-list');
+    const moveMention = await within(messageList).findByText('e4');
+    await user.hover(moveMention);
+
+    const options = capturedOptions.at(-1);
+    expect(options?.arrows).toEqual([{ startSquare: 'e2', endSquare: 'e4', color: 'var(--annotate-hover)' }]);
+    expect(options?.squareStyles?.e2).toMatchObject({ backgroundColor: 'var(--annotate-hover)' });
+    expect(options?.squareStyles?.e4).toMatchObject({ backgroundColor: 'var(--annotate-hover)' });
+
+    await user.unhover(moveMention);
+    expect(capturedOptions.at(-1)?.arrows).toEqual([]);
+  });
+
   test('dragging a move in answer mode (no expect_move signal) builds a diverged line locally, sending nothing', async () => {
     const fetchMock = mockFetch({}, (path) =>
       path === '/api/sessions/session-1/messages' ? streamResponse([formatDataStreamPart('text', 'ok')]) : undefined

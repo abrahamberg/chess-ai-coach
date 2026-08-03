@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import type { ClassifiedMoveDto } from '@chess-coach/shared';
-import { CoachBoard } from '../board/CoachBoard.js';
+import type { HoverMove } from '../chat/MessageList.js';
+import { CoachBoard, type BoardArrow, type BoardHighlight } from '../board/CoachBoard.js';
 import { DivergedLinePanel } from '../board/DivergedLinePanel.js';
 import { ExplorePanel } from '../board/ExplorePanel.js';
 import { MiniBoard } from '../board/MiniBoard.js';
@@ -30,6 +31,26 @@ export interface SessionBoardColumnProps {
   onChangeAutoplayInterval: (ms: number) => void;
   sendMessage: (content: string) => void;
   onArrowsChange: (arrows: ArrowRef[]) => void;
+  /** The move currently hovered/focused in the chat transcript (design.md
+   * §5.3) — drawn on top of the coach's own annotate_board arrows/highlights
+   * in a distinct color, cleared on mouse-leave/blur. */
+  hoverMove?: HoverMove;
+}
+
+/** Distinct from the coach's own annotate_board arrows (--annotate-1) and
+ * the last-played-move highlight — a third color reserved for previewing a
+ * move mentioned in chat text, design.md §5.3. */
+function hoverMoveArrowsFor(hoverMove: HoverMove | undefined): BoardArrow[] {
+  if (!hoverMove) return [];
+  return [{ from: hoverMove.from, to: hoverMove.to, color: 'var(--annotate-hover)' }];
+}
+
+function hoverMoveHighlightsFor(hoverMove: HoverMove | undefined): BoardHighlight[] {
+  if (!hoverMove) return [];
+  return [
+    { square: hoverMove.from, color: 'var(--annotate-hover)' },
+    { square: hoverMove.to, color: 'var(--annotate-hover)' }
+  ];
 }
 
 /** The board + its overlay pills + the explore/analysis panels below it —
@@ -49,7 +70,8 @@ export function SessionBoardColumn({
   autoplayIntervalMs,
   onChangeAutoplayInterval,
   sendMessage,
-  onArrowsChange
+  onArrowsChange,
+  hoverMove
 }: SessionBoardColumnProps): ReactNode {
   const [pendingMove, setPendingMove] = useState<{ san: string; fen: string } | null>(null);
   const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,8 +118,8 @@ export function SessionBoardColumn({
           fen={fen}
           orientation={orientation}
           mode={boardState.mode}
-          arrows={boardState.arrows}
-          highlights={boardState.highlights}
+          arrows={[...boardState.arrows, ...hoverMoveArrowsFor(hoverMove)]}
+          highlights={[...boardState.highlights, ...hoverMoveHighlightsFor(hoverMove)]}
           onUserMove={handleUserMove}
           onLocalMove={boardState.previewMove}
           onArrowsChange={onArrowsChange}

@@ -4,7 +4,7 @@ import type { CoachMessage } from '../../hooks/useCoachChat.js';
 import { ChipReplyInput } from './ChipReplyInput.js';
 import { createEmptyDraft, isDraftEmpty, reconcileArrowChips, serializeDraft, type DraftPart } from './composerDraft.js';
 import { DebugPanel } from './DebugPanel.js';
-import { MessageList } from './MessageList.js';
+import { MessageList, type HoverMove } from './MessageList.js';
 import { ThinkingIndicator } from './ThinkingIndicator.js';
 import { ToolActivity } from './ToolActivity.js';
 import './ChatPane.css';
@@ -29,6 +29,12 @@ export interface ChatPaneProps {
    * allowed even with an empty text draft, since the line itself (bundled
    * in by the parent's onSend) is the content being submitted. */
   hasPendingLine?: boolean;
+  /** The position currently on the board — passed through to MessageList so
+   * it can resolve SAN move mentions in coach text (design.md §5.3). */
+  fen?: string;
+  /** Fired on hover/focus of a resolved move mention; lifted by the parent
+   * to preview it on the board. */
+  onHoverMove?: (move: HoverMove) => void;
 }
 
 /** Composes MessageList + ToolActivity + the reply input. No fetching — the
@@ -45,7 +51,9 @@ export function ChatPane({
   onScrollUp,
   onSelectPly,
   boardArrows = NO_ARROWS,
-  hasPendingLine = false
+  hasPendingLine = false,
+  fen,
+  onHoverMove
 }: ChatPaneProps): ReactNode {
   const [parts, setParts] = useState<DraftPart[]>(createEmptyDraft);
   const [isDebugOpen, setIsDebugOpen] = useState(false);
@@ -77,7 +85,7 @@ export function ChatPane({
           Debug last answer
         </button>
       </div>
-      <MessageList messages={messages} onScrollUp={onScrollUp} onSelectPly={onSelectPly} />
+      <MessageList messages={messages} onScrollUp={onScrollUp} onSelectPly={onSelectPly} fen={fen} onHoverMove={onHoverMove} />
       <ThinkingIndicator visible={isThinking} />
       <ToolActivity toolName={activeToolName} />
       <form onSubmit={handleSubmit}>

@@ -119,7 +119,7 @@ export const COACH_TOOL_SPECS: readonly CoachToolSpec[] = [
   {
     name: 'annotate_board',
     description:
-      'Draw arrows/highlights on the board when words alone are ambiguous (piece routes, weak squares, pins). Use sparingly — one idea per annotation. Cleared automatically on the next show_position.'
+      'Draw arrows/highlights whenever you explain something with a shape on the board — a piece route, a weak square, a pin, a plan — not only when words alone would be ambiguous; this is your default way to show an idea. Keep one idea per call; call it again for the next idea. Cleared automatically on the next show_position.'
   },
   {
     name: 'expect_move',
@@ -139,7 +139,7 @@ export const COACH_TOOL_SPECS: readonly CoachToolSpec[] = [
   {
     name: 'get_user_profile',
     description:
-      'Read the student\'s focus areas, recent findings, and session history — call if you need more history than the summary already given above (e.g., "have we seen this mistake before?").'
+      'Read the student\'s focus areas, recent findings, and session history — call it whenever a mistake or idea feels like ground you may have covered before, even if the student hasn\'t asked; the summary above only shows recent items, so check here before repeating an explanation or homework you might have already given.'
   },
   {
     name: 'record_finding',

@@ -15,6 +15,7 @@
   --board-dark: #8ba173;
   --annotate-1: #c9762a;
   --annotate-2: #4a7fb5;
+  --annotate-hover: #8a4fbf;
   --last-move: rgb(130 190 130 / 55%);
   --played-move: #c0392b;
   --quality-brilliant: #2f7dc4;
@@ -40,6 +41,7 @@
     --board-dark: #6e8258;
     --annotate-1: #c9762a;
     --annotate-2: #4a7fb5;
+    --annotate-hover: #8a4fbf;
   }
 }
 
@@ -56,6 +58,7 @@
   --board-dark: #8ba173;
   --annotate-1: #c9762a;
   --annotate-2: #4a7fb5;
+  --annotate-hover: #8a4fbf;
   --last-move: rgb(130 190 130 / 55%);
   --played-move: #c0392b;
   --quality-brilliant: #2f7dc4;
@@ -80,6 +83,7 @@
   --board-dark: #6e8258;
   --annotate-1: #c9762a;
   --annotate-2: #4a7fb5;
+  --annotate-hover: #8a4fbf;
   --last-move: rgb(130 190 130 / 55%);
   --played-move: #c0392b;
   --quality-brilliant: #2f7dc4;

@@ -99,6 +99,13 @@ describe('buildCoachSystemPrompt', () => {
     expect(staticPart).toContain('NEVER invent or reconstruct a FEN from memory');
   });
 
+  test('staticPart tells the coach to write plain prose with no markdown and to use standard move-number notation, not its own separator', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('no markdown');
+    expect(staticPart).toContain('no **bold**');
+    expect(staticPart).toContain('never invent your own separator like "18-Nf3"');
+  });
+
   test('staticPart teaches the coach to read a student-drawn [e2-e4] arrow token as their proposed move, without ever quoting the bracket syntax to the student', () => {
     const { staticPart } = buildCoachSystemPrompt(baseInput());
     expect(staticPart).toContain('[e2-e4]');
