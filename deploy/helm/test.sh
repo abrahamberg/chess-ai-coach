@@ -180,7 +180,7 @@ render "$MIGRATE" --show-only templates/migrate-job.yaml
 assert_contains "migrate job is a pre-install/pre-upgrade hook" '"helm.sh/hook": pre-install,pre-upgrade' "$MIGRATE"
 assert_contains "migrate job runs the kysely migrations" \
   '"node", "dist-bundle/migrate.mjs"' "$MIGRATE"
-assert_contains "migrate job reuses the api image" "chess-ai-coach/api" "$MIGRATE"
+assert_contains "migrate job reuses the api image" "chess-ai-coach:api-" "$MIGRATE"
 
 NETPOL="$RENDER_DIR/netpol.yaml"
 helm template chess-coach "$CHART_DIR" -f "$VALUES" -n "$NAMESPACE" \

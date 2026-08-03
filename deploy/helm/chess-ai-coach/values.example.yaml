@@ -29,13 +29,13 @@ image:
 
 web:
   image:
-    repository: chess-ai-coach/web
-    tag: "0.0.1"
+    repository: chess-ai-coach
+    tag: "web-0.0.1"
 
 api:
   image:
-    repository: chess-ai-coach/api
-    tag: "0.0.1"
+    repository: chess-ai-coach
+    tag: "api-0.0.1"
   authMode: proxy
   autoscaling:
     enabled: true
@@ -48,8 +48,8 @@ worker:
 
 engine:
   image:
-    repository: chess-ai-coach/engine
-    tag: "0.0.1"
+    repository: chess-ai-coach
+    tag: "engine-0.0.1"
   poolSize: 4
   defaultDepth: 20
   moveTimeoutMs: 4000

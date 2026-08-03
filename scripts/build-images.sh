@@ -120,7 +120,7 @@ else
 fi
 
 for COMPONENT in api web engine; do
-  IMAGE="${PREFIX}chess-ai-coach/${COMPONENT}:${TAG}"
+  IMAGE="${PREFIX}chess-ai-coach:${COMPONENT}-${TAG}"
   log "4/4 building $IMAGE${PLATFORM:+ ($PLATFORM)}"
   docker buildx build "${BUILD_ARGS[@]}" \
     -f "docker/Dockerfile.${COMPONENT}" \
@@ -128,5 +128,5 @@ for COMPONENT in api web engine; do
     .
 done
 
-log "done: ${PREFIX}chess-ai-coach/{api,web,engine}:${TAG}"
+log "done: ${PREFIX}chess-ai-coach:{api,web,engine}-${TAG}"
 restore_dev_deps

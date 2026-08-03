@@ -30,7 +30,7 @@ image:
 ## nginx serving the Vite build (docker/Dockerfile.web).
 web:
   image:
-    repository: chess-ai-coach/web
+    repository: chess-ai-coach
     # Defaults to .Chart.AppVersion.
     tag: ""
   # architecture §11: 2 replicas.
@@ -51,7 +51,7 @@ web:
 ## Fastify HTTP API (docker/Dockerfile.api, apps/api/src/server.ts).
 api:
   image:
-    repository: chess-ai-coach/api
+    repository: chess-ai-coach
     tag: ""
   # Used only when autoscaling is disabled; architecture §11: 2 replicas.
   replicaCount: 2
@@ -93,7 +93,7 @@ worker:
 ## Stockfish HTTP wrapper (docker/Dockerfile.engine, services/engine).
 engine:
   image:
-    repository: chess-ai-coach/engine
+    repository: chess-ai-coach
     tag: ""
   # Used only when autoscaling is disabled.
   replicaCount: 1

@@ -39,9 +39,9 @@ npm run build  --workspace=@chess-coach/web   # -> apps/web/dist/
 npm ci --omit=dev --workspace=@chess-coach/api --include-workspace-root
 
 # 4. Build the images.
-docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.api    -t <registry>/chess-ai-coach/api:<tag>    .
-docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.web    -t <registry>/chess-ai-coach/web:<tag>    .
-docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.engine -t <registry>/chess-ai-coach/engine:<tag> .
+docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.api    -t <registry>/chess-ai-coach:api-<tag>    .
+docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.web    -t <registry>/chess-ai-coach:web-<tag>    .
+docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.engine -t <registry>/chess-ai-coach:engine-<tag> .
 ```
 
 Run the script rather than these commands — they are here to explain it, and
