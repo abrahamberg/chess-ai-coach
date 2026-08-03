@@ -30,9 +30,11 @@ const DEV_STUB_USER: AuthUser = { email: 'dev@local.test', displayName: 'dev@loc
 //     the Ready state (deploy/helm/chess-ai-coach api Deployment).
 const AUTH_EXEMPT_PATHS = new Set(['/api/stripe/webhook', '/healthz', '/readyz']);
 
-/** Decorates `request.user` from oauth2-proxy's X-Auth-Request-* headers. Requests
- * without those headers get a dev-stub identity in dev-stub mode, or 401 otherwise
- * (except AUTH_EXEMPT_PATHS, which are authenticated some other way). */
+/** Decorates `request.user` from oauth2-proxy identity headers. In reverse-proxy
+ * mode (the default), oauth2-proxy v7.x passes `X-Forwarded-Email` and
+ * `X-Forwarded-User` via `--pass-user-headers` (on by default). In auth_request
+ * mode the older `X-Auth-Request-Email` / `X-Auth-Request-User` names are used
+ * via `--set-xauthrequest`. We accept either convention. */
 export const authHeadersPlugin: FastifyPluginAsync<AuthHeadersOptions> = fp(
   (app: FastifyInstance, opts: AuthHeadersOptions) => {
     app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -59,10 +61,16 @@ export const authHeadersPlugin: FastifyPluginAsync<AuthHeadersOptions> = fp(
 );
 
 function userFromHeaders(request: FastifyRequest): AuthUser | null {
-  const email = request.headers['x-auth-request-email'];
-  if (typeof email !== 'string' || email.length === 0) return null;
-  const rawDisplayName = request.headers['x-auth-request-user'];
+  // X-Forwarded-* — oauth2-proxy v7.x reverse-proxy mode (--pass-user-headers, default)
+  const email =
+    request.headers['x-auth-request-email'] ?? request.headers['x-forwarded-email'];
   const displayName =
-    typeof rawDisplayName === 'string' && rawDisplayName.length > 0 ? rawDisplayName : email;
-  return { email, displayName };
+    request.headers['x-auth-request-user'] ??
+    request.headers['x-forwarded-preferred-username'] ??
+    request.headers['x-forwarded-user'];
+
+  if (typeof email !== 'string' || email.length === 0) return null;
+  const resolvedName =
+    typeof displayName === 'string' && displayName.length > 0 ? displayName : email;
+  return { email, displayName: resolvedName };
 }
