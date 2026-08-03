@@ -182,6 +182,8 @@ externalDatabase:
 ## kysely migrations, run as a Helm hook (architecture §11).
 migrate:
   enabled: true
+  # Argo CD must run this after ExternalSecrets have synced.
+  argocdHook: false
   # See the note in templates/migrate-job.yaml about first installs with the
   # bundled postgresql subchart.
   hooks:

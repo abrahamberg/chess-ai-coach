@@ -16,9 +16,15 @@ metadata:
   labels:
     {{- include "chess-ai-coach.labels" (dict "ctx" . "component" "migrate") | nindent 4 }}
   annotations:
+    {{- if .Values.migrate.argocdHook }}
+    "argocd.argoproj.io/hook": Sync
+    "argocd.argoproj.io/sync-wave": "0"
+    "argocd.argoproj.io/hook-delete-policy": BeforeHookCreation,HookSucceeded
+    {{- else }}
     "helm.sh/hook": {{ join "," .Values.migrate.hooks }}
     "helm.sh/hook-weight": "-5"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- end }}
 spec:
   backoffLimit: {{ .Values.migrate.backoffLimit }}
   template:
