@@ -1,3 +1,4 @@
+import type { ParsedPosition } from '@chess-coach/chess-analysis';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -208,6 +209,36 @@ describe('MessageList', () => {
 
     expect(screen.getByText(/what about/)).toBeInTheDocument();
     expect(document.querySelector('.move-mention')).not.toBeInTheDocument();
+  });
+
+  test('a numbered move mention resolves against the historical position it names, not the live board fen', async () => {
+    // 1.e4 e5 2.Nf3 Nc6 3.Bc4 Nf6 4.Ng5 — by the time this position is on
+    // the board, "Bc4" is no longer a legal move (the bishop is already
+    // there), so resolving against the live fen would fail. The FEN before
+    // ply 5 (White's 3rd move) is what "3.Bc4" actually names.
+    const liveFen = 'r1bqkb1r/pppp1ppp/2n2n2/4p1N1/2B1P3/8/PPPP1PPP/RNBQK2R b KQkq - 5 4';
+    const positions: ParsedPosition[] = [
+      {
+        ply: 4,
+        fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
+        moveSan: 'Nc6',
+        moveUci: 'b8c6',
+        mover: 'black'
+      }
+    ];
+    const onHoverMove = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MessageList
+        messages={[msg('1', 'After 3.Bc4, you developed naturally')]}
+        fen={liveFen}
+        positions={positions}
+        onHoverMove={onHoverMove}
+      />
+    );
+
+    await user.hover(screen.getByText('3. Bc4'));
+    expect(onHoverMove).toHaveBeenCalledWith({ from: 'f1', to: 'c4' });
   });
 
   test('a bold move mention stays bold while also being hoverable', async () => {

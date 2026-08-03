@@ -35,20 +35,20 @@ describe('parseMessageSegments', () => {
   test('normalizes a move-number-and-period prefix, adding the missing space', () => {
     expect(parseMessageSegments('after 1.e4')).toEqual([
       { type: 'text', value: 'after ', bold: false },
-      { type: 'move', text: '1. e4', san: 'e4', bold: false }
+      { type: 'move', text: '1. e4', san: 'e4', bold: false, moveNumber: 1, color: 'white' }
     ]);
   });
 
   test('keeps an explicit ellipsis prefix for a black move stated alone', () => {
     expect(parseMessageSegments('after 18...Nf3')).toEqual([
       { type: 'text', value: 'after ', bold: false },
-      { type: 'move', text: '18...Nf3', san: 'Nf3', bold: false }
+      { type: 'move', text: '18...Nf3', san: 'Nf3', bold: false, moveNumber: 18, color: 'black' }
     ]);
   });
 
   test('normalizes the coach\'s hyphenated move-number typo to standard notation', () => {
     expect(parseMessageSegments('1-e3 was the idea')).toEqual([
-      { type: 'move', text: '1. e3', san: 'e3', bold: false },
+      { type: 'move', text: '1. e3', san: 'e3', bold: false, moveNumber: 1, color: 'white' },
       { type: 'text', value: ' was the idea', bold: false }
     ]);
   });

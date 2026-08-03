@@ -1,6 +1,6 @@
 export type MessageSegment =
   | { type: 'text'; value: string; bold: boolean }
-  | { type: 'move'; text: string; san: string; bold: boolean };
+  | { type: 'move'; text: string; san: string; bold: boolean; moveNumber?: number; color?: 'white' | 'black' };
 
 const BOLD_PATTERN = /\*\*(.+?)\*\*/g;
 
@@ -24,7 +24,8 @@ function splitMoveTokens(text: string, bold: boolean): MessageSegment[] {
     const [full, number, separator, san] = match;
     const displaySeparator = separator === '-' ? '.' : separator;
     const displayText = `${number}${displaySeparator}${displaySeparator === '.' ? ' ' : ''}${san}`;
-    segments.push({ type: 'move', text: displayText, san: san ?? '', bold });
+    const color: 'white' | 'black' = separator === '...' ? 'black' : 'white';
+    segments.push({ type: 'move', text: displayText, san: san ?? '', bold, moveNumber: Number(number), color });
     lastIndex = index + (full?.length ?? 0);
   }
   if (lastIndex < text.length) segments.push(...splitBareMoves(text.slice(lastIndex), bold));

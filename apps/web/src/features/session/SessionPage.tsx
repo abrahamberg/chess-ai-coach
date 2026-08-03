@@ -30,6 +30,7 @@ export function SessionPage(): ReactNode {
     gameQuery,
     profileQuery,
     sanMoves,
+    positions,
     boardState,
     divergedLine,
     currentRealPosition,
@@ -157,6 +158,7 @@ export function SessionPage(): ReactNode {
             boardArrows={boardArrows}
             hasPendingLine={Boolean(divergedLine.line)}
             fen={fen}
+            positions={positions}
             onHoverMove={setHoverMove}
           />
         )}

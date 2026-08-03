@@ -1,3 +1,4 @@
+import type { ParsedPosition } from '@chess-coach/chess-analysis';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { ArrowRef } from './arrowToken.js';
 import type { CoachMessage } from '../../hooks/useCoachChat.js';
@@ -32,6 +33,10 @@ export interface ChatPaneProps {
   /** The position currently on the board — passed through to MessageList so
    * it can resolve SAN move mentions in coach text (design.md §5.3). */
   fen?: string;
+  /** Every ply's FEN for the game being reviewed — passed through to
+   * MessageList so a numbered move mention resolves against the position it
+   * names, not whatever is currently on the board (design.md §5.3). */
+  positions?: ParsedPosition[];
   /** Fired on hover/focus of a resolved move mention; lifted by the parent
    * to preview it on the board. */
   onHoverMove?: (move: HoverMove) => void;
@@ -53,6 +58,7 @@ export function ChatPane({
   boardArrows = NO_ARROWS,
   hasPendingLine = false,
   fen,
+  positions,
   onHoverMove
 }: ChatPaneProps): ReactNode {
   const [parts, setParts] = useState<DraftPart[]>(createEmptyDraft);
@@ -85,7 +91,14 @@ export function ChatPane({
           Debug last answer
         </button>
       </div>
-      <MessageList messages={messages} onScrollUp={onScrollUp} onSelectPly={onSelectPly} fen={fen} onHoverMove={onHoverMove} />
+      <MessageList
+        messages={messages}
+        onScrollUp={onScrollUp}
+        onSelectPly={onSelectPly}
+        fen={fen}
+        positions={positions}
+        onHoverMove={onHoverMove}
+      />
       <ThinkingIndicator visible={isThinking} />
       <ToolActivity toolName={activeToolName} />
       <form onSubmit={handleSubmit}>

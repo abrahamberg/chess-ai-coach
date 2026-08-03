@@ -97,6 +97,7 @@ export function useSessionPageData(sessionId: string) {
     gameQuery,
     profileQuery,
     sanMoves,
+    positions,
     boardState,
     divergedLine,
     currentRealPosition,
