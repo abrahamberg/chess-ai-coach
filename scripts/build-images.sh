@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Build the three deployment images (api, web, engine) — Task 9.1.
 #
-# The api and web images are built OUTSIDE Docker: their Dockerfiles only COPY
-# finished artifacts (apps/api/dist-bundle, apps/web/dist and a pruned
-# production node_modules). The four preparation steps below are order-sensitive
+# All application images are built OUTSIDE Docker: their Dockerfiles only COPY
+# finished artifacts (api/web/engine bundles and static files). The preparation
+# steps below are order-sensitive
 # — step 3 deletes the dev dependencies steps 1–2 need — which is exactly why
 # they live in a script instead of a doc that can be transcribed wrongly.
 # Background and rationale: docs/deploy-build.md.
@@ -73,14 +73,14 @@ if [[ "$SKIP_ARTIFACTS" -eq 0 ]]; then
   log "1/4 npm ci (full install — the builds below need the dev dependencies)"
   npm ci
 
-  log "2/4 building artifacts: apps/api/dist-bundle + apps/web/dist"
+  log "2/4 building artifacts: apps/api/dist-bundle + apps/web/dist + services/engine/dist-bundle"
   npm run bundle --workspace=@chess-coach/api
   npm run build --workspace=@chess-coach/web
+  node services/engine/scripts/bundle.mjs
 
   log "3/4 pruning node_modules to apps/api's production dependencies"
-  # Destructive on purpose and only correct here: it removes the dev
-  # dependencies step 2 needed, so it must run after step 2 and before any
-  # image build.
+  # This must happen after all runner-side builds: esbuild is needed to bundle
+  # the engine, but its platform-specific binary must not enter the API image.
   npm ci --omit=dev --workspace=@chess-coach/api --include-workspace-root
 else
   log "1-3/4 skipped (--skip-artifacts)"
@@ -88,6 +88,7 @@ fi
 
 [[ -f apps/api/dist-bundle/server.mjs ]] || die "apps/api/dist-bundle/server.mjs missing — run without --skip-artifacts"
 [[ -f apps/web/dist/index.html ]] || die "apps/web/dist/index.html missing — run without --skip-artifacts"
+[[ -f services/engine/dist-bundle/server.mjs ]] || die "services/engine/dist-bundle/server.mjs missing — run without --skip-artifacts"
 
 restore_dev_deps() {
   if [[ "$RESTORE_DEV_DEPS" -eq 1 ]]; then

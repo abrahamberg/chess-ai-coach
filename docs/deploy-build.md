@@ -1,6 +1,6 @@
 # Building the deployment images
 
-The `api` and `web` images are **built outside Docker**. Their Dockerfiles do
+The `api`, `web`, and `engine` images are **built outside Docker**. Their Dockerfiles do
 nothing but `COPY` finished artifacts into a slim runtime image — no `npm ci`, no
 `npm run build`, no compilation in a Docker layer. Compiling on the CI runner is
 faster and caches better, and it is what makes the images portable to the arm64
@@ -33,10 +33,9 @@ npm ci
 # 2. Build the artifacts the Dockerfiles will copy.
 npm run bundle --workspace=@chess-coach/api   # -> apps/api/dist-bundle/*.mjs
 npm run build  --workspace=@chess-coach/web   # -> apps/web/dist/
+node services/engine/scripts/bundle.mjs       # -> services/engine/dist-bundle/server.mjs
 
-# 3. Prune node_modules to apps/api's production dependencies. Must come AFTER
-#    step 2: it removes the dev dependencies those builds rely on.
-npm ci --omit=dev --workspace=@chess-coach/api --include-workspace-root
+# 3. Verify the prepared artifacts before building the images.
 
 # 4. Build the images.
 docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.api    -t <registry>/chess-ai-coach:api-<tag>    .
@@ -64,10 +63,8 @@ docker buildx inspect --bootstrap        # check the Platforms: line lists linux
 docker run --privileged --rm tonistiigi/binfmt --install arm64
 ```
 
-The QEMU part is not optional for `docker/Dockerfile.engine`: unlike api and
-web, it still has `RUN` steps (`apt-get install stockfish`, `npm ci`,
-`npm run typecheck`) that execute *inside* the target-architecture container,
-under emulation. GitHub Actions covers both with
+The QEMU part is needed for the engine image's architecture-specific Stockfish
+installation. GitHub Actions covers this with
 `docker/setup-qemu-action` + `docker/setup-buildx-action`.
 
 Native arm64 runners need neither — but they do still need the
@@ -134,9 +131,9 @@ pre-buildable artifact to hoist onto the runner. Built through
 fetches the arm64 package from Debian's repositories, so the right binary lands in
 the image automatically. It does not need the "build outside Docker" treatment.
 
-The engine image still runs `tsx` at startup, but installs its own dependencies
-inside the (correct-architecture) build, so the esbuild-binary problem does not
-arise there either.
+The engine application is bundled on the runner and runs with plain `node`; no
+npm install, TypeScript compilation, or `tsx` startup dependency is needed in
+the runtime image.
 
 ## All three images run as uid 1000
 
