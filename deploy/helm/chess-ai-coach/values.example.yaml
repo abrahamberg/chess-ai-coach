@@ -147,6 +147,7 @@ oauth2-proxy:
     cookieSecret: ""
     configFile: |-
       email_domains = [ "*" ]
+      set_xauthrequest = true
       cookie_secure = true
       upstreams = [
         "http://{{ .Release.Name }}-api:3000/api/",

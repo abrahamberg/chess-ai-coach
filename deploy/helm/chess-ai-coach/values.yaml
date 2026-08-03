@@ -276,6 +276,7 @@ oauth2-proxy:
     # web.service.port if you change either.
     configFile: |-
       email_domains = [ "*" ]
+      set_xauthrequest = true
       upstreams = [
         "http://{{ .Release.Name }}-api:3000/api/",
         "http://{{ .Release.Name }}-web/"
