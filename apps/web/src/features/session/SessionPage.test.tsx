@@ -92,27 +92,6 @@ function mockFetch(session: SessionFixture = {}, extra: (path: string) => Respon
         )
       );
     }
-    // Backs the PositionAnalysisPanel visibility check — showEngineAnalysis
-    // off by default means the panel never fires its own fetch in these
-    // tests, so no test needs to know this call happens.
-    if (path === '/api/users/me') {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: 'user-1',
-            email: 'daniel@example.com',
-            displayName: 'daniel',
-            ratingBand: 'club',
-            lichessUsername: null,
-            chesscomUsername: null,
-            selfAssessment: null,
-            showEngineAnalysis: false,
-            creditBalance: 100
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      );
-    }
     throw new Error(`unexpected fetch: ${path}`);
   });
 }

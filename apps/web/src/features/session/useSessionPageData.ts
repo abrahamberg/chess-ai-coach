@@ -1,5 +1,4 @@
 import { parsePgn } from '@chess-coach/chess-analysis';
-import { UserProfileSchema } from '@chess-coach/shared';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -30,11 +29,6 @@ export function useSessionPageData(sessionId: string) {
     queryKey: ['game', gameId],
     queryFn: ({ signal }) => apiGet(`/api/games/${gameId}`, GameDetailSchema, signal),
     enabled: gameId !== undefined
-  });
-
-  const profileQuery = useQuery({
-    queryKey: ['profile'],
-    queryFn: ({ signal }) => apiGet('/api/users/me', UserProfileSchema, signal)
   });
 
   const positions = gameQuery.data ? parsePgn(gameQuery.data.pgn).positions : [];
@@ -95,7 +89,6 @@ export function useSessionPageData(sessionId: string) {
   return {
     sessionQuery,
     gameQuery,
-    profileQuery,
     sanMoves,
     positions,
     boardState,

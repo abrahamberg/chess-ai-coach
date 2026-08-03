@@ -117,6 +117,14 @@ export interface CreditLedgerTable {
   createdAt: Generated<Date>;
 }
 
+export interface PositionEvaluationsTable {
+  fen: string;
+  depth: number;
+  multiPv: number;
+  analysis: Jsonb<unknown>;
+  createdAt: Generated<Date>;
+}
+
 export interface LlmCallLogTable {
   id: Generated<string>;
   userId: string;
@@ -143,4 +151,5 @@ export interface Database {
   focusAreas: FocusAreasTable;
   creditLedger: CreditLedgerTable;
   llmCallLog: LlmCallLogTable;
+  positionEvaluations: PositionEvaluationsTable;
 }

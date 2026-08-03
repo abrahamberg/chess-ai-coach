@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import type { ClassifiedMoveDto } from '@chess-coach/shared';
+import { GameEvalChart } from './GameEvalChart.js';
 import { MoveQualityBadge } from './MoveQualityBadge.js';
 import './MoveExplorer.css';
 
@@ -94,6 +95,7 @@ export function MoveExplorer({ sanMoves, classifiedMoves, currentPly, onSelect }
             {currentMove.quality}: better was {currentMove.bestLineSan.join(' ')}
           </p>
         )}
+      <GameEvalChart classifiedMoves={classifiedMoves} currentPly={currentPly} onSelect={onSelect} />
     </div>
   );
 }

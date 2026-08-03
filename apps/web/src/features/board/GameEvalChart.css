@@ -1,0 +1,51 @@
+.game-eval-chart {
+  flex: 0 0 auto;
+  height: 56px;
+  border-top: 1px solid rgb(0 0 0 / 8%);
+  padding-top: 6px;
+}
+
+.game-eval-chart--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.game-eval-chart__svg {
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.game-eval-chart__zero-line {
+  stroke: var(--text-muted);
+  stroke-width: 0.3;
+  stroke-dasharray: 1 1;
+}
+
+.game-eval-chart__area--white {
+  fill: var(--board-light);
+}
+
+.game-eval-chart__area--black {
+  /* Board-square color, not --text: represents chess side colors, which
+   * must stay a light/dark pair in both themes rather than inverting in
+   * dark mode the way --text intentionally does. */
+  fill: var(--board-dark);
+  opacity: 0.75;
+}
+
+.game-eval-chart__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.game-eval-chart__cursor {
+  stroke: var(--annotate-2);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}

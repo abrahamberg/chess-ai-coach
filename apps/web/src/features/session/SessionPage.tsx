@@ -28,7 +28,6 @@ export function SessionPage(): ReactNode {
   const {
     sessionQuery,
     gameQuery,
-    profileQuery,
     sanMoves,
     positions,
     boardState,
@@ -132,7 +131,6 @@ export function SessionPage(): ReactNode {
           classifiedMoves={gameQuery.data?.classifiedMoves}
           isDesktop={isDesktop}
           engine={engine}
-          showEngineAnalysis={profileQuery.data?.showEngineAnalysis ?? false}
           autoplayIntervalMs={autoplayIntervalMs}
           onChangeAutoplayInterval={setAutoplayIntervalMs}
           sendMessage={(content) => void chat.sendMessage(content)}

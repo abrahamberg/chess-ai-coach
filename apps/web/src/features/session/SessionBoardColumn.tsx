@@ -3,10 +3,10 @@ import type { ClassifiedMoveDto } from '@chess-coach/shared';
 import type { HoverMove } from '../chat/MessageList.js';
 import { CoachBoard, type BoardArrow, type BoardHighlight } from '../board/CoachBoard.js';
 import { DivergedLinePanel } from '../board/DivergedLinePanel.js';
+import { EvalBar } from '../board/EvalBar.js';
 import { ExplorePanel } from '../board/ExplorePanel.js';
 import { MiniBoard } from '../board/MiniBoard.js';
 import { MoveStrip } from '../board/MoveStrip.js';
-import { PositionAnalysisPanel } from '../board/PositionAnalysisPanel.js';
 import type { ArrowRef } from '../chat/arrowToken.js';
 import { encodeDivergedLine } from '../chat/divergedLine.js';
 import { describePly, sanForPly } from '../chat/positionDivider.js';
@@ -26,7 +26,6 @@ export interface SessionBoardColumnProps {
   classifiedMoves: ClassifiedMoveDto[] | null | undefined;
   isDesktop: boolean;
   engine: ReturnType<typeof useWasmEngine>;
-  showEngineAnalysis: boolean;
   autoplayIntervalMs: number;
   onChangeAutoplayInterval: (ms: number) => void;
   sendMessage: (content: string) => void;
@@ -66,7 +65,6 @@ export function SessionBoardColumn({
   classifiedMoves,
   isDesktop,
   engine,
-  showEngineAnalysis,
   autoplayIntervalMs,
   onChangeAutoplayInterval,
   sendMessage,
@@ -114,16 +112,19 @@ export function SessionBoardColumn({
       {showMiniBoard ? (
         <MiniBoard fen={fen} size={96} onExpand={boardState.expandDock} />
       ) : (
-        <CoachBoard
-          fen={fen}
-          orientation={orientation}
-          mode={boardState.mode}
-          arrows={[...boardState.arrows, ...hoverMoveArrowsFor(hoverMove)]}
-          highlights={[...boardState.highlights, ...hoverMoveHighlightsFor(hoverMove)]}
-          onUserMove={handleUserMove}
-          onLocalMove={boardState.previewMove}
-          onArrowsChange={onArrowsChange}
-        />
+        <div className="session-board-row">
+          <EvalBar ply={boardState.ply} classifiedMoves={classifiedMoves ?? []} orientation={orientation} />
+          <CoachBoard
+            fen={fen}
+            orientation={orientation}
+            mode={boardState.mode}
+            arrows={[...boardState.arrows, ...hoverMoveArrowsFor(hoverMove)]}
+            highlights={[...boardState.highlights, ...hoverMoveHighlightsFor(hoverMove)]}
+            onUserMove={handleUserMove}
+            onLocalMove={boardState.previewMove}
+            onArrowsChange={onArrowsChange}
+          />
+        </div>
       )}
       {pendingMove && (
         <p className="undo-pill">
@@ -177,7 +178,6 @@ export function SessionBoardColumn({
       ) : (
         <ExplorePanel fen={fen} mode={boardState.mode} onEnterPeekMode={() => boardState.setMode('peek')} engine={engine} />
       )}
-      <PositionAnalysisPanel fen={fen} enabled={showEngineAnalysis} />
     </div>
   );
 }

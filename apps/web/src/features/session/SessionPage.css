@@ -22,6 +22,20 @@
   padding: 12px;
 }
 
+/* Eval bar + board, side by side — the row (not the frame directly) is now
+ * the board column's flex item, so board sizing rules below target
+ * `.coach-board-frame` through this row instead of as a direct child. */
+.session-board-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.session-board-row .coach-board-frame {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .undo-pill {
   align-self: center;
   background: var(--surface-2);
@@ -147,9 +161,11 @@
  * but short, and — worse — stretched it into a tall, non-square rectangle
  * whenever the column narrowed (chat-pane's fixed width squeezing it on
  * tablet-ish desktop widths). Fixed sizing avoids both failure modes and
- * deliberately leaves empty space below the board for future widgets
- * (progress chart, etc). */
-.session-body.desktop .coach-board-frame {
+ * deliberately leaves empty space below the board for future widgets. Now
+ * applied to the row (eval bar + frame) rather than the frame directly —
+ * horizontal sizing between the two is `.session-board-row`'s own flex
+ * layout above. */
+.session-body.desktop .session-board-row {
   width: 100%;
   flex: 0 0 auto;
 }

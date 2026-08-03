@@ -6,6 +6,7 @@ import * as sessionAbandonedStatus from './migrations/0004_session_abandoned_sta
 import * as sessionDebugSnapshot from './migrations/0005_session_debug_snapshot.js';
 import * as episodeContext from './migrations/0006_episode_context.js';
 import * as showEngineAnalysis from './migrations/0007_show_engine_analysis.js';
+import * as positionEvaluations from './migrations/0008_position_evaluations.js';
 
 const provider: MigrationProvider = {
   getMigrations: () =>
@@ -16,7 +17,8 @@ const provider: MigrationProvider = {
       '0004_session_abandoned_status': sessionAbandonedStatus,
       '0005_session_debug_snapshot': sessionDebugSnapshot,
       '0006_episode_context': episodeContext,
-      '0007_show_engine_analysis': showEngineAnalysis
+      '0007_show_engine_analysis': showEngineAnalysis,
+      '0008_position_evaluations': positionEvaluations
     })
 };
 
