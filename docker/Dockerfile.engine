@@ -8,9 +8,20 @@ RUN apt-get update \
 WORKDIR /app
 ENV STOCKFISH_PATH=/usr/games/stockfish
 
-# The bundle is created by scripts/build-images.sh on the runner. Keeping
-# compilation and npm installation outside Docker makes this image portable
-# across amd64 and arm64 builds.
+# Install only runtime dependencies inside the target-architecture build. This
+# ensures optional/native packages, if added later, resolve for amd64 or arm64
+# instead of copying a host-architecture node_modules tree.
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/chess-analysis/package.json packages/chess-analysis/
+COPY services/engine/package.json services/engine/
+RUN npm ci --omit=dev --no-audit --no-fund \
+    --workspace=@chess-coach/shared \
+    --workspace=@chess-coach/chess-analysis \
+    --workspace=@chess-coach/engine \
+    --include-workspace-root
+
+# The application bundle is created by scripts/build-images.sh on the runner.
 COPY services/engine/dist-bundle ./dist-bundle
 
 USER 1000
