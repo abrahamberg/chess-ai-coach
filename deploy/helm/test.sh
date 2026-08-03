@@ -107,6 +107,19 @@ assert_contains "api deployment declares LLM_KEY_MASTER_KEY" "name: LLM_KEY_MAST
 assert_contains "api ENGINE_URL points at the engine service" "http://chess-coach-engine:8081" "$API"
 assert_contains "api readiness probe is /readyz (architecture §11)" "path: /readyz" "$API"
 
+# The production cluster can provide a complete DATABASE_URL through the
+# ExternalSecret-backed Secret named in externalDatabase. In that mode the
+# chart must not reconstruct a URL from host/password fields.
+EXTERNAL_API="$RENDER_DIR/external-api.yaml"
+render "$EXTERNAL_API" --set postgresql.enabled=false --set migrate.enabled=false \
+  --show-only templates/api-deployment.yaml
+assert_contains "external database URL comes from a Secret" \
+  "name: chess-coach-database-url" "$EXTERNAL_API"
+assert_contains "external database URL uses the DATABASE_URL key" \
+  "key: DATABASE_URL" "$EXTERNAL_API"
+assert_not_matches "external database mode does not render PGPASSWORD" \
+  'name: PGPASSWORD' "$EXTERNAL_API"
+
 # The worker is the same image with a different command (apps/api/src/worker.ts).
 WORKER="$RENDER_DIR/worker.yaml"
 render "$WORKER" --show-only templates/worker-deployment.yaml
@@ -119,7 +132,7 @@ assert_contains "worker deployment declares ENGINE_URL" "name: ENGINE_URL" "$WOR
 #    still signature-verified in-app (§12).
 # ---------------------------------------------------------------------------
 PROXY="$RENDER_DIR/proxy.yaml"
-render "$PROXY" --show-only charts/oauth2-proxy/templates/deployment.yaml
+render "$PROXY" --set oauth2-proxy.enabled=true --show-only charts/oauth2-proxy/templates/deployment.yaml
 assert_contains "oauth2-proxy skips auth for the stripe webhook" \
   "--skip-auth-route=^/api/stripe/webhook$" "$PROXY"
 assert_contains "oauth2-proxy skips auth for /healthz" "--skip-auth-route=^/healthz$" "$PROXY"
@@ -150,7 +163,8 @@ assert_contains "master key comes from a secretKeyRef" "secretKeyRef" "$OURS"
 assert_contains "master key references the llm-key-master-key secret" "name: llm-key-master-key" "$OURS"
 assert_contains "platform LLM keys reference the platform-llm-keys secret" "name: platform-llm-keys" "$OURS"
 assert_contains "stripe values reference the stripe secret" "name: stripe" "$OURS"
-assert_contains "db password references the postgres-credentials secret" "name: postgres-credentials" "$OURS"
+assert_contains "external database URL references the configured Secret" \
+  "name: chess-coach-database-url" "$OURS"
 
 # values.yaml / values.example.yaml themselves must not ship real-looking keys.
 assert_not_matches "values.yaml ships no secret literals" \
@@ -179,7 +193,8 @@ assert_contains "engine accepts only api + worker" "component: worker" "$NETPOL"
 assert_not_matches "no NetworkPolicy opens a component to the whole world" 'ipBlock' "$NETPOL"
 
 INGRESS="$RENDER_DIR/ingress.yaml"
-render "$INGRESS" --show-only templates/ingress.yaml
+render "$INGRESS" --set ingress.backend.serviceName=chess-coach-oauth2-proxy \
+  --set ingress.backend.servicePort=80 --show-only templates/ingress.yaml
 assert_contains "ingress targets oauth2-proxy only" "chess-coach-oauth2-proxy" "$INGRESS"
 assert_not_matches "ingress does not expose api/web directly" \
   'name: chess-coach-(api|web)$' "$INGRESS"

@@ -93,6 +93,12 @@ stripe:
 database:
   sslMode: disable
 
+# The cluster ExternalSecret syncs the Bitwarden item
+# `chess-coach-database-url` into this Secret under DATABASE_URL.
+externalDatabase:
+  existingSecret: chess-coach-database-url
+  existingSecretDatabaseUrlKey: DATABASE_URL
+
 migrate:
   enabled: true
   hooks:
@@ -105,16 +111,17 @@ networkPolicy:
 ingress:
   enabled: true
   className: nginx
-  host: coach.example.com
+  host: golvor.com
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
     - secretName: chess-coach-tls
       hosts:
-        - coach.example.com
+        - golvor.com
 
 postgresql:
-  enabled: true
+  # Use the complete DATABASE_URL supplied by External Secrets.
+  enabled: false
   auth:
     username: chess_coach
     database: chess_coach
@@ -129,6 +136,8 @@ postgresql:
       size: 50Gi
 
 oauth2-proxy:
+  # This is a separate instance for chess-ai-coach. The server-level
+  # oauth2-proxy may use Azure; this instance is configured for Google.
   enabled: true
   replicaCount: 2
   config:
@@ -157,7 +166,7 @@ oauth2-proxy:
     - --skip-auth-route=^/api/stripe/webhook$
     - --skip-auth-route=^/healthz$
     - --skip-auth-route=^/readyz$
-    - --redirect-url=https://coach.example.com/oauth2/callback
+    - --redirect-url=https://golvor.com/oauth2/callback
   service:
     portNumber: 80
   ingress:

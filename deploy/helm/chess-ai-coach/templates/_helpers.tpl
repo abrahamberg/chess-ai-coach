@@ -114,6 +114,13 @@ imagePullSecrets:
      declared earlier in this same container's env list).
      --------------------------------------------------------------------- */}}
 {{- define "chess-ai-coach.env.database" -}}
+{{- if not .Values.postgresql.enabled }}
+- name: DATABASE_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ required "externalDatabase.existingSecret is required when postgresql.enabled is false" .Values.externalDatabase.existingSecret }}
+      key: {{ required "externalDatabase.existingSecretDatabaseUrlKey is required when postgresql.enabled is false" .Values.externalDatabase.existingSecretDatabaseUrlKey }}
+{{- else }}
 - name: PGPASSWORD
   valueFrom:
     secretKeyRef:
@@ -121,6 +128,7 @@ imagePullSecrets:
       key: {{ include "chess-ai-coach.database.passwordKey" . }}
 - name: DATABASE_URL
   value: postgresql://{{ include "chess-ai-coach.database.user" . }}:$(PGPASSWORD)@{{ include "chess-ai-coach.database.host" . }}:{{ include "chess-ai-coach.database.port" . }}/{{ include "chess-ai-coach.database.name" . }}?sslmode={{ .Values.database.sslMode }}
+{{- end }}
 {{- end -}}
 
 {{/* Everything apps/api/src/{server,worker}.ts read at boot beyond the DB. */}}

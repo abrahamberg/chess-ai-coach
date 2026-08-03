@@ -15,7 +15,8 @@ npm run build:images -- --registry <registry> --tag <tag> --push
 `scripts/build-images.sh` is the executable definition of the flow — CI (Task
 9.2) calls it, and it is the only place the step order lives. `--help` lists
 every flag; the ones that matter are `--registry`, `--tag`, `--platform`
-(default `linux/arm64`), `--push`, and `--restore-dev-deps` (re-runs a full
+(default `linux/arm64`; the GitHub publishing workflow uses
+`linux/amd64,linux/arm64`), `--push`, and `--restore-dev-deps` (re-runs a full
 `npm ci` at the end, which you want on a workstation and not on a CI runner).
 
 Without `--push` the images are `--load`ed into the local Docker daemon
@@ -38,9 +39,9 @@ npm run build  --workspace=@chess-coach/web   # -> apps/web/dist/
 npm ci --omit=dev --workspace=@chess-coach/api --include-workspace-root
 
 # 4. Build the images.
-docker buildx build --platform linux/arm64 --push -f docker/Dockerfile.api    -t <registry>/chess-ai-coach/api:<tag>    .
-docker buildx build --platform linux/arm64 --push -f docker/Dockerfile.web    -t <registry>/chess-ai-coach/web:<tag>    .
-docker buildx build --platform linux/arm64 --push -f docker/Dockerfile.engine -t <registry>/chess-ai-coach/engine:<tag> .
+docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.api    -t <registry>/chess-ai-coach/api:<tag>    .
+docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.web    -t <registry>/chess-ai-coach/web:<tag>    .
+docker buildx build --platform linux/amd64,linux/arm64 --push -f docker/Dockerfile.engine -t <registry>/chess-ai-coach/engine:<tag> .
 ```
 
 Run the script rather than these commands — they are here to explain it, and

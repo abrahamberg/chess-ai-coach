@@ -173,7 +173,10 @@ externalDatabase:
   port: 5432
   user: chess_coach
   database: chess_coach
-  existingSecret: postgres-credentials
+  # The cluster ExternalSecret should sync the Bitwarden item
+  # `chess-coach-database-url` into this Secret under DATABASE_URL.
+  existingSecret: chess-coach-database-url
+  existingSecretDatabaseUrlKey: DATABASE_URL
   existingSecretPasswordKey: password
 
 ## kysely migrations, run as a Helm hook (architecture §11).
@@ -203,6 +206,11 @@ ingress:
   className: ""
   # Required when enabled — the public hostname of the deployment.
   host: ""
+  # Override these when oauth2-proxy is installed separately in the serving
+  # namespace. The default targets this chart's oauth2-proxy subchart.
+  backend:
+    serviceName: ""
+    servicePort: 0
   annotations: {}
   # e.g. [{secretName: chess-coach-tls, hosts: [coach.example.com]}]
   tls: []

@@ -28,7 +28,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ printf "%s-oauth2-proxy" (include "chess-ai-coach.fullname" .) }}
+                name: {{ default (printf "%s-oauth2-proxy" (include "chess-ai-coach.fullname" .)) .Values.ingress.backend.serviceName }}
                 port:
-                  number: {{ (index .Values "oauth2-proxy" "service" "portNumber") }}
+                  number: {{ default (index .Values "oauth2-proxy" "service" "portNumber") .Values.ingress.backend.servicePort }}
 {{- end }}

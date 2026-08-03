@@ -8,10 +8,16 @@ ENV STOCKFISH_PATH=/usr/games/stockfish
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/chess-analysis/package.json packages/chess-analysis/
 COPY services/engine/package.json services/engine/
-RUN npm ci --workspace=@chess-coach/shared --workspace=@chess-coach/engine --include-workspace-root
+RUN npm ci --no-audit --no-fund \
+    --workspace=@chess-coach/shared \
+    --workspace=@chess-coach/chess-analysis \
+    --workspace=@chess-coach/engine \
+    --include-workspace-root
 
 COPY packages/shared packages/shared
+COPY packages/chess-analysis packages/chess-analysis
 COPY services/engine services/engine
 RUN npm run typecheck -- --build services/engine
 

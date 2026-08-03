@@ -11,3 +11,13 @@ coverage
 docs
 deploy
 *.tsbuildinfo
+
+# Workspace build/test inputs that no runtime Dockerfile needs. Keep the
+# pre-built API/web artifacts and the engine's source workspace packages.
+apps/*/src
+apps/*/test
+apps/*/node_modules
+packages/*/test
+services/*/test
+services/*/node_modules
+packages/prompts
