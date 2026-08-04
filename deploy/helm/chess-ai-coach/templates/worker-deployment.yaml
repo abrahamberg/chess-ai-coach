@@ -8,6 +8,8 @@ metadata:
     {{- include "chess-ai-coach.labels" (dict "ctx" . "component" "worker") | nindent 4 }}
 spec:
   replicas: {{ .Values.worker.replicaCount }}
+  strategy:
+    {{- toYaml (.Values.worker.strategy | default (dict "type" "RollingUpdate" "rollingUpdate" (dict "maxSurge" 0 "maxUnavailable" 1))) | nindent 4 }}
   selector:
     matchLabels:
       {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "worker") | nindent 6 }}
@@ -37,5 +39,9 @@ spec:
       {{- end }}
       {{- with .Values.worker.tolerations }}
       tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}

@@ -8,6 +8,8 @@ spec:
   {{- if not .Values.engine.autoscaling.enabled }}
   replicas: {{ .Values.engine.replicaCount }}
   {{- end }}
+  strategy:
+    {{- toYaml (.Values.engine.strategy | default (dict "type" "RollingUpdate" "rollingUpdate" (dict "maxSurge" 0 "maxUnavailable" 1))) | nindent 4 }}
   selector:
     matchLabels:
       {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "engine") | nindent 6 }}
@@ -66,5 +68,9 @@ spec:
       {{- end }}
       {{- with .Values.engine.tolerations }}
       tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.engine.affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
