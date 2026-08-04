@@ -92,21 +92,22 @@ function formatEval(cp: number | null, mateIn: number | null): string {
  * ("8.d6 9.O-O a6 ..."), starting the numbering at `startPly` (the ply of
  * `sanMoves[0]`) so a line beginning on Black's move opens with "8...d5"
  * instead of a bare SAN. Truncated to `maxFullMoves` move-pairs so a deep
- * engine PV doesn't bloat the prompt.
+ * engine PV doesn't bloat the prompt — the cap only controls how much
+ * context is spent, it isn't itself worth stating in the rendered text (the
+ * model can already see how many moves are there).
  */
 function formatPvLine(startPly: number, sanMoves: string[], maxFullMoves = 6): string {
   if (sanMoves.length === 0) return '';
   const truncated = sanMoves.slice(0, maxFullMoves * 2);
-  const tokens = truncated.map((san, index) => {
-    const movePly = startPly + index;
-    const moveNumber = Math.ceil(movePly / 2);
-    const isWhite = movePly % 2 === 1;
-    if (isWhite) return `${moveNumber}.${san}`;
-    return index === 0 ? `${moveNumber}...${san}` : san;
-  });
-  const lastPly = startPly + truncated.length - 1;
-  const fullMoves = Math.ceil(lastPly / 2) - Math.ceil(startPly / 2) + 1;
-  return `${tokens.join(' ')} (${fullMoves} full move${fullMoves === 1 ? '' : 's'})`;
+  return truncated
+    .map((san, index) => {
+      const movePly = startPly + index;
+      const moveNumber = Math.ceil(movePly / 2);
+      const isWhite = movePly % 2 === 1;
+      if (isWhite) return `${moveNumber}.${san}`;
+      return index === 0 ? `${moveNumber}...${san}` : san;
+    })
+    .join(' ');
 }
 
 function renderFeatureDeltaBullets(delta: FeatureDelta): string {

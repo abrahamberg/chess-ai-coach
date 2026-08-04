@@ -127,9 +127,9 @@ describe('renderCurrentMoveBlock', () => {
     const text = renderCurrentMoveBlock(16, 'pre-move-fen', null, '(empty — no parked topics right now)', 'd5', ctx);
 
     expect(text).toContain("Played d5 (eval +0.06, cost ~163cp) instead of the engine's best, d6 (eval +0.17).");
-    expect(text).toContain('Best line: 8...d6 9.O-O a6 (2 full moves)');
-    expect(text).toContain('Played line: 8...d5 (1 full move)');
-    expect(text).toContain('Other engine options:\n- Ba3 (eval +0.14): 8...Ba3 9.a6 O-O (2 full moves)');
+    expect(text).toContain('Best line: 8...d6 9.O-O a6');
+    expect(text).toContain('Played line: 8...d5');
+    expect(text).toContain('Other engine options:\n- Ba3 (eval +0.14): 8...Ba3 9.a6 O-O');
   });
 
   test('extends the played line with the post-move continuation when provided', () => {
@@ -139,7 +139,19 @@ describe('renderCurrentMoveBlock', () => {
     };
     const text = renderCurrentMoveBlock(16, 'pre-move-fen', null, '(empty — no parked topics right now)', 'd5', ctx);
 
-    expect(text).toContain('Played line: 8...d5 9.exd5 Nxd5 (2 full moves)');
+    expect(text).toContain('Played line: 8...d5 9.exd5 Nxd5');
+  });
+
+  test('truncates a PV line to 6 full moves', () => {
+    const longPv = ['d6', 'O-O', 'a6', 'Bb3', 'Ba7', 'h3', 'h6', 'c3', 'O-O', 'Re1', 'd6', 'a4', 'Nb6', 'a5'];
+    const ctx: CurrentMoveAnalysisContext = {
+      analysis: analysis({ bestMove: 'd6', lines: [line({ moveSan: 'd6', pvSan: longPv, cp: 17 })] })
+    };
+    const text = renderCurrentMoveBlock(16, 'pre-move-fen', null, '(empty — no parked topics right now)', 'd5', ctx);
+
+    expect(text).toContain('Best line: 8...d6 9.O-O a6 10.Bb3 Ba7 11.h3 h6 12.c3 O-O 13.Re1 d6 14.a4');
+    expect(text).not.toContain('Nb6');
+    expect(text).not.toContain('a5');
   });
 
   test('collapses to a single sentence when the student played the engine\'s top choice', () => {
@@ -149,7 +161,7 @@ describe('renderCurrentMoveBlock', () => {
     const text = renderCurrentMoveBlock(2, 'fen', null, '(empty — no parked topics right now)', 'e5', ctx);
 
     expect(text).toContain('This was the engine’s top choice.');
-    expect(text).toContain('Line: 1...e5 2.Nf3 (2 full moves)');
+    expect(text).toContain('Line: 1...e5 2.Nf3');
     expect(text).not.toContain('instead of');
     expect(text).not.toContain('Played line');
   });
@@ -161,7 +173,7 @@ describe('renderCurrentMoveBlock', () => {
     const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '(empty — no parked topics right now)', null, ctx);
 
     expect(text).toContain("Engine's top choice here: e4 (eval +0.25)");
-    expect(text).toContain('Line: 1.e4 e5 (1 full move)');
+    expect(text).toContain('Line: 1.e4 e5');
     expect(text).not.toContain('instead of');
     expect(text).not.toContain('Played line');
   });
