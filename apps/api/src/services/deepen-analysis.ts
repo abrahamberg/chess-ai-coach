@@ -23,6 +23,14 @@ const BATCH_SIZE = 10;
  * persists them in batches of BATCH_SIZE. Purely additive — never touches
  * analyses/classifiedMoves/the coaching plan, so a failure here can't
  * regress the fast pipeline's output.
+ *
+ * Each batch is computed concurrently (Promise.all), not one position at a
+ * time — the engine service pools multiple Stockfish processes
+ * (services/engine/src/engine-pool.ts), so a strictly sequential walk here
+ * left half that capacity idle and made a full game take far longer to
+ * finish than the pool could actually support. The batch write after each
+ * chunk is still the durability checkpoint (a crash mid-job only redoes the
+ * current in-flight batch, not the whole game).
  */
 export async function runDeepenAnalysisJob(
   db: Kysely<Database>,
@@ -36,14 +44,23 @@ export async function runDeepenAnalysisJob(
   const cached = await positionEvaluationsRepo.findManyByFens(db, fens);
   const uncachedFens = fens.filter((fen) => !cached.has(fen));
 
-  let buffer: positionEvaluationsRepo.PositionEvaluationEntry[] = [];
-  for (const fen of uncachedFens) {
-    const analysis = await deps.analyzePosition(fen);
-    buffer.push({ fen, depth: analysis.depth, multiPv: analysis.multiPv, analysis });
-    if (buffer.length >= BATCH_SIZE) {
-      await positionEvaluationsRepo.upsertMany(db, buffer);
-      buffer = [];
-    }
+  console.log(
+    `deepen-analysis: game ${gameId} — ${fens.length} plies, ${cached.size} already cached, ${uncachedFens.length} to compute`
+  );
+
+  let computed = 0;
+  for (let i = 0; i < uncachedFens.length; i += BATCH_SIZE) {
+    const chunk = uncachedFens.slice(i, i + BATCH_SIZE);
+    const entries = await Promise.all(
+      chunk.map(async (fen) => {
+        const analysis = await deps.analyzePosition(fen);
+        return { fen, depth: analysis.depth, multiPv: analysis.multiPv, analysis };
+      })
+    );
+    await positionEvaluationsRepo.upsertMany(db, entries);
+    computed += entries.length;
+    console.log(`deepen-analysis: game ${gameId} — ${computed}/${uncachedFens.length} positions cached`);
   }
-  await positionEvaluationsRepo.upsertMany(db, buffer);
+
+  console.log(`deepen-analysis: game ${gameId} — done`);
 }

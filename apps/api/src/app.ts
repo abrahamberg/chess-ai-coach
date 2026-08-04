@@ -77,7 +77,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
     if (options.coachAgentDeps) {
       registerSessionsRoutes(app, options.db, options.coachAgentDeps);
-      registerPositionAnalysisRoutes(app, options.db, options.coachAgentDeps.analyzePosition);
+      registerPositionAnalysisRoutes(app, options.coachAgentDeps.analyzePosition);
     }
     if (options.stripeClient) {
       registerCreditsRoutes(app, options.db, options.stripeClient);

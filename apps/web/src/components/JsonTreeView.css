@@ -1,0 +1,57 @@
+.json-tree {
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.json-tree__children {
+  margin-left: 16px;
+  border-left: 1px solid rgb(0 0 0 / 8%);
+  padding-left: 8px;
+}
+
+.json-tree__entry {
+  display: flex;
+  gap: 0;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.json-tree summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.json-key {
+  color: var(--annotate-2);
+}
+
+.json-punct {
+  color: var(--text-muted);
+}
+
+.json-string {
+  color: var(--quality-interesting);
+}
+
+.json-boolean {
+  color: var(--warn);
+}
+
+.json-null {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.json-number {
+  color: var(--text);
+}
+
+.json-number--positive {
+  color: var(--quality-best);
+}
+
+.json-number--negative {
+  color: var(--quality-blunder);
+}

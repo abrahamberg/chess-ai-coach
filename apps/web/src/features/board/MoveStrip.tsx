@@ -1,11 +1,16 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { ClassifiedMoveDto } from '@chess-coach/shared';
+import { useLongPress } from '../../hooks/useLongPress.js';
+import { MoveAnalysisModal } from './MoveAnalysisModal.js';
 import { MoveQualityBadge } from './MoveQualityBadge.js';
 import './MoveStrip.css';
 
 export interface MoveStripProps {
   sanMoves: string[];
   classifiedMoves: ClassifiedMoveDto[];
+  /** ply-indexed positions (ply 0 = game start) — used, offset by one like
+   * the quality lookup below, for the move analysis inspector's fen. */
+  positions: { ply: number; fen: string }[];
   currentPly: number;
   momentPlies: number[];
   onSelect: (ply: number) => void;
@@ -21,9 +26,11 @@ export interface MoveStripProps {
  * raw 0-based local `ply` — so a future caller wiring up `momentPlies` with
  * real 1-based ply data will find the moment dot one chip off from the
  * badge it should line up with. */
-export function MoveStrip({ sanMoves, classifiedMoves, currentPly, momentPlies, onSelect }: MoveStripProps): ReactNode {
+export function MoveStrip({ sanMoves, classifiedMoves, positions, currentPly, momentPlies, onSelect }: MoveStripProps): ReactNode {
+  const [inspecting, setInspecting] = useState<{ fen: string; label: string } | null>(null);
   const momentSet = new Set(momentPlies);
   const qualityByPly = new Map(classifiedMoves.map((move) => [move.ply, move.quality]));
+  const fenByPly = new Map(positions.map((position) => [position.ply, position.fen]));
 
   return (
     <div className="move-strip">
@@ -42,20 +49,62 @@ export function MoveStrip({ sanMoves, classifiedMoves, currentPly, momentPlies, 
             </span>
           );
         }
+        const fen = fenByPly.get(ply + 1);
+        const label = `${Math.floor(ply / 2) + 1}${ply % 2 === 0 ? '.' : '...'} ${san}`;
         children.push(
-          <button
+          <MoveChip
             key={ply}
-            type="button"
+            ply={ply}
+            san={san}
             className={className || undefined}
-            aria-current={isCurrent ? 'true' : undefined}
-            onClick={() => onSelect(ply)}
-          >
-            <MoveQualityBadge quality={quality} size="sm" />
-            {san}
-          </button>
+            isCurrent={isCurrent}
+            quality={quality}
+            onSelect={onSelect}
+            onInspect={fen ? () => setInspecting({ fen, label }) : undefined}
+          />
         );
         return children;
       })}
+      {inspecting && (
+        <MoveAnalysisModal fen={inspecting.fen} moveLabel={inspecting.label} onClose={() => setInspecting(null)} />
+      )}
     </div>
+  );
+}
+
+interface MoveChipProps {
+  ply: number;
+  san: string;
+  className: string | undefined;
+  isCurrent: boolean;
+  quality: ClassifiedMoveDto['quality'] | undefined;
+  onSelect: (ply: number) => void;
+  /** Opens the move-analysis inspector on long-press; undefined when the
+   * fen isn't known yet, so a press is a no-op instead of throwing. */
+  onInspect: (() => void) | undefined;
+}
+
+/** There's no native long-press event and no right-click on touch, so this
+ * is the mobile equivalent of MoveExplorer's onContextMenu — press and hold
+ * (useLongPress) opens the same inspector modal. */
+function MoveChip({ ply, san, className, isCurrent, quality, onSelect, onInspect }: MoveChipProps): ReactNode {
+  const longPress = useLongPress(onInspect ?? (() => {}));
+
+  return (
+    <button
+      type="button"
+      className={className}
+      aria-current={isCurrent ? 'true' : undefined}
+      onClick={() => onSelect(ply)}
+      onContextMenu={(event) => {
+        if (!onInspect) return;
+        event.preventDefault();
+        onInspect();
+      }}
+      {...longPress}
+    >
+      <MoveQualityBadge quality={quality} size="sm" />
+      {san}
+    </button>
   );
 }

@@ -23,6 +23,9 @@ export interface SessionBoardColumnProps {
   orientation: 'white' | 'black';
   showMiniBoard: boolean;
   sanMoves: string[];
+  /** ply-indexed positions (ply 0 = game start) — threaded through to
+   * MoveStrip for the move analysis inspector's fen lookup. */
+  positions: { ply: number; fen: string }[];
   classifiedMoves: ClassifiedMoveDto[] | null | undefined;
   isDesktop: boolean;
   engine: ReturnType<typeof useWasmEngine>;
@@ -62,6 +65,7 @@ export function SessionBoardColumn({
   orientation,
   showMiniBoard,
   sanMoves,
+  positions,
   classifiedMoves,
   isDesktop,
   engine,
@@ -161,6 +165,7 @@ export function SessionBoardColumn({
         <MoveStrip
           sanMoves={sanMoves}
           classifiedMoves={classifiedMoves ?? []}
+          positions={positions}
           currentPly={boardState.ply}
           momentPlies={[]}
           onSelect={peekAt}

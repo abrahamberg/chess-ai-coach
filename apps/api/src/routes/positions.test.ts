@@ -2,7 +2,6 @@ import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { PositionAnalysis } from '@chess-coach/shared';
 import { buildApp } from '../app.js';
-import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
 import type { CoachAgentDependencies } from '../services/coach-agent.js';
@@ -78,28 +77,10 @@ describe('POST /api/positions/analyze', () => {
     return { app: buildApp({ authMode: 'proxy', db, coachAgentDeps }), analyzePosition };
   }
 
-  test('403s when the user has not enabled showEngineAnalysis', async () => {
-    const headers = headersFor('off@example.com', 'Off');
-    const { app } = buildTestApp();
-    await app.inject({ method: 'GET', url: '/api/users/me', headers });
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/positions/analyze',
-      headers,
-      payload: { fen: ANALYSIS_FEN }
-    });
-
-    expect(response.statusCode).toBe(403);
-    expect(response.headers['content-type']).toContain('application/problem+json');
-  });
-
-  test('returns the full structured analysis once the user has opted in', async () => {
+  test('returns the full structured analysis regardless of showEngineAnalysis', async () => {
     const headers = headersFor('on@example.com', 'On');
     const { app, analyzePosition } = buildTestApp();
     await app.inject({ method: 'GET', url: '/api/users/me', headers });
-    const user = await usersRepo.findByEmail(db, 'on@example.com');
-    await usersRepo.update(db, user!.id, { showEngineAnalysis: true });
 
     const response = await app.inject({
       method: 'POST',
@@ -117,8 +98,6 @@ describe('POST /api/positions/analyze', () => {
     const headers = headersFor('badbody@example.com', 'Bad');
     const { app, analyzePosition } = buildTestApp();
     await app.inject({ method: 'GET', url: '/api/users/me', headers });
-    const user = await usersRepo.findByEmail(db, 'badbody@example.com');
-    await usersRepo.update(db, user!.id, { showEngineAnalysis: true });
 
     const response = await app.inject({
       method: 'POST',

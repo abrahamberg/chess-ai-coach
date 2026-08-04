@@ -1,32 +1,25 @@
 import { AnalyzePositionRequestSchema, type PositionAnalysis } from '@chess-coach/shared';
 import type { FastifyInstance } from 'fastify';
-import type { Kysely } from 'kysely';
-import type { Database } from '../db/schema.js';
-import { ForbiddenError, ValidationError } from '../lib/errors.js';
-import * as userProfileService from '../services/user-profile.js';
+import { ValidationError } from '../lib/errors.js';
 
 /**
- * On-demand rich position analysis for the browser (docs/design.md
- * principle 4's opt-in override) — reuses the same `analyzePosition`
- * dependency the coach agent's get_engine_analysis tool calls, gated
- * server-side by the student's own showEngineAnalysis preference so the
- * toggle is a real gate, not just a client-side hide, and so Stockfish
- * calls can't be triggered by students who never opted in.
+ * On-demand rich position analysis for the browser — reuses the same
+ * `analyzePosition` dependency the coach agent's get_engine_analysis tool
+ * calls (cache-first against position_evaluations, live Stockfish on a
+ * miss). Available to any authenticated user regardless of their
+ * showEngineAnalysis preference: that setting only gates whether the coach
+ * volunteers raw engine numbers in chat (docs/design.md principle 4), it's
+ * not a gate on this route, which backs the separate move-analysis
+ * inspector modal a student opens explicitly.
  */
 export function registerPositionAnalysisRoutes(
   app: FastifyInstance,
-  db: Kysely<Database>,
   analyzePosition: (fen: string) => Promise<PositionAnalysis>
 ): void {
   app.post('/api/positions/analyze', async (request) => {
     const parsed = AnalyzePositionRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       throw new ValidationError(parsed.error.issues.map((issue) => issue.message).join('; '));
-    }
-
-    const user = await userProfileService.getOrCreate(db, request.user);
-    if (!user.showEngineAnalysis) {
-      throw new ForbiddenError('Engine analysis is not enabled for this account');
     }
 
     return analyzePosition(parsed.data.fen);

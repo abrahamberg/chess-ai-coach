@@ -1,12 +1,16 @@
 import { useState, type ReactNode } from 'react';
 import type { ClassifiedMoveDto } from '@chess-coach/shared';
 import { GameEvalChart } from './GameEvalChart.js';
+import { MoveAnalysisModal } from './MoveAnalysisModal.js';
 import { MoveQualityBadge } from './MoveQualityBadge.js';
 import './MoveExplorer.css';
 
 export interface MoveExplorerProps {
   sanMoves: string[];
   classifiedMoves: ClassifiedMoveDto[];
+  /** ply-indexed positions (ply 0 = game start) — only `.ply`/`.fen` are
+   * read, used to look up the fen for the move analysis inspector modal. */
+  positions: { ply: number; fen: string }[];
   currentPly: number;
   onSelect: (ply: number) => void;
 }
@@ -37,9 +41,11 @@ function pairMoves(sanMoves: string[]): MovePair[] {
  * quality color-coding from the persisted classification, nav pills, and a
  * collapsible plain-language note for the current move. Sidelines/PGN
  * comments are out of scope here — parsePgn only produces a mainline. */
-export function MoveExplorer({ sanMoves, classifiedMoves, currentPly, onSelect }: MoveExplorerProps): ReactNode {
+export function MoveExplorer({ sanMoves, classifiedMoves, positions, currentPly, onSelect }: MoveExplorerProps): ReactNode {
   const [notesVisible, setNotesVisible] = useState(false);
+  const [inspecting, setInspecting] = useState<{ fen: string; label: string } | null>(null);
   const qualityByPly = new Map(classifiedMoves.map((move) => [move.ply, move]));
+  const fenByPly = new Map(positions.map((position) => [position.ply, position.fen]));
   const pairs = pairMoves(sanMoves);
   const totalPlies = sanMoves.length;
   const currentMove = qualityByPly.get(currentPly);
@@ -76,15 +82,34 @@ export function MoveExplorer({ sanMoves, classifiedMoves, currentPly, onSelect }
         {notesVisible ? 'Hide notes' : 'Show notes'}
       </button>
       <ol className="move-explorer__list">
-        {pairs.map((pair) => (
-          <li key={pair.moveNumber}>
-            <span className="move-explorer__number">{pair.moveNumber}.</span>
-            <MoveCell ply={pair.white.ply} san={pair.white.san} quality={qualityByPly.get(pair.white.ply)?.quality} isCurrent={currentPly === pair.white.ply} onSelect={onSelect} />
-            {pair.black && (
-              <MoveCell ply={pair.black.ply} san={pair.black.san} quality={qualityByPly.get(pair.black.ply)?.quality} isCurrent={currentPly === pair.black.ply} onSelect={onSelect} />
-            )}
-          </li>
-        ))}
+        {pairs.map((pair) => {
+          const { moveNumber, white, black } = pair;
+          const whiteFen = fenByPly.get(white.ply);
+          const blackFen = black ? fenByPly.get(black.ply) : undefined;
+          return (
+            <li key={moveNumber}>
+              <span className="move-explorer__number">{moveNumber}.</span>
+              <MoveCell
+                ply={white.ply}
+                san={white.san}
+                quality={qualityByPly.get(white.ply)?.quality}
+                isCurrent={currentPly === white.ply}
+                onSelect={onSelect}
+                onInspect={whiteFen ? () => setInspecting({ fen: whiteFen, label: `${moveNumber}. ${white.san}` }) : undefined}
+              />
+              {black && (
+                <MoveCell
+                  ply={black.ply}
+                  san={black.san}
+                  quality={qualityByPly.get(black.ply)?.quality}
+                  isCurrent={currentPly === black.ply}
+                  onSelect={onSelect}
+                  onInspect={blackFen ? () => setInspecting({ fen: blackFen, label: `${moveNumber}... ${black.san}` }) : undefined}
+                />
+              )}
+            </li>
+          );
+        })}
       </ol>
       {notesVisible &&
         currentMove &&
@@ -96,6 +121,9 @@ export function MoveExplorer({ sanMoves, classifiedMoves, currentPly, onSelect }
           </p>
         )}
       <GameEvalChart classifiedMoves={classifiedMoves} currentPly={currentPly} onSelect={onSelect} />
+      {inspecting && (
+        <MoveAnalysisModal fen={inspecting.fen} moveLabel={inspecting.label} onClose={() => setInspecting(null)} />
+      )}
     </div>
   );
 }
@@ -106,15 +134,24 @@ interface MoveCellProps {
   quality: ClassifiedMoveDto['quality'] | undefined;
   isCurrent: boolean;
   onSelect: (ply: number) => void;
+  /** Opens the move-analysis inspector for this move's position; undefined
+   * when the fen isn't known yet (shouldn't happen once positions load, but
+   * keeps the right-click a no-op instead of throwing). */
+  onInspect: (() => void) | undefined;
 }
 
-function MoveCell({ ply, san, quality, isCurrent, onSelect }: MoveCellProps): ReactNode {
+function MoveCell({ ply, san, quality, isCurrent, onSelect, onInspect }: MoveCellProps): ReactNode {
   return (
     <button
       type="button"
       className={quality ? `move-quality-${quality}` : undefined}
       aria-current={isCurrent ? 'true' : undefined}
       onClick={() => onSelect(ply)}
+      onContextMenu={(event) => {
+        if (!onInspect) return;
+        event.preventDefault();
+        onInspect();
+      }}
     >
       <MoveQualityBadge quality={quality} size="md" />
       {san}

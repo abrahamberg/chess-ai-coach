@@ -20,9 +20,14 @@ export async function getOrComputePositionAnalysis(
   fen: string
 ): Promise<PositionAnalysis> {
   const cached = await positionEvaluationsRepo.findByFen(db, fen);
-  if (cached) return cached;
+  if (cached) {
+    console.log(`position-analysis-cache: hit for ${fen}`);
+    return cached;
+  }
 
+  const startedAt = Date.now();
   const analysis = await analyzePositionViaEngine(engineUrl, fen);
+  console.log(`position-analysis-cache: miss for ${fen} — computed live in ${Date.now() - startedAt}ms`);
   await positionEvaluationsRepo.upsertMany(db, [
     { fen, depth: analysis.depth, multiPv: analysis.multiPv, analysis }
   ]);

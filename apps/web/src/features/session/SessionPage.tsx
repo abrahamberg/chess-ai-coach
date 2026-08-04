@@ -117,6 +117,7 @@ export function SessionPage(): ReactNode {
             <MoveExplorer
               sanMoves={sanMoves}
               classifiedMoves={gameQuery.data?.classifiedMoves ?? []}
+              positions={positions}
               currentPly={boardState.ply}
               onSelect={peekAt}
             />
@@ -128,6 +129,7 @@ export function SessionPage(): ReactNode {
           orientation={orientation}
           showMiniBoard={showMiniBoard}
           sanMoves={sanMoves}
+          positions={positions}
           classifiedMoves={gameQuery.data?.classifiedMoves}
           isDesktop={isDesktop}
           engine={engine}
