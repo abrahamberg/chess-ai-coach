@@ -1,6 +1,6 @@
-import type { ClassifiedMove } from '@chess-coach/chess-analysis';
+import type { ClassifiedMove, FeatureDelta } from '@chess-coach/chess-analysis';
 import { isSoundQuality } from '@chess-coach/chess-analysis';
-import { MOVE_QUALITY_SYMBOLS, type MoveQuality, type PositionAnalysis } from '@chess-coach/shared';
+import { MOVE_QUALITY_SYMBOLS, type MoveQuality, type PositionAnalysis, type PositionAnalysisLine } from '@chess-coach/shared';
 import { describeMoveRef } from './render.js';
 
 /**
@@ -61,6 +61,129 @@ function renderOtherMoveLine(entry: MoveNoteEntry, qualityByPly: Map<number, Mov
 }
 
 /**
+ * Everything the curated "## Current position" analysis section needs,
+ * gathered by the caller (apps/api/src/services/coach-context.ts) — this
+ * module only renders, it never fetches or computes analysis itself.
+ * All fields are omitted together when showEngineAnalysis is off.
+ */
+export interface CurrentMoveAnalysisContext {
+  /** Engine analysis of the pre-move position (`fen` in renderCurrentMoveBlock) — supplies the best line and other engine options. */
+  analysis: PositionAnalysis;
+  /** This ply's classified-move entry, if the batch pipeline has reached it yet — supplies the cp-loss headline. Absent for a freshly-imported game the batch job hasn't classified yet. */
+  classifiedMove?: ClassifiedMove;
+  /** Engine analysis of the position AFTER the played move — supplies the "Played line" continuation. Omitted when the student played the engine's own best move (nothing to add) or when not fetched. */
+  postMoveAnalysis?: PositionAnalysis;
+  /** Diff between "after the engine's best move" and "after the move actually played" — omitted when there's no best move to compare against. */
+  featureDelta?: FeatureDelta;
+}
+
+/** cp is white-perspective centipawns (services/engine/src/uci.ts normalizes
+ * UCI's side-to-move-relative score before it ever reaches this layer),
+ * matching ClassifiedMove.evalAfterCp's convention. */
+function formatEval(cp: number | null, mateIn: number | null): string {
+  if (mateIn !== null) return `mate in ${Math.abs(mateIn)}`;
+  if (cp === null) return 'eval unknown';
+  const pawns = (cp / 100).toFixed(2);
+  return `eval ${cp >= 0 ? '+' : ''}${pawns}`;
+}
+
+/**
+ * Renders a principal variation as standard interleaved PGN move text
+ * ("8.d6 9.O-O a6 ..."), starting the numbering at `startPly` (the ply of
+ * `sanMoves[0]`) so a line beginning on Black's move opens with "8...d5"
+ * instead of a bare SAN. Truncated to `maxFullMoves` move-pairs so a deep
+ * engine PV doesn't bloat the prompt.
+ */
+function formatPvLine(startPly: number, sanMoves: string[], maxFullMoves = 6): string {
+  if (sanMoves.length === 0) return '';
+  const truncated = sanMoves.slice(0, maxFullMoves * 2);
+  const tokens = truncated.map((san, index) => {
+    const movePly = startPly + index;
+    const moveNumber = Math.ceil(movePly / 2);
+    const isWhite = movePly % 2 === 1;
+    if (isWhite) return `${moveNumber}.${san}`;
+    return index === 0 ? `${moveNumber}...${san}` : san;
+  });
+  const lastPly = startPly + truncated.length - 1;
+  const fullMoves = Math.ceil(lastPly / 2) - Math.ceil(startPly / 2) + 1;
+  return `${tokens.join(' ')} (${fullMoves} full move${fullMoves === 1 ? '' : 's'})`;
+}
+
+function renderFeatureDeltaBullets(delta: FeatureDelta): string {
+  const bullets: string[] = [];
+  for (const fork of delta.newForks) {
+    bullets.push(`- New fork: ${fork.piece} on ${fork.square} forks ${fork.forkedSquares.join('/')}`);
+  }
+  for (const piece of delta.newHangingPieces) {
+    bullets.push(`- ${piece.color} ${piece.piece} on ${piece.square} is hanging`);
+  }
+  // A small swing (+/-1) happens on nearly every move and isn't worth a
+  // callout — only surface a meaningful mobility change.
+  if (delta.mobilityDelta <= -2) bullets.push(`- ${Math.abs(delta.mobilityDelta)} fewer legal replies available`);
+  else if (delta.mobilityDelta >= 2) bullets.push(`- ${delta.mobilityDelta} more legal replies available`);
+  return bullets.join('\n');
+}
+
+function findLineFor(lines: PositionAnalysisLine[], moveSan: string | null): PositionAnalysisLine | undefined {
+  return moveSan === null ? undefined : lines.find((line) => line.moveSan === moveSan);
+}
+
+/**
+ * Curated summary of the engine analysis — replaces the old raw-JSON dump
+ * (design feedback: the model shouldn't have to parse/re-derive a delta the
+ * server can compute once). `ply` is the played/candidate move's own ply
+ * (renderCurrentMoveBlock's `ply` param), used to number PV lines correctly.
+ */
+function renderAnalysisSection(ply: number, playedMove: string | null, ctx: CurrentMoveAnalysisContext): string {
+  const { analysis, classifiedMove, postMoveAnalysis, featureDelta } = ctx;
+  const bestMove = analysis.bestMove;
+  const bestLine = findLineFor(analysis.lines, bestMove);
+  const parts: string[] = [];
+  // `ply` is only the played/candidate move's own ply when a move was
+  // actually played (playedMove !== null, so ply === input.currentPly, the
+  // move under discussion). At the game start (playedMove === null, always
+  // ply 0) the analyzed fen is the pre-move position for what would be ply
+  // 1 (White's first move), so every line below has to be numbered from
+  // there instead of from ply 0 itself.
+  const linePly = playedMove === null ? ply + 1 : ply;
+
+  if (playedMove === null) {
+    if (bestMove && bestLine) {
+      parts.push(`Engine's top choice here: ${bestMove} (${formatEval(bestLine.cp, bestLine.mateIn)})`);
+      parts.push(`Line: ${formatPvLine(linePly, bestLine.pvSan)}`);
+    }
+  } else if (bestMove && playedMove === bestMove) {
+    parts.push('This was the engine’s top choice.');
+    if (bestLine) parts.push(`Line: ${formatPvLine(linePly, bestLine.pvSan)}`);
+  } else if (bestMove && bestLine) {
+    const playedEvalClause = classifiedMove
+      ? ` (${formatEval(classifiedMove.evalAfterCp, null)}, cost ~${classifiedMove.cpLoss}cp)`
+      : '';
+    parts.push(
+      `Played ${playedMove}${playedEvalClause} instead of the engine's best, ${bestMove} (${formatEval(bestLine.cp, bestLine.mateIn)}).`
+    );
+    parts.push(`Best line: ${formatPvLine(linePly, bestLine.pvSan)}`);
+    const continuation = postMoveAnalysis?.lines[0]?.pvSan ?? [];
+    parts.push(`Played line: ${formatPvLine(linePly, [playedMove, ...continuation])}`);
+  }
+
+  if (featureDelta) {
+    const bullets = renderFeatureDeltaBullets(featureDelta);
+    if (bullets) parts.push(`What changed vs. the best move:\n${bullets}`);
+  }
+
+  const otherLines = bestLine ? analysis.lines.filter((line) => line !== bestLine) : analysis.lines;
+  if (otherLines.length > 0) {
+    const otherText = otherLines
+      .map((line) => `- ${line.moveSan} (${formatEval(line.cp, line.mateIn)}): ${formatPvLine(linePly, line.pvSan)}`)
+      .join('\n');
+    parts.push(`Other engine options:\n${otherText}`);
+  }
+
+  return parts.length > 0 ? `\n\n${parts.join('\n\n')}` : '';
+}
+
+/**
  * Design §5, layer 5: the one part of the prompt that changes every turn —
  * rides after every cache breakpoint instead of busting one. `previousPly`
  * (null for a session's very first episode) states where the coach or
@@ -77,10 +200,10 @@ function renderOtherMoveLine(entry: MoveNoteEntry, qualityByPly: Map<number, Mov
  * is the pre-move fen whenever `playedMove` is non-null, matching what's
  * shown with a red arrow client-side. `playedMove` (SAN, null only at the
  * game's start) names the move that was actually played, since the board no
- * longer shows the outcome directly. `analysis` is the opt-in raw engine
- * analysis of that same fen (showEngineAnalysis toggle) — omitted entirely
- * when the toggle is off, so the block is byte-for-byte what it always was
- * for every other student.
+ * longer shows the outcome directly. `analysisContext` is the opt-in curated
+ * engine-analysis summary of that same fen (showEngineAnalysis toggle) —
+ * omitted entirely when the toggle is off, so the block is byte-for-byte
+ * what it always was for every other student.
  */
 export function renderCurrentMoveBlock(
   ply: number,
@@ -88,13 +211,11 @@ export function renderCurrentMoveBlock(
   previousPly: number | null,
   threadsBlock: string,
   playedMove: string | null,
-  analysis?: PositionAnalysis
+  analysisContext?: CurrentMoveAnalysisContext
 ): string {
   const arrival = previousPly !== null ? ` You reached this position from ${describeMoveRef(previousPly)}.` : '';
   const playedMoveSentence =
     playedMove !== null ? ` The move actually played here was ${playedMove} — shown as a red arrow on the board.` : '';
-  const analysisBlock = analysis
-    ? `\n\nFull engine analysis of this position (you may cite this directly — raw engine analysis is enabled for this student):\n\`\`\`json\n${JSON.stringify(analysis)}\n\`\`\``
-    : '';
+  const analysisBlock = analysisContext ? renderAnalysisSection(ply, playedMove, analysisContext) : '';
   return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board.${playedMoveSentence} FEN: ${fen}.${arrival}${analysisBlock}\n\n## Your thread ledger\n\n${threadsBlock}`;
 }

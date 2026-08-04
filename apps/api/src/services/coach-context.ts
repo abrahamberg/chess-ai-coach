@@ -1,5 +1,11 @@
 import type { CoreMessage } from 'ai';
-import { moveRefToPly } from '@chess-coach/chess-analysis';
+import {
+  applySanSequence,
+  computePositionFeatures,
+  diffPositionFeatures,
+  moveRefToPly,
+  type FeatureDelta
+} from '@chess-coach/chess-analysis';
 import {
   renderAnnotatedPgn,
   renderCurrentMoveBlock,
@@ -123,6 +129,17 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
   const displayFen = previousMovePosition?.fen ?? position.fen;
   const playedMove = previousMovePosition ? position.moveSan : null;
   const analysis = input.showEngineAnalysis ? await input.analyzePosition(displayFen) : undefined;
+  const isBestMove = playedMove !== null && analysis?.bestMove === playedMove;
+  // Only fetch the played move's own continuation when there's something to
+  // add beyond the best line already above (position.fen should already be
+  // warm in position_evaluations by the time a session is open — see
+  // deepen-analysis.ts's batching — so this is expected to be a cache hit,
+  // not a new live-latency source).
+  const postMoveAnalysis =
+    input.showEngineAnalysis && playedMove !== null && !isBestMove ? await input.analyzePosition(position.fen) : undefined;
+  const featureDelta =
+    playedMove !== null && !isBestMove ? computeFeatureDelta(analysis, displayFen, position.fen) : undefined;
+  const classifiedMove = classifiedMoves?.find((move) => move.ply === input.currentPly);
   // final review #8: the thread-ledger heading is composed inside
   // renderCurrentMoveBlock (packages/prompts), not here — all prompt text
   // lives in packages/prompts, matching the pattern renderAnnotatedPgn/
@@ -133,7 +150,7 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
     episode.previousPly,
     renderThreadsBlock(threads),
     playedMove,
-    analysis
+    analysis ? { analysis, classifiedMove, postMoveAnalysis, featureDelta } : undefined
   );
 
   const episodeMessages = await resolveEpisodeReplay(input, input.session.id, orphanExtendedMessages, input.currentPly);
@@ -148,4 +165,23 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
     },
     episodeMessages
   );
+}
+
+/**
+ * What concretely changed on the board between the engine's best move and
+ * the move actually played, for the "## Current position" curated summary
+ * (packages/prompts's renderCurrentMoveBlock). Both computePositionFeatures
+ * calls are pure chess.js analysis — no engine round-trip — the only new
+ * cost here is applySanSequence replaying one hypothetical move.
+ */
+function computeFeatureDelta(
+  analysis: PositionAnalysis | undefined,
+  displayFen: string,
+  postMoveFen: string
+): FeatureDelta | undefined {
+  if (!analysis?.bestMove) return undefined;
+  const { moves, error } = applySanSequence(displayFen, [analysis.bestMove]);
+  const bestMoveFen = moves[0]?.fen;
+  if (error || !bestMoveFen) return undefined;
+  return diffPositionFeatures(computePositionFeatures(bestMoveFen), computePositionFeatures(postMoveFen));
 }

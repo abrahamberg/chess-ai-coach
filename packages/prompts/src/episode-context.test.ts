@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import type { ClassifiedMove } from '@chess-coach/chess-analysis';
-import { renderAnnotatedPgn, renderCurrentMoveBlock, renderOtherMovesSummary } from './episode-context.js';
+import type { ClassifiedMove, FeatureDelta } from '@chess-coach/chess-analysis';
+import type { PositionAnalysis, PositionAnalysisLine } from '@chess-coach/shared';
+import { renderAnnotatedPgn, renderCurrentMoveBlock, renderOtherMovesSummary, type CurrentMoveAnalysisContext } from './episode-context.js';
 
 function move(overrides: Partial<ClassifiedMove> & Pick<ClassifiedMove, 'ply' | 'moveSan' | 'quality'>): ClassifiedMove {
   return {
@@ -89,27 +90,113 @@ describe('renderCurrentMoveBlock', () => {
     expect(text).not.toContain('The move actually played here was');
   });
 
-  test('omits the full analysis block by default (showEngineAnalysis off) — byte-identical to before', () => {
+  test('omits the curated analysis section by default (showEngineAnalysis off)', () => {
     const text = renderCurrentMoveBlock(2, 'fen', null, '(empty — no parked topics right now)', 'e5');
-    expect(text).not.toContain('Full engine analysis');
-    expect(text).not.toContain('```json');
+    expect(text).not.toContain('Best line');
+    expect(text).not.toContain('Other engine options');
+    expect(text).not.toContain('engine’s top choice');
   });
 
-  test('appends the full structured analysis as JSON when provided (showEngineAnalysis on)', () => {
-    const analysis = {
+  function line(overrides: Partial<PositionAnalysisLine> & Pick<PositionAnalysisLine, 'moveSan' | 'pvSan'>): PositionAnalysisLine {
+    return { moveUci: '', cp: 0, mateIn: null, ...overrides };
+  }
+
+  function analysis(overrides: Partial<PositionAnalysis> & Pick<PositionAnalysis, 'bestMove' | 'lines'>): PositionAnalysis {
+    return {
       fen: 'fen',
       depth: 16,
-      multiPv: 1,
-      bestMove: 'Qxh4',
-      eval: { cp: -637, mateIn: null },
-      lines: [],
-      features: { turn: 'black', boardState: 'none' }
-    } as unknown as Parameters<typeof renderCurrentMoveBlock>[5];
-    const text = renderCurrentMoveBlock(2, 'fen', null, '(empty — no parked topics right now)', 'e5', analysis);
+      multiPv: overrides.lines.length,
+      eval: { cp: overrides.lines[0]?.cp ?? null, mateIn: overrides.lines[0]?.mateIn ?? null },
+      features: {} as PositionAnalysis['features'],
+      ...overrides
+    };
+  }
 
-    expect(text).toContain('Full engine analysis of this position');
-    expect(text).toContain('raw engine analysis is enabled for this student');
-    expect(text).toContain('```json');
-    expect(text).toContain('"bestMove":"Qxh4"');
+  test('shows the best/played lines and their eval delta when the student did not play the best move', () => {
+    const ctx: CurrentMoveAnalysisContext = {
+      analysis: analysis({
+        bestMove: 'd6',
+        lines: [
+          line({ moveSan: 'd6', pvSan: ['d6', 'O-O', 'a6'], cp: 17 }),
+          line({ moveSan: 'Ba3', pvSan: ['Ba3', 'a6', 'O-O'], cp: 14 })
+        ]
+      }),
+      classifiedMove: { ply: 16, moveSan: 'd5', mover: 'black', isUserMove: true, cpLoss: 163, quality: 'mistake', bestLineSan: ['d6'], evalAfterCp: 6, hangsPiece: false }
+    };
+    // ply 16 = Black's move 8 (plyToMoveRef: moveNumber = ceil(ply/2)).
+    const text = renderCurrentMoveBlock(16, 'pre-move-fen', null, '(empty — no parked topics right now)', 'd5', ctx);
+
+    expect(text).toContain("Played d5 (eval +0.06, cost ~163cp) instead of the engine's best, d6 (eval +0.17).");
+    expect(text).toContain('Best line: 8...d6 9.O-O a6 (2 full moves)');
+    expect(text).toContain('Played line: 8...d5 (1 full move)');
+    expect(text).toContain('Other engine options:\n- Ba3 (eval +0.14): 8...Ba3 9.a6 O-O (2 full moves)');
+  });
+
+  test('extends the played line with the post-move continuation when provided', () => {
+    const ctx: CurrentMoveAnalysisContext = {
+      analysis: analysis({ bestMove: 'd6', lines: [line({ moveSan: 'd6', pvSan: ['d6'], cp: 17 })] }),
+      postMoveAnalysis: analysis({ bestMove: 'exd5', lines: [line({ moveSan: 'exd5', pvSan: ['exd5', 'Nxd5'], cp: 6 })] })
+    };
+    const text = renderCurrentMoveBlock(16, 'pre-move-fen', null, '(empty — no parked topics right now)', 'd5', ctx);
+
+    expect(text).toContain('Played line: 8...d5 9.exd5 Nxd5 (2 full moves)');
+  });
+
+  test('collapses to a single sentence when the student played the engine\'s top choice', () => {
+    const ctx: CurrentMoveAnalysisContext = {
+      analysis: analysis({ bestMove: 'e5', lines: [line({ moveSan: 'e5', pvSan: ['e5', 'Nf3'], cp: 20 })] })
+    };
+    const text = renderCurrentMoveBlock(2, 'fen', null, '(empty — no parked topics right now)', 'e5', ctx);
+
+    expect(text).toContain('This was the engine’s top choice.');
+    expect(text).toContain('Line: 1...e5 2.Nf3 (2 full moves)');
+    expect(text).not.toContain('instead of');
+    expect(text).not.toContain('Played line');
+  });
+
+  test('shows just the engine\'s top choice with no played/delta section when no move has been played yet (ply 0)', () => {
+    const ctx: CurrentMoveAnalysisContext = {
+      analysis: analysis({ bestMove: 'e4', lines: [line({ moveSan: 'e4', pvSan: ['e4', 'e5'], cp: 25 })] })
+    };
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '(empty — no parked topics right now)', null, ctx);
+
+    expect(text).toContain("Engine's top choice here: e4 (eval +0.25)");
+    expect(text).toContain('Line: 1.e4 e5 (1 full move)');
+    expect(text).not.toContain('instead of');
+    expect(text).not.toContain('Played line');
+  });
+
+  test('renders the feature-delta bullets when provided, omitting the section when the delta is empty', () => {
+    const baseCtx: CurrentMoveAnalysisContext = {
+      analysis: analysis({ bestMove: 'd6', lines: [line({ moveSan: 'd6', pvSan: ['d6'], cp: 17 })] })
+    };
+    const delta: FeatureDelta = {
+      newForks: [{ square: 'd5', piece: 'n', forkedSquares: ['c7', 'e7'] }],
+      newHangingPieces: [],
+      mobilityDelta: -3
+    };
+    const withDelta = renderCurrentMoveBlock(8, 'fen', null, '(empty — no parked topics right now)', 'd5', {
+      ...baseCtx,
+      featureDelta: delta
+    });
+    expect(withDelta).toContain('What changed vs. the best move:');
+    expect(withDelta).toContain('- New fork: n on d5 forks c7/e7');
+    expect(withDelta).toContain('- 3 fewer legal replies available');
+
+    const withEmptyDelta = renderCurrentMoveBlock(8, 'fen', null, '(empty — no parked topics right now)', 'd5', {
+      ...baseCtx,
+      featureDelta: { newForks: [], newHangingPieces: [], mobilityDelta: 0 }
+    });
+    expect(withEmptyDelta).not.toContain('What changed vs. the best move');
+  });
+
+  test('omits classified-move-dependent cost clause when no classified move is available yet', () => {
+    const ctx: CurrentMoveAnalysisContext = {
+      analysis: analysis({ bestMove: 'd6', lines: [line({ moveSan: 'd6', pvSan: ['d6'], cp: 17 })] })
+    };
+    const text = renderCurrentMoveBlock(8, 'fen', null, '(empty — no parked topics right now)', 'd5', ctx);
+
+    expect(text).toContain("Played d5 instead of the engine's best, d6 (eval +0.17).");
+    expect(text).not.toContain('cost ~');
   });
 });

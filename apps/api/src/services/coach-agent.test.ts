@@ -568,7 +568,7 @@ describe('coach-agent startTurn concurrency', () => {
     expect(toolResultToolCallIds).toContain('call-show-2');
   }, 20000);
 
-  test('showEngineAnalysis on the user row flows through to buildEpisodeContext — the request embeds the full analysis, computed on the pre-move fen', async () => {
+  test('showEngineAnalysis on the user row flows through to buildEpisodeContext — the request embeds the curated analysis summary, computed on the pre-move fen', async () => {
     const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
     await usersRepo.update(db, user.id, { showEngineAnalysis: true });
     await creditsRepo.insertSignupGrant(db, user.id);
@@ -602,8 +602,7 @@ describe('coach-agent startTurn concurrency', () => {
     const currentPositionMessage = (snapshot?.request.messages ?? []).find(
       (m) => typeof (m as { content?: unknown }).content === 'string' && (m as { content: string }).content.includes('You are now discussing')
     ) as { content: string } | undefined;
-    expect(currentPositionMessage?.content).toContain('Full engine analysis');
-    expect(currentPositionMessage?.content).toContain('"bestMove":"e4"');
+    expect(currentPositionMessage?.content).toContain('This was the engine’s top choice.');
     expect(currentPositionMessage?.content).toContain('The move actually played here was e4');
   }, 20000);
 

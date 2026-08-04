@@ -282,19 +282,22 @@ describe('coach-context', () => {
       expect(currentMoveBlock?.content).not.toContain('Full engine analysis');
     });
 
-    test('showEngineAnalysis true calls analyzePosition on the pre-move fen and embeds the full analysis as JSON', async () => {
+    test('showEngineAnalysis true calls analyzePosition on the pre-move fen, and again on the post-move fen for the played line\'s continuation, embedding a curated summary instead of the old raw JSON dump', async () => {
       const { session, gameId } = await seedSession();
       await analysesRepo.insertQueued(db, gameId).then((a) => analysesRepo.storeClassifiedMoves(db, a.id, []));
       await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
       const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
+      // ply 2 is Black's reply to 1.e4 — the pre-move fen has Black to move,
+      // so the engine's "best move" here has to be a legal black move (c5)
+      // for computeFeatureDelta's applySanSequence replay to succeed.
       const analysis = {
         fen: 'irrelevant',
         depth: 16,
         multiPv: 1,
-        bestMove: 'Nc3',
+        bestMove: 'c5',
         eval: { cp: 25, mateIn: null },
-        lines: [],
-        features: { turn: 'white', boardState: 'none' }
+        lines: [{ moveUci: 'c7c5', moveSan: 'c5', pvSan: ['c5'], cp: 25, mateIn: null }],
+        features: { turn: 'black', boardState: 'none' }
       };
       const analyzePosition = vi.fn().mockResolvedValue(analysis);
 
@@ -311,9 +314,44 @@ describe('coach-context', () => {
       });
 
       expect(analyzePosition).toHaveBeenCalledWith('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
+      expect(analyzePosition).toHaveBeenCalledTimes(2);
       const serialized = JSON.stringify(messages);
-      expect(serialized).toContain('Full engine analysis');
-      expect(serialized).toContain('Nc3');
+      expect(serialized).not.toContain('Full engine analysis');
+      expect(serialized).toContain('Played e5');
+      expect(serialized).toContain("instead of the engine's best, c5");
+    });
+
+    test('showEngineAnalysis true does not re-fetch the post-move analysis when the student played the engine\'s own best move', async () => {
+      const { session, gameId } = await seedSession();
+      await analysesRepo.insertQueued(db, gameId).then((a) => analysesRepo.storeClassifiedMoves(db, a.id, []));
+      await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
+      const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
+      const analysis = {
+        fen: 'irrelevant',
+        depth: 16,
+        multiPv: 1,
+        bestMove: 'e5',
+        eval: { cp: 25, mateIn: null },
+        lines: [{ moveUci: 'e7e5', moveSan: 'e5', pvSan: ['e5', 'Nf3'], cp: 25, mateIn: null }],
+        features: { turn: 'black', boardState: 'none' }
+      };
+      const analyzePosition = vi.fn().mockResolvedValue(analysis);
+
+      const messages = await buildEpisodeContext({
+        db,
+        callLightModel: vi.fn(),
+        session,
+        currentPly: 2,
+        historyAfterTurn,
+        staticPart: 'STATIC',
+        dynamicPart: 'DYNAMIC',
+        analyzePosition,
+        showEngineAnalysis: true
+      });
+
+      expect(analyzePosition).toHaveBeenCalledTimes(1);
+      const serialized = JSON.stringify(messages);
+      expect(serialized).toContain('This was the engine’s top choice.');
     });
 
     test('a revisit to a previously-closed ply seeds this episode\'s digest from that ply\'s earlier closing note, while still excluding that ply\'s earlier raw messages', async () => {
