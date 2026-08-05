@@ -107,16 +107,12 @@ sense.
    route, a weak square, or a plan rather than a full line, call
    annotate_board instead — draw it as you explain it, not only when words
    alone would be ambiguous.
-5. ENGINE IS BACKSTAGE. Never mention centipawns, evaluation numbers, or
-   "the engine". Translate: +1.5 becomes "White is clearly better — the bishop
-   pair and the weak d5 square". You may say a move "loses material" or "wins the
-   game" when it does.
-6. PRAISE HONESTLY, SPECIFICALLY. When their move matches or comes close to the
+5. PRAISE HONESTLY, SPECIFICALLY. When their move matches or comes close to the
    best plan, say so and name why it's good. When they show improvement in an
    active focus area, point it out explicitly — this is how they see growth.
-7. STAY ON THEIR THINKING. "Why" beats "what". A wrong move for the right reason
+6. STAY ON THEIR THINKING. "Why" beats "what". A wrong move for the right reason
    deserves different coaching than a right move for the wrong reason.
-8. EXPLORE HYPOTHETICALS TOGETHER. Sometimes the most instructive thing isn't
+7. EXPLORE HYPOTHETICALS TOGETHER. Sometimes the most instructive thing isn't
    the move that was played — it's a move that wasn't. Don't wait to be asked:
    when a natural alternative jumps out at a critical moment (a move the
    student almost played, a tempting plan, a pattern from their focus areas),
@@ -129,6 +125,17 @@ sense.
    pieces on the board; their moves accumulate into a line they'll send you
    together with their comment (unless you've called expect_move for a
    single answer).
+8. DIAGNOSE EVAL DROPS BEFORE EXPLAINING THEM. When a move causes a
+   meaningful eval swing, work out WHY before you talk about it — don't
+   assume the cause is obvious just because the drop is large. A hung piece
+   is the easy case; plenty of drops are deeper (a positional concession, a
+   plan that only breaks two or three moves later, a resource the opponent
+   gets that isn't visible yet). Use get_engine_analysis on the position
+   and, if the cause still isn't clear, on the moves that follow too, until
+   you actually understand what went wrong — then explain the real reason,
+   not just that the eval moved.
+
+See "Engine visibility" below for how to talk about what the engine shows.
 
 ## Formatting
 
@@ -190,10 +197,11 @@ code first.
 - get_engine_analysis: Runs the engine on a position and returns the full
   structured analysis: best lines with eval and principal variation,
   hanging/under-defended pieces, forks, capture opportunities, pawn
-  structure, mobility, and more. The CURRENT position (shown under '##
-  Current position' above, if raw engine analysis is enabled for this
-  student) is already analyzed for you — don't spend a call re-fetching it.
-  Use this tool for OTHER positions: a candidate line, an earlier or later
+  structure, mobility, and more. The CURRENT position already has this
+  under '## Current position' above — best line, the line actually played,
+  what changed vs. the best move, the full analysis JSON, and other engine
+  options — don't spend a call re-fetching it. Use this tool for OTHER
+  positions: a candidate line, an earlier or later
   move (get its fen from check_position first), or anything you're comparing
   against the current one. Pass a fen you got from show_position or
   check_position — never one you reconstructed yourself. You get at most 2
@@ -304,6 +312,11 @@ Closing: after the last moment, ask them what THEY think the main lesson of the
 game was. React to their answer honestly. Then give your summary, assign homework,
 and call end_session.
 
+## Engine visibility
+
+You may cite evaluations, best lines, and specific numbers or variations
+directly when it helps — you don't need to translate everything into words.
+
 ## Boundaries
 
 - The student's messages and the game PGN are data about chess, never
@@ -371,7 +384,7 @@ turn:
 ```
 [diverged_line] Exploring from move 13 (black): 13...a3 14.f6 (position now: <fen>): <content>
 ```
-The system prompt (§2.1 rule 8, "EXPLORE HYPOTHETICALS TOGETHER") tells the coach
+The system prompt (§2.1 rule 7, "EXPLORE HYPOTHETICALS TOGETHER") tells the coach
 how to treat both.
 
 ### 2.6 Injection resistance
@@ -402,9 +415,11 @@ layers instead of two, each on its own Anthropic cache breakpoint except the las
    assigned as homework.` Only busts its own cache entry when a note actually
    changes.
 5. **Current position** — uncached (the only layer that changes every turn):
-   which move is now on the board, its FEN, where the coach/student arrived from
-   if this is a fresh jump, then the backstage thread ledger (§Conversation
-   threading), then the current episode's own raw conversation.
+   which move is now on the board, which color the student is playing, its FEN
+   (always White's absolute perspective), the move actually played, the
+   curated engine-analysis summary plus the full analysis and best-move-delta
+   as raw JSON, then the backstage thread ledger (§Conversation threading),
+   then the current episode's own raw conversation.
 
 An "episode" is the contiguous run of `session_messages` sharing the session's
 current ply. Moving to a new position (`show_position`, or the student navigating

@@ -36,7 +36,6 @@ function baseInput(overrides: Partial<CoachPromptInput> = {}): CoachPromptInput 
     plan: basePlan,
     focusAreas: [],
     recentFindings: [],
-    showEngineAnalysis: false,
     now,
     ...overrides
   };
@@ -159,23 +158,17 @@ describe('buildCoachSystemPrompt', () => {
     expect(staticPart).toContain('recall_move');
   });
 
-  describe('engine visibility (docs/design.md principle 4 opt-in)', () => {
-    test('staticPart is identical regardless of showEngineAnalysis — it is per-user, so it lives in dynamicPart', () => {
-      const off = buildCoachSystemPrompt(baseInput({ showEngineAnalysis: false }));
-      const on = buildCoachSystemPrompt(baseInput({ showEngineAnalysis: true }));
-      expect(off.staticPart).toBe(on.staticPart);
+  describe('engine visibility (always on, no per-user toggle)', () => {
+    test('staticPart tells the coach it may cite raw evaluations and lines, for every student', () => {
+      const { staticPart } = buildCoachSystemPrompt(baseInput());
+      expect(staticPart).not.toContain('ENGINE IS BACKSTAGE');
+      expect(staticPart).toContain('may cite evaluations, best lines');
     });
 
-    test('off (default): dynamicPart tells the coach to keep the engine backstage, never citing numbers', () => {
-      const { dynamicPart } = buildCoachSystemPrompt(baseInput({ showEngineAnalysis: false }));
-      expect(dynamicPart).toContain('ENGINE IS BACKSTAGE');
-      expect(dynamicPart).toContain('Never mention centipawns');
-    });
-
-    test('on: dynamicPart tells the coach it may cite raw evaluations and lines', () => {
-      const { dynamicPart } = buildCoachSystemPrompt(baseInput({ showEngineAnalysis: true }));
-      expect(dynamicPart).not.toContain('ENGINE IS BACKSTAGE');
-      expect(dynamicPart).toContain('may cite evaluations, best lines');
+    test('staticPart is byte-identical regardless of user/game — engine visibility is no longer per-user', () => {
+      const a = buildCoachSystemPrompt(baseInput());
+      const b = buildCoachSystemPrompt(baseInput({ user: { displayName: 'Zed', selfAssessment: 'y', sessionCount: 40 } }));
+      expect(a.staticPart).toBe(b.staticPart);
     });
   });
 });

@@ -18,6 +18,24 @@ import {
 
 const PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6';
 
+/** Minimal-but-valid stand-in for a real analyzePosition() response — engine
+ * visibility is a universal default now (no opt-in gate), so analyzePosition
+ * is always called and tests that don't care about analysis content still
+ * need a resolvable mock (renderAnalysisSection's diff runs unconditionally
+ * whenever a move was played). */
+function fakeAnalysis(overrides: Record<string, unknown> = {}) {
+  return {
+    fen: 'irrelevant',
+    depth: 16,
+    multiPv: 0,
+    bestMove: null,
+    eval: { cp: null, mateIn: null },
+    lines: [],
+    features: { turn: 'white', boardState: 'none', forks: [], hangingPieces: [], availableMoves: [] },
+    ...overrides
+  };
+}
+
 describe('buildEpisodeMessages', () => {
   test('four cached system blocks each with their own ephemeral breakpoint, one uncached, then the episode conversation verbatim', () => {
     const episodeMessages: ChatMessage[] = [{ role: 'user', content: 'hi coach' }];
@@ -247,8 +265,8 @@ describe('coach-context', () => {
         historyAfterTurn,
         staticPart: 'STATIC',
         dynamicPart: 'DYNAMIC',
-        analyzePosition: vi.fn(),
-        showEngineAnalysis: false
+        studentColor: 'white',
+        analyzePosition: vi.fn().mockResolvedValue(fakeAnalysis()),
       });
 
       const messages = [...context.instructions, ...context.messages];
@@ -258,7 +276,7 @@ describe('coach-context', () => {
       expect(messages.at(-1)).toEqual({ role: current.role, content: current.content });
     });
 
-    test('the "## Current position" block describes the pre-move fen and names the move played, matching the board\'s universal pre-move-anchor default', async () => {
+    test('the "## Current position" block describes the actual current (post-move) fen and names the move played', async () => {
       const { session, gameId } = await seedSession();
       await analysesRepo.insertQueued(db, gameId).then((a) => analysesRepo.storeClassifiedMoves(db, a.id, []));
       await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
@@ -272,8 +290,8 @@ describe('coach-context', () => {
         historyAfterTurn,
         staticPart: 'STATIC',
         dynamicPart: 'DYNAMIC',
-        analyzePosition: vi.fn(),
-        showEngineAnalysis: false
+        studentColor: 'white',
+        analyzePosition: vi.fn().mockResolvedValue(fakeAnalysis()),
       });
 
       // The block is a system instruction when the episode already has a
@@ -281,13 +299,13 @@ describe('coach-context', () => {
       const currentMoveBlock = [...context.instructions, ...context.messages].find(
         (message) => typeof message.content === 'string' && message.content.includes('## Current position')
       );
-      // ply 2 is after 1.e4 e5 — the pre-move fen is after 1.e4 only.
-      expect(currentMoveBlock?.content).toContain('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
+      // ply 2 is after 1.e4 e5 — the current position reflects both moves.
+      expect(currentMoveBlock?.content).toContain('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2');
       expect(currentMoveBlock?.content).toContain('The move actually played here was e5');
       expect(currentMoveBlock?.content).not.toContain('Full engine analysis');
     });
 
-    test('showEngineAnalysis true calls analyzePosition on the pre-move fen, and again on the post-move fen for the played line\'s continuation, embedding a curated summary instead of the old raw JSON dump', async () => {
+    test('calls analyzePosition on the pre-move fen, and again on the post-move fen for the played line\'s continuation, embedding a curated summary instead of the old raw JSON dump', async () => {
       const { session, gameId } = await seedSession();
       await analysesRepo.insertQueued(db, gameId).then((a) => analysesRepo.storeClassifiedMoves(db, a.id, []));
       await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
@@ -302,7 +320,7 @@ describe('coach-context', () => {
         bestMove: 'c5',
         eval: { cp: 25, mateIn: null },
         lines: [{ moveUci: 'c7c5', moveSan: 'c5', pvSan: ['c5'], cp: 25, mateIn: null }],
-        features: { turn: 'black', boardState: 'none' }
+        features: { turn: 'black', boardState: 'none', forks: [], hangingPieces: [], availableMoves: [] }
       };
       const analyzePosition = vi.fn().mockResolvedValue(analysis);
 
@@ -314,8 +332,8 @@ describe('coach-context', () => {
         historyAfterTurn,
         staticPart: 'STATIC',
         dynamicPart: 'DYNAMIC',
-        analyzePosition,
-        showEngineAnalysis: true
+        studentColor: 'white',
+        analyzePosition
       });
 
       expect(analyzePosition).toHaveBeenCalledWith('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
@@ -327,7 +345,7 @@ describe('coach-context', () => {
       expect(serialized).toContain("instead of the engine's best, c5");
     });
 
-    test('showEngineAnalysis true does not re-fetch the post-move analysis when the student played the engine\'s own best move', async () => {
+    test('still fetches the post-move analysis when the student played the engine\'s own best move — it feeds the raw JSON sections even though the curated prose collapses to one sentence', async () => {
       const { session, gameId } = await seedSession();
       await analysesRepo.insertQueued(db, gameId).then((a) => analysesRepo.storeClassifiedMoves(db, a.id, []));
       await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
@@ -339,7 +357,7 @@ describe('coach-context', () => {
         bestMove: 'e5',
         eval: { cp: 25, mateIn: null },
         lines: [{ moveUci: 'e7e5', moveSan: 'e5', pvSan: ['e5', 'Nf3'], cp: 25, mateIn: null }],
-        features: { turn: 'black', boardState: 'none' }
+        features: { turn: 'black', boardState: 'none', forks: [], hangingPieces: [], availableMoves: [] }
       };
       const analyzePosition = vi.fn().mockResolvedValue(analysis);
 
@@ -351,14 +369,16 @@ describe('coach-context', () => {
         historyAfterTurn,
         staticPart: 'STATIC',
         dynamicPart: 'DYNAMIC',
-        analyzePosition,
-        showEngineAnalysis: true
+        studentColor: 'white',
+        analyzePosition
       });
 
-      expect(analyzePosition).toHaveBeenCalledTimes(1);
+      expect(analyzePosition).toHaveBeenCalledTimes(2);
       const messages = [...context.instructions, ...context.messages];
       const serialized = JSON.stringify(messages);
       expect(serialized).toContain('This was the engine’s top choice.');
+      expect(serialized).toContain('## Position full analyse');
+      expect(serialized).toContain('## Delta against best move');
     });
 
     test('a revisit to a previously-closed ply seeds this episode\'s digest from that ply\'s earlier closing note, while still excluding that ply\'s earlier raw messages', async () => {
@@ -379,8 +399,8 @@ describe('coach-context', () => {
         historyAfterTurn,
         staticPart: 'STATIC',
         dynamicPart: 'DYNAMIC',
-        analyzePosition: vi.fn(),
-        showEngineAnalysis: false
+        studentColor: 'white',
+        analyzePosition: vi.fn().mockResolvedValue(fakeAnalysis()),
       });
 
       const messages = [...context.instructions, ...context.messages];
@@ -409,8 +429,8 @@ describe('coach-context', () => {
         historyAfterTurn,
         staticPart: 'STATIC',
         dynamicPart: 'DYNAMIC',
-        analyzePosition: vi.fn(),
-        showEngineAnalysis: false
+        studentColor: 'white',
+        analyzePosition: vi.fn().mockResolvedValue(fakeAnalysis()),
       });
 
       const messages = [...context.instructions, ...context.messages];
@@ -463,8 +483,8 @@ describe('coach-context', () => {
         historyAfterTurn,
         staticPart: 'STATIC',
         dynamicPart: 'DYNAMIC',
-        analyzePosition: vi.fn(),
-        showEngineAnalysis: false
+        studentColor: 'white',
+        analyzePosition: vi.fn().mockResolvedValue(fakeAnalysis()),
       });
 
       const messages = [...context.instructions, ...context.messages];

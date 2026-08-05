@@ -269,7 +269,7 @@ describe('useSessionBoardState', () => {
   });
 });
 
-describe('pre-move anchor + red arrow (universal default, not gated behind showEngineAnalysis)', () => {
+describe('pre-move anchor + red arrow (universal default, every student)', () => {
   test('a show_position landing on a real move anchors the board one ply before it, with a red arrow for the move played', () => {
     const { result } = renderHook(() => useSessionBoardState(ANCHOR_POSITIONS));
 

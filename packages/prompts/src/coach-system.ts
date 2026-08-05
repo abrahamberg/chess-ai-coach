@@ -31,10 +31,6 @@ export interface CoachPromptInput {
   plan: CoachingPlan;
   focusAreas: FocusAreaSummary[];
   recentFindings: RecentFinding[];
-  /** Opt-in override of the default "engine invisible" behavior (docs/
-   * design.md principle 4) — per-user, so it lives in dynamicPart, not the
-   * band-shared staticPart. See engineVisibility below. */
-  showEngineAnalysis: boolean;
   /** Injected for deterministic relative-date rendering; defaults to `new Date()`. */
   now?: Date;
 }
@@ -68,6 +64,7 @@ function buildStaticPart(band: RatingBand): string {
     yourToolsAndWhenToUseThem(),
     CONVERSATION_THREADING,
     SESSION_FLOW,
+    ENGINE_VISIBILITY,
     BOUNDARIES
   ].join('\n\n');
 }
@@ -78,28 +75,16 @@ function buildDynamicPart(input: CoachPromptInput): string {
   return [
     greeting(input.user.displayName),
     yourStudent(input.user, calibration, input.focusAreas, input.recentFindings, now),
-    thisGame(input.game, input.plan),
-    engineVisibility(input.showEngineAnalysis)
+    thisGame(input.game, input.plan)
   ].join('\n\n');
 }
 
-/**
- * docs/design.md principle 4: engine visibility is an opt-in, per-student
- * preference, so — unlike the rest of "how you run the session" — this rule
- * can't live in the band-shared staticPart. Off (the default) reproduces the
- * original "ENGINE IS BACKSTAGE" rule verbatim; on, the coach may cite real
- * numbers/lines instead of translating everything into words.
- */
-function engineVisibility(showEngineAnalysis: boolean): string {
-  if (!showEngineAnalysis) {
-    return `## Engine visibility
+/** Engine analysis is always visible to every student (no per-user opt-in) —
+ * this is user-invariant, so unlike the rest of "how you run the session" it
+ * belongs in the shared staticPart, not the per-user dynamicPart. */
+const ENGINE_VISIBILITY = `## Engine visibility
 
-ENGINE IS BACKSTAGE. Never mention centipawns, evaluation numbers, or "the engine". Translate: +1.5 becomes "White is clearly better — the bishop pair and the weak d5 square". You may say a move "loses material" or "wins the game" when it does.`;
-  }
-  return `## Engine visibility
-
-This student has enabled raw engine analysis (a preference they set themselves — it's off by default for everyone else). You may cite evaluations, best lines, and specific numbers or variations directly when it helps — you don't need to translate everything into words.`;
-}
+You may cite evaluations, best lines, and specific numbers or variations directly when it helps — you don't need to translate everything into words.`;
 
 function greeting(displayName: string): string {
   return `You are a personal chess coach in a one-on-one session with your student, ${displayName}. You are working through THEIR game with them, over an interactive board that you control with tools.`;
@@ -148,8 +133,9 @@ function howYouRunTheSession(revealDepthPlies: number): string {
 5. PRAISE HONESTLY, SPECIFICALLY. When their move matches or comes close to the best plan, say so and name why it's good. When they show improvement in an active focus area, point it out explicitly — this is how they see growth.
 6. STAY ON THEIR THINKING. "Why" beats "what". A wrong move for the right reason deserves different coaching than a right move for the wrong reason.
 7. EXPLORE HYPOTHETICALS TOGETHER. Sometimes the most instructive thing isn't the move that was played — it's a move that wasn't. Don't wait to be asked: when a natural alternative jumps out at a critical moment (a move the student almost played, a tempting plan, a pattern from their focus areas), offer it yourself — "what if you'd played a4 instead?" — and use hypothetical_line to set it up from the current position. Then keep exploring it with the student like any other line: ask what they'd play next, propose further moves yourself if it helps. A diverged line is provisional exploration, not the real game — it never changes what actually happened. The student can build one themselves too, by moving pieces on the board; their moves accumulate into a line they'll send you together with their comment (unless you've called expect_move for a single answer).
+8. DIAGNOSE EVAL DROPS BEFORE EXPLAINING THEM. When a move causes a meaningful eval swing, work out WHY before you talk about it — don't assume the cause is obvious just because the drop is large. A hung piece is the easy case; plenty of drops are deeper (a positional concession, a plan that only breaks two or three moves later, a resource the opponent gets that isn't visible yet). Use get_engine_analysis on the position and, if the cause still isn't clear, on the moves that follow too, until you actually understand what went wrong — then explain the real reason, not just that the eval moved.
 
-See "Engine visibility" below for whether you may cite raw numbers to this student.`;
+See "Engine visibility" below for how to talk about what the engine shows.`;
 }
 
 const FORMATTING = `## Formatting

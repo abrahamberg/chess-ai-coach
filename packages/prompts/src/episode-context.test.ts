@@ -60,38 +60,39 @@ describe('renderOtherMovesSummary', () => {
 });
 
 describe('renderCurrentMoveBlock', () => {
-  test('the first episode of a session has no "reached from" sentence', () => {
-    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '(empty — no parked topics right now)', null);
+  test('the first episode of a session has no played-move sentence', () => {
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', 'white', '(empty — no parked topics right now)', null);
     expect(text).toContain('You are now discussing the game start');
-    expect(text).not.toContain('You reached this position from');
     expect(text).not.toContain('The move actually played here was');
   });
 
-  test('a jump includes where the coach/student arrived from', () => {
-    const text = renderCurrentMoveBlock(35, 'fen-after-18', 8, '(empty — no parked topics right now)', 'Nc3');
+  test('states the current fen and the student\'s color', () => {
+    const text = renderCurrentMoveBlock(35, 'fen-after-18', 'black', '(empty — no parked topics right now)', 'Nc3');
     expect(text).toContain("You are now discussing White's move 18");
-    expect(text).toContain('FEN: fen-after-18');
-    expect(text).toContain("You reached this position from Black's move 4");
+    expect(text).toContain('Your student is playing black in this game.');
+    expect(text).toContain('FEN (always written from White\'s absolute perspective');
+    expect(text).toContain(': fen-after-18');
   });
 
   test('folds the thread ledger in under its own heading (final review #8: heading owned by packages/prompts)', () => {
-    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '- [active] the h3 line', null);
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', 'white', '- [active] the h3 line', null);
     expect(text).toContain('## Your thread ledger\n\n- [active] the h3 line');
   });
 
-  test('names the move actually played — the board now shows the pre-move position, so this states the outcome in words', () => {
-    const text = renderCurrentMoveBlock(27, 'pre-move-fen', null, '(empty — no parked topics right now)', 'Bxd5');
-    expect(text).toContain('The move actually played here was Bxd5 — shown as a red arrow on the board.');
-    expect(text).toContain('FEN: pre-move-fen');
+  test('names the move actually played, with no arrow/board framing', () => {
+    const text = renderCurrentMoveBlock(27, 'current-fen', 'white', '(empty — no parked topics right now)', 'Bxd5');
+    expect(text).toContain('The move actually played here was Bxd5.');
+    expect(text).not.toContain('red arrow');
+    expect(text).toContain(': current-fen');
   });
 
   test('ply 0 (game start) never has a played-move sentence — nothing was played to reach it', () => {
-    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '(empty — no parked topics right now)', null);
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', 'white', '(empty — no parked topics right now)', null);
     expect(text).not.toContain('The move actually played here was');
   });
 
-  test('omits the curated analysis section by default (showEngineAnalysis off)', () => {
-    const text = renderCurrentMoveBlock(2, 'fen', null, '(empty — no parked topics right now)', 'e5');
+  test('omits the curated analysis section when no analysisContext is given', () => {
+    const text = renderCurrentMoveBlock(2, 'fen', 'white', '(empty — no parked topics right now)', 'e5');
     expect(text).not.toContain('Best line');
     expect(text).not.toContain('Other engine options');
     expect(text).not.toContain('engine’s top choice');
@@ -107,7 +108,7 @@ describe('renderCurrentMoveBlock', () => {
       depth: 16,
       multiPv: overrides.lines.length,
       eval: { cp: overrides.lines[0]?.cp ?? null, mateIn: overrides.lines[0]?.mateIn ?? null },
-      features: {} as PositionAnalysis['features'],
+      features: { forks: [], hangingPieces: [], availableMoves: [] } as unknown as PositionAnalysis['features'],
       ...overrides
     };
   }
@@ -124,7 +125,7 @@ describe('renderCurrentMoveBlock', () => {
       classifiedMove: { ply: 16, moveSan: 'd5', mover: 'black', isUserMove: true, cpLoss: 163, quality: 'mistake', bestLineSan: ['d6'], evalAfterCp: 6, hangsPiece: false }
     };
     // ply 16 = Black's move 8 (plyToMoveRef: moveNumber = ceil(ply/2)).
-    const text = renderCurrentMoveBlock(16, 'pre-move-fen', null, '(empty — no parked topics right now)', 'd5', ctx);
+    const text = renderCurrentMoveBlock(16, 'pre-move-fen', 'white', '(empty — no parked topics right now)', 'd5', ctx);
 
     expect(text).toContain("Played d5 (eval +0.06, cost ~163cp) instead of the engine's best, d6 (eval +0.17).");
     expect(text).toContain('Best line: 8...d6 9.O-O a6');
@@ -137,7 +138,7 @@ describe('renderCurrentMoveBlock', () => {
       analysis: analysis({ bestMove: 'd6', lines: [line({ moveSan: 'd6', pvSan: ['d6'], cp: 17 })] }),
       postMoveAnalysis: analysis({ bestMove: 'exd5', lines: [line({ moveSan: 'exd5', pvSan: ['exd5', 'Nxd5'], cp: 6 })] })
     };
-    const text = renderCurrentMoveBlock(16, 'pre-move-fen', null, '(empty — no parked topics right now)', 'd5', ctx);
+    const text = renderCurrentMoveBlock(16, 'pre-move-fen', 'white', '(empty — no parked topics right now)', 'd5', ctx);
 
     expect(text).toContain('Played line: 8...d5 9.exd5 Nxd5');
   });
@@ -147,7 +148,7 @@ describe('renderCurrentMoveBlock', () => {
     const ctx: CurrentMoveAnalysisContext = {
       analysis: analysis({ bestMove: 'd6', lines: [line({ moveSan: 'd6', pvSan: longPv, cp: 17 })] })
     };
-    const text = renderCurrentMoveBlock(16, 'pre-move-fen', null, '(empty — no parked topics right now)', 'd5', ctx);
+    const text = renderCurrentMoveBlock(16, 'pre-move-fen', 'white', '(empty — no parked topics right now)', 'd5', ctx);
 
     expect(text).toContain('Best line: 8...d6 9.O-O a6 10.Bb3 Ba7 11.h3 h6 12.c3 O-O 13.Re1 d6 14.a4');
     expect(text).not.toContain('Nb6');
@@ -158,7 +159,7 @@ describe('renderCurrentMoveBlock', () => {
     const ctx: CurrentMoveAnalysisContext = {
       analysis: analysis({ bestMove: 'e5', lines: [line({ moveSan: 'e5', pvSan: ['e5', 'Nf3'], cp: 20 })] })
     };
-    const text = renderCurrentMoveBlock(2, 'fen', null, '(empty — no parked topics right now)', 'e5', ctx);
+    const text = renderCurrentMoveBlock(2, 'fen', 'white', '(empty — no parked topics right now)', 'e5', ctx);
 
     expect(text).toContain('This was the engine’s top choice.');
     expect(text).toContain('Line: 1...e5 2.Nf3');
@@ -170,7 +171,7 @@ describe('renderCurrentMoveBlock', () => {
     const ctx: CurrentMoveAnalysisContext = {
       analysis: analysis({ bestMove: 'e4', lines: [line({ moveSan: 'e4', pvSan: ['e4', 'e5'], cp: 25 })] })
     };
-    const text = renderCurrentMoveBlock(0, 'startpos-fen', null, '(empty — no parked topics right now)', null, ctx);
+    const text = renderCurrentMoveBlock(0, 'startpos-fen', 'white', '(empty — no parked topics right now)', null, ctx);
 
     expect(text).toContain("Engine's top choice here: e4 (eval +0.25)");
     expect(text).toContain('Line: 1.e4 e5');
@@ -187,7 +188,7 @@ describe('renderCurrentMoveBlock', () => {
       newHangingPieces: [],
       mobilityDelta: -3
     };
-    const withDelta = renderCurrentMoveBlock(8, 'fen', null, '(empty — no parked topics right now)', 'd5', {
+    const withDelta = renderCurrentMoveBlock(8, 'fen', 'white', '(empty — no parked topics right now)', 'd5', {
       ...baseCtx,
       featureDelta: delta
     });
@@ -195,7 +196,7 @@ describe('renderCurrentMoveBlock', () => {
     expect(withDelta).toContain('- New fork: n on d5 forks c7/e7');
     expect(withDelta).toContain('- 3 fewer legal replies available');
 
-    const withEmptyDelta = renderCurrentMoveBlock(8, 'fen', null, '(empty — no parked topics right now)', 'd5', {
+    const withEmptyDelta = renderCurrentMoveBlock(8, 'fen', 'white', '(empty — no parked topics right now)', 'd5', {
       ...baseCtx,
       featureDelta: { newForks: [], newHangingPieces: [], mobilityDelta: 0 }
     });
@@ -206,7 +207,7 @@ describe('renderCurrentMoveBlock', () => {
     const ctx: CurrentMoveAnalysisContext = {
       analysis: analysis({ bestMove: 'd6', lines: [line({ moveSan: 'd6', pvSan: ['d6'], cp: 17 })] })
     };
-    const text = renderCurrentMoveBlock(8, 'fen', null, '(empty — no parked topics right now)', 'd5', ctx);
+    const text = renderCurrentMoveBlock(8, 'fen', 'white', '(empty — no parked topics right now)', 'd5', ctx);
 
     expect(text).toContain("Played d5 instead of the engine's best, d6 (eval +0.17).");
     expect(text).not.toContain('cost ~');

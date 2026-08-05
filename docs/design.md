@@ -21,17 +21,17 @@
    act on it (coach via tools, student via drag/tap). It must always reflect the
    current point of conversation, and changes to it must be noticeable (animation)
    but never disorienting (no teleporting mid-read).
-4. **Engine mostly invisible, opt-in exception.** By default: no eval bars, no
-   centipawn numbers, no engine lines in the primary UI — same as always. Two
-   long-standing exceptions stay word-only for everyone: the Explore panel
-   (§5.6), clearly labeled as exploration, and move-quality badges (§5.5),
-   which show a qualitative tier (a colored icon: best/miss/blunder/etc.),
-   never a raw number. On top of those, a student can enable "Show engine
-   analysis" in Settings — off by default — to unlock a structured analysis
-   panel (real evaluations, principal variations, hanging pieces, pawn
-   structure, and more) and let the coach cite raw numbers/lines directly in
-   conversation instead of translating everything into words. This is a
-   deliberate per-student opt-in, not a change to the default experience.
+4. **Engine analysis is always available; the coach may cite it.** The coach
+   always has full engine analysis in its own context and may cite raw
+   numbers/lines directly in conversation when it helps, instead of
+   translating everything into words — this is a universal default, not a
+   per-student opt-in. Two long-standing surfaces stay word-only regardless:
+   the Explore panel (§5.6), clearly labeled as exploration, and
+   move-quality badges (§5.5), which show a qualitative tier (a colored
+   icon: best/miss/blunder/etc.), never a raw number. The structured
+   analysis panel (§5.6a) is available to every student, showing real
+   evaluations, principal variations, hanging pieces, pawn structure, and
+   more for whichever position is currently on the board.
 5. **Mobile is a first-class citizen.** Every flow works one-handed on a 360 px
    phone. Desktop is not "mobile stretched": it uses the space for side-by-side
    composition.
@@ -155,10 +155,9 @@ Order, mobile-first single column (desktop: 2-column grid, focus areas left):
 ### 4.4 Settings
 
 Sections: Profile (name, rating band selector with the 4 bands described in
-plain language, linked usernames) · Analysis ("Show engine analysis" toggle,
-off by default — see §1 principle 4 and §5.6a) · API keys (per provider:
-"saved ✓ · delete" or "add key" — key never redisplayed) · Credits (balance,
-3 pack cards → Stripe Checkout) · Appearance (theme) · Account.
+plain language, linked usernames) · API keys (per provider: "saved ✓ ·
+delete" or "add key" — key never redisplayed) · Credits (balance, 3 pack
+cards → Stripe Checkout) · Appearance (theme) · Account.
 
 ## 5. The session screen (the product)
 
@@ -290,25 +289,21 @@ from the game's engine analysis, matching between mobile and desktop (see
 Collapsed by default under the board (desktop) / behind the ⋯ menu (mobile):
 "Explore on your own". Expands to: eval in words + best-move arrow from the
 in-browser engine, clearly captioned "your private exploration — the coach
-isn't watching". Opening it enters peek mode. Together with the move-quality
-badges (§5.5), this is the only other place engine output surfaces for
-students who haven't opted into raw analysis (§1 principle 4) — and neither
-ever shows raw numbers: the Explore panel speaks in words only ("White is
-clearly better"), and the badges show a qualitative tier (colored icon),
-never a centipawn value.
+isn't watching". Opening it enters peek mode. Speaks in words only ("White
+is clearly better") — together with the move-quality badges (§5.5), which
+show a qualitative tier (colored icon), never a centipawn value, these stay
+word-only everywhere in the primary UI regardless of principle 4.
 
-### 5.6a Position analysis panel (opt-in)
+### 5.6a Move analysis inspector
 
-A separate, always-collapsed-unless-enabled panel next to the Explore panel,
-shown only when the student has turned on "Show engine analysis" in Settings
-(off by default). Unlike Explore's lightweight in-browser WASM check, this
-calls the server-side Stockfish engine for a deeper, consistent breakdown of
-whichever position is currently on the board: eval, best lines with full
+Opened via right-click (desktop) / long-press (mobile) on a move in the move
+list — a modal showing that position's full server-side Stockfish analysis
+as a collapsible, color-coded JSON tree: eval, best lines with full
 principal variation, board state (check/mate/stalemate), hanging and
 under-defended pieces, forks, favorable capture opportunities, pawn
-structure, mobility, and center control. This is the one surface in the app
-allowed to show raw numbers and PV notation — everywhere else in the primary
-UI, principle 4 still holds.
+structure, mobility, and center control. Available to every student,
+explicitly opened — distinct from what the coach volunteers in conversation
+(§1 principle 4).
 
 ### 5.7 Session states
 

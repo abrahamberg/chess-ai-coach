@@ -327,7 +327,6 @@ describe('UserProfileSchema', () => {
       lichessUsername: null,
       chesscomUsername: 'daniel_c',
       selfAssessment: null,
-      showEngineAnalysis: false,
       creditBalance: 100
     };
     expect(UserProfileSchema.safeParse(profile).success).toBe(true);
@@ -342,7 +341,6 @@ describe('UserProfileSchema', () => {
         lichessUsername: null,
         chesscomUsername: null,
         selfAssessment: null,
-        showEngineAnalysis: false,
         creditBalance: 0
       }).success
     ).toBe(false);

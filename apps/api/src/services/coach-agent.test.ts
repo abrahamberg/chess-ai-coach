@@ -464,9 +464,8 @@ describe('coach-agent startTurn concurrency', () => {
     expect(toolResultToolCallIds).toContain('call-show-2');
   }, 20000);
 
-  test('showEngineAnalysis on the user row flows through to buildEpisodeContext — the request embeds the curated analysis summary, computed on the pre-move fen', async () => {
+  test('engine analysis is always embedded in the request for every user — no per-user opt-in — computed on the pre-move fen', async () => {
     const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
-    await usersRepo.update(db, user.id, { showEngineAnalysis: true });
     await creditsRepo.insertSignupGrant(db, user.id);
     const game = await gamesRepo.insert(db, {
       userId: user.id,

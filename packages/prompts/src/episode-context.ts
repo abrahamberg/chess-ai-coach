@@ -1,5 +1,5 @@
 import type { ClassifiedMove, FeatureDelta } from '@chess-coach/chess-analysis';
-import { isSoundQuality } from '@chess-coach/chess-analysis';
+import { diffPositionFeatures, isSoundQuality } from '@chess-coach/chess-analysis';
 import { MOVE_QUALITY_SYMBOLS, type MoveQuality, type PositionAnalysis, type PositionAnalysisLine } from '@chess-coach/shared';
 import { describeMoveRef } from './render.js';
 
@@ -64,7 +64,6 @@ function renderOtherMoveLine(entry: MoveNoteEntry, qualityByPly: Map<number, Mov
  * Everything the curated "## Current position" analysis section needs,
  * gathered by the caller (apps/api/src/services/coach-context.ts) — this
  * module only renders, it never fetches or computes analysis itself.
- * All fields are omitted together when showEngineAnalysis is off.
  */
 export interface CurrentMoveAnalysisContext {
   /** Engine analysis of the pre-move position (`fen` in renderCurrentMoveBlock) — supplies the best line and other engine options. */
@@ -181,6 +180,18 @@ function renderAnalysisSection(ply: number, playedMove: string | null, ctx: Curr
     parts.push(`Other engine options:\n${otherText}`);
   }
 
+  // The raw JSON below sits alongside the curated prose above rather than
+  // replacing it — for the cases the curated summary can't anticipate
+  // (investigating a non-obvious eval drop may need fields no bullet covers).
+  // Both postMoveAnalysis and analysis are already-fetched, cached-by-fen
+  // engine results (no extra engine round trip to produce this).
+  if (postMoveAnalysis) {
+    parts.push(`## Position full analyse\n\n${JSON.stringify(postMoveAnalysis, null, 2)}`);
+    parts.push(
+      `## Delta against best move\n\n${JSON.stringify(diffPositionFeatures(analysis.features, postMoveAnalysis.features), null, 2)}`
+    );
+  }
+
   return parts.length > 0 ? `\n\n${parts.join('\n\n')}` : '';
 }
 
@@ -195,28 +206,27 @@ function renderAnalysisSection(ply: number, playedMove: string | null, ctx: Curr
  * text owned by packages/prompts, matching how this function already owns
  * its own '## Current position' heading.
  *
- * `fen` is the position actually on the student's board — since the board
- * now anchors one ply BEFORE a played move by default (universal default,
- * not gated behind showEngineAnalysis — see useSessionBoardState.ts), this
- * is the pre-move fen whenever `playedMove` is non-null, matching what's
- * shown with a red arrow client-side. `playedMove` (SAN, null only at the
- * game's start) names the move that was actually played, since the board no
- * longer shows the outcome directly. `analysisContext` is the opt-in curated
- * engine-analysis summary of that same fen (showEngineAnalysis toggle) —
- * omitted entirely when the toggle is off, so the block is byte-for-byte
- * what it always was for every other student.
+ * `fen` is the actual current position — the position reached AFTER
+ * `playedMove` (not the pre-move position; the board's own pre-move-anchor/
+ * red-arrow presentation is a client-side display choice that this text no
+ * longer mirrors). `studentColor` is stated every turn (not just once in
+ * the dynamic system block) because the model needs it right next to the
+ * FEN to reason about it correctly. `playedMove` (SAN, null only at the
+ * game's start) names the move that was actually played. `analysisContext`
+ * is the curated engine-analysis summary of the pre-move position — always
+ * supplied by the real caller (engine visibility is a universal default,
+ * no per-student opt-in); optional here only so pure-render unit tests can
+ * omit it.
  */
 export function renderCurrentMoveBlock(
   ply: number,
   fen: string,
-  previousPly: number | null,
+  studentColor: 'white' | 'black',
   threadsBlock: string,
   playedMove: string | null,
   analysisContext?: CurrentMoveAnalysisContext
 ): string {
-  const arrival = previousPly !== null ? ` You reached this position from ${describeMoveRef(previousPly)}.` : '';
-  const playedMoveSentence =
-    playedMove !== null ? ` The move actually played here was ${playedMove} — shown as a red arrow on the board.` : '';
+  const playedMoveSentence = playedMove !== null ? ` The move actually played here was ${playedMove}.` : '';
   const analysisBlock = analysisContext ? renderAnalysisSection(ply, playedMove, analysisContext) : '';
-  return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board.${playedMoveSentence} FEN: ${fen}.${arrival}${analysisBlock}\n\n## Your thread ledger\n\n${threadsBlock}`;
+  return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board. Your student is playing ${studentColor} in this game.${playedMoveSentence} FEN (always written from White's absolute perspective, regardless of whose turn it is or which side your student plays): ${fen}.${analysisBlock}\n\n## Your thread ledger\n\n${threadsBlock}`;
 }

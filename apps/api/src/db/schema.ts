@@ -12,7 +12,6 @@ export interface UsersTable {
   lichessUsername: string | null;
   chesscomUsername: string | null;
   selfAssessment: string | null;
-  showEngineAnalysis: Generated<boolean>;
   createdAt: Generated<Date>;
 }
 

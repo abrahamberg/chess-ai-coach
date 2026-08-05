@@ -113,14 +113,14 @@ export interface BuildEpisodeContextInput extends CoachContextDependencies {
   historyAfterTurn: SessionMessageRow[];
   staticPart: string;
   dynamicPart: string;
-  /** wraps `POST engine/analyze-position` (architecture §4) — only called
-   * when `showEngineAnalysis` is true. */
+  /** Which side the student is playing this game — restated in the
+   * "## Current position" block every turn (coach-agent-system-prompt.ts
+   * already fetches this once as `game.userColor`). */
+  studentColor: 'white' | 'black';
+  /** wraps `POST engine/analyze-position` (architecture §4) — always called
+   * to populate the "## Current position" analysis; engine visibility is a
+   * universal default, not a per-student opt-in. */
   analyzePosition: (fen: string) => Promise<PositionAnalysis>;
-  /** The student's opt-in raw-engine-analysis preference (docs/design.md
-   * principle 4) — gates the full JSON analysis appended to the "## Current
-   * position" block. Does NOT gate the pre-move fen/played-move sentence
-   * themselves, which are a universal default for every student. */
-  showEngineAnalysis: boolean;
 }
 
 /** Assembles the five-layer request in place of the old whole-transcript
@@ -142,25 +142,29 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
 
   const annotatedPgn = renderAnnotatedPgn(classifiedMoves ?? []);
   const otherMovesSummary = renderOtherMovesSummary(otherNotes, classifiedMoves ?? []);
-  // The board anchors one ply BEFORE a played move by default (universal
-  // default — see useSessionBoardState.ts's isAnchoredPreMove), with a red
-  // arrow for the move actually played. This block must describe what's
-  // really on the board, so it uses the same pre-move fen and names the
-  // played move in words; ply 0 (game start) has no "before" and is
-  // unaffected. The full structured analysis is opt-in (showEngineAnalysis).
-  const displayFen = previousMovePosition?.fen ?? position.fen;
+  // The engine's "top choice here" / "best line" analysis is always about
+  // the position BEFORE the move under discussion — analyzePosition is
+  // called on the pre-move fen for that reason. ply 0 (game start) has no
+  // "before", so pre-move and current collapse to the same fen. The
+  // "## Current position" text itself states the actual current position
+  // (position.fen, after the move), not this pre-move fen — see
+  // renderCurrentMoveBlock's own doc comment. Engine visibility is a
+  // universal default (no per-student opt-in), so this is always fetched.
+  const preMoveFen = previousMovePosition?.fen ?? position.fen;
   const playedMove = previousMovePosition ? position.moveSan : null;
-  const analysis = input.showEngineAnalysis ? await input.analyzePosition(displayFen) : undefined;
-  const isBestMove = playedMove !== null && analysis?.bestMove === playedMove;
-  // Only fetch the played move's own continuation when there's something to
-  // add beyond the best line already above (position.fen should already be
-  // warm in position_evaluations by the time a session is open — see
+  const analysis = await input.analyzePosition(preMoveFen);
+  const isBestMove = playedMove !== null && analysis.bestMove === playedMove;
+  // Fetched for every played move, not just non-best ones: it feeds both the
+  // curated "played line" continuation (isBestMove branch skips that) AND
+  // the raw "## Position full analyse" / "## Delta against best move" JSON
+  // (packages/prompts's renderAnalysisSection), which apply regardless of
+  // whether the played move was best. position.fen should already be warm
+  // in position_evaluations by the time a session is open — see
   // deepen-analysis.ts's batching — so this is expected to be a cache hit,
-  // not a new live-latency source).
-  const postMoveAnalysis =
-    input.showEngineAnalysis && playedMove !== null && !isBestMove ? await input.analyzePosition(position.fen) : undefined;
+  // not a new live-latency source.
+  const postMoveAnalysis = playedMove !== null ? await input.analyzePosition(position.fen) : undefined;
   const featureDelta =
-    playedMove !== null && !isBestMove ? computeFeatureDelta(analysis, displayFen, position.fen) : undefined;
+    playedMove !== null && !isBestMove ? computeFeatureDelta(analysis, preMoveFen, position.fen) : undefined;
   const classifiedMove = classifiedMoves?.find((move) => move.ply === input.currentPly);
   // final review #8: the thread-ledger heading is composed inside
   // renderCurrentMoveBlock (packages/prompts), not here — all prompt text
@@ -168,11 +172,11 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
   // renderOtherMovesSummary already use for their own '## ' headings.
   const currentMoveBlock = renderCurrentMoveBlock(
     input.currentPly,
-    displayFen,
-    episode.previousPly,
+    position.fen,
+    input.studentColor,
     renderThreadsBlock(threads),
     playedMove,
-    analysis ? { analysis, classifiedMove, postMoveAnalysis, featureDelta } : undefined
+    { analysis, classifiedMove, postMoveAnalysis, featureDelta }
   );
 
   const episodeMessages = await resolveEpisodeReplay(input, input.session.id, orphanExtendedMessages, input.currentPly);

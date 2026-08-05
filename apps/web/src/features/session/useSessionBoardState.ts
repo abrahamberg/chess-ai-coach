@@ -26,9 +26,9 @@ export interface UseSessionBoardStateResult {
   expandDock: () => void;
   /** True while the board is showing the position BEFORE the move currently
    * being discussed, with a red arrow for the move that was actually played
-   * (universal default — not gated behind showEngineAnalysis). False once
-   * revealPlayedMove() has been called, while peeking, or at the game's
-   * starting position (nothing to anchor before). */
+   * (universal default, every student). False once revealPlayedMove() has
+   * been called, while peeking, or at the game's starting position (nothing
+   * to anchor before). */
   isAnchoredPreMove: boolean;
   /** Shows the actual post-move position in place of the pre-move anchor —
    * purely a display flag, does not touch ply/coachPly/mode. */
@@ -91,9 +91,9 @@ export function useSessionBoardState(
   const [mode, setMode] = useState<BoardMode>('answer');
   const [coachPly, setCoachPly] = useState(0);
   const [previewFen, setPreviewFen] = useState<string | null>(null);
-  // Universal default (not gated behind showEngineAnalysis): a fresh
-  // show_position anchors the board one ply BEFORE the move being discussed,
-  // with a red arrow for the move actually played — see isAnchoredPreMove.
+  // Universal default, every student: a fresh show_position anchors the
+  // board one ply BEFORE the move being discussed, with a red arrow for the
+  // move actually played — see isAnchoredPreMove.
   const [revealResult, setRevealResult] = useState(true);
   const annotations = useAnnotationLayer();
   const dock = useBoardDock();

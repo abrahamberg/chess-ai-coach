@@ -80,7 +80,7 @@ export async function startTurn(
       currentPly = await applyClientToolResult(deps, session, input.clientToolResult, currentPly);
     }
 
-    const { staticPart, dynamicPart, showEngineAnalysis } = await buildSystemPromptForSession(deps.db, session);
+    const { staticPart, dynamicPart, studentColor } = await buildSystemPromptForSession(deps.db, session);
     const historyAfterTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
     const { instructions, messages } = await coachContext.buildEpisodeContext({
       db: deps.db,
@@ -90,8 +90,8 @@ export async function startTurn(
       historyAfterTurn,
       staticPart,
       dynamicPart,
-      analyzePosition: deps.analyzePosition,
-      showEngineAnalysis
+      studentColor,
+      analyzePosition: deps.analyzePosition
     });
 
     const tools = buildCoachTools(

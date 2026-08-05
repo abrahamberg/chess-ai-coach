@@ -11,10 +11,8 @@ export interface MoveAnalysisModalProps {
 
 /** Opened via right-click (desktop) / long-press (mobile) on a move in the
  * move list — shows that position's saved engine analysis as a collapsible,
- * color-coded JSON tree. Available regardless of the student's
- * showEngineAnalysis chat preference: that setting only gates what the
- * coach volunteers in conversation, not this separate, explicitly-opened
- * inspector. */
+ * color-coded JSON tree. This is a separate, explicitly-opened inspector,
+ * distinct from what the coach volunteers in conversation. */
 export function MoveAnalysisModal({ fen, moveLabel, onClose }: MoveAnalysisModalProps): ReactNode {
   const { data, isLoading, isError } = usePositionAnalysis(fen);
 

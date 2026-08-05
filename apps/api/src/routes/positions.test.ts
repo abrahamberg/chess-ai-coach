@@ -77,7 +77,7 @@ describe('POST /api/positions/analyze', () => {
     return { app: buildApp({ authMode: 'proxy', db, coachAgentDeps }), analyzePosition };
   }
 
-  test('returns the full structured analysis regardless of showEngineAnalysis', async () => {
+  test('returns the full structured analysis for any authenticated user', async () => {
     const headers = headersFor('on@example.com', 'On');
     const { app, analyzePosition } = buildTestApp();
     await app.inject({ method: 'GET', url: '/api/users/me', headers });

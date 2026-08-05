@@ -6,11 +6,8 @@ import { ValidationError } from '../lib/errors.js';
  * On-demand rich position analysis for the browser — reuses the same
  * `analyzePosition` dependency the coach agent's get_engine_analysis tool
  * calls (cache-first against position_evaluations, live Stockfish on a
- * miss). Available to any authenticated user regardless of their
- * showEngineAnalysis preference: that setting only gates whether the coach
- * volunteers raw engine numbers in chat (docs/design.md principle 4), it's
- * not a gate on this route, which backs the separate move-analysis
- * inspector modal a student opens explicitly.
+ * miss). Available to any authenticated user — backs the separate
+ * move-analysis inspector modal a student opens explicitly.
  */
 export function registerPositionAnalysisRoutes(
   app: FastifyInstance,

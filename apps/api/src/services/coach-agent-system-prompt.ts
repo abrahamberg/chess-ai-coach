@@ -12,7 +12,7 @@ import * as userProfileService from './user-profile.js';
 export async function buildSystemPromptForSession(
   db: Kysely<Database>,
   session: SessionRow
-): Promise<{ staticPart: string; dynamicPart: string; showEngineAnalysis: boolean }> {
+): Promise<{ staticPart: string; dynamicPart: string; studentColor: 'white' | 'black' }> {
   const [user, game, plan, profileSummary, sessionCount] = await Promise.all([
     usersRepo.findById(db, session.userId),
     gamesRepo.findById(db, session.gameId),
@@ -36,8 +36,7 @@ export async function buildSystemPromptForSession(
     },
     plan,
     focusAreas: profileSummary.focusAreas,
-    recentFindings: profileSummary.recentFindings,
-    showEngineAnalysis: user.showEngineAnalysis
+    recentFindings: profileSummary.recentFindings
   });
-  return { ...prompt, showEngineAnalysis: user.showEngineAnalysis };
+  return { ...prompt, studentColor: game.userColor };
 }

@@ -33,7 +33,6 @@ describe('GET/PATCH /api/users/me', () => {
       lichessUsername: null,
       chesscomUsername: null,
       selfAssessment: null,
-      showEngineAnalysis: false,
       creditBalance: 100
     });
     expect(typeof body.id).toBe('string');
@@ -65,22 +64,6 @@ describe('GET/PATCH /api/users/me', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().ratingBand).toBe('advanced');
-  });
-
-  test('PATCH updates showEngineAnalysis, off by default', async () => {
-    const app = buildApp({ authMode: 'proxy', db });
-    const headers = { 'x-auth-request-email': 'eve@example.com', 'x-auth-request-user': 'Eve' };
-    await app.inject({ method: 'GET', url: '/api/users/me', headers });
-
-    const response = await app.inject({
-      method: 'PATCH',
-      url: '/api/users/me',
-      headers,
-      payload: { showEngineAnalysis: true }
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json().showEngineAnalysis).toBe(true);
   });
 
   test('PATCH rejects a rating band outside RATING_BANDS as 400 problem+json', async () => {

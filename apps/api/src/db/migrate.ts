@@ -7,6 +7,7 @@ import * as sessionDebugSnapshot from './migrations/0005_session_debug_snapshot.
 import * as episodeContext from './migrations/0006_episode_context.js';
 import * as showEngineAnalysis from './migrations/0007_show_engine_analysis.js';
 import * as positionEvaluations from './migrations/0008_position_evaluations.js';
+import * as removeShowEngineAnalysis from './migrations/0009_remove_show_engine_analysis.js';
 
 const provider: MigrationProvider = {
   getMigrations: () =>
@@ -18,7 +19,8 @@ const provider: MigrationProvider = {
       '0005_session_debug_snapshot': sessionDebugSnapshot,
       '0006_episode_context': episodeContext,
       '0007_show_engine_analysis': showEngineAnalysis,
-      '0008_position_evaluations': positionEvaluations
+      '0008_position_evaluations': positionEvaluations,
+      '0009_remove_show_engine_analysis': removeShowEngineAnalysis
     })
 };
 
