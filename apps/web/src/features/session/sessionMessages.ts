@@ -24,14 +24,23 @@ export function extractText(content: unknown): string {
 interface ToolCallPart {
   type: 'tool-call';
   toolName: string;
-  args: unknown;
+  /** The AI SDK's current field name for a tool call's arguments. */
+  input?: unknown;
+  /** What the SDK called the same field before v7. `session_messages` is
+   * append-only, so every session recorded before the upgrade still stores
+   * its tool calls under this name and must keep resolving. */
+  args?: unknown;
 }
 
 function isToolCallPart(part: unknown): part is ToolCallPart {
   return typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'tool-call';
 }
 
-/** Persisted show_position args are either the current {moveNumber, color}
+function toolCallInput(part: ToolCallPart): unknown {
+  return part.input ?? part.args;
+}
+
+/** Persisted show_position input is either the current {moveNumber, color}
  * shape, or the {ply} shape from before the move-number fix — old sessions'
  * history still contains the old shape, and must keep resolving to the
  * right position rather than NaN. */
@@ -48,7 +57,7 @@ export function showPositionPlies(content: unknown): number[] {
   return content
     .filter(isToolCallPart)
     .filter((part) => part.toolName === 'show_position')
-    .map((part) => plyFromShowPositionArgs(part.args));
+    .map((part) => plyFromShowPositionArgs(toolCallInput(part)));
 }
 
 /** Reopening a session should show the board where the coach last left it,

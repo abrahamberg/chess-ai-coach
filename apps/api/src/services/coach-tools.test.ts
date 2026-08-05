@@ -7,6 +7,11 @@ import type { Database } from '../db/schema.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
 import { buildCoachTools, type CoachToolsDependencies } from './coach-tools.js';
 
+/** The execution options the SDK hands a tool's `execute`. None of the coach's
+ * tools read them — they close over their own context from buildCoachTools —
+ * so one shared stub covers every call site. */
+const TOOL_OPTIONS = { toolCallId: '1', messages: [], context: undefined } as never;
+
 function positionAnalysisFixture(fen: string): PositionAnalysis {
   return {
     fen,
@@ -125,7 +130,7 @@ describe('buildCoachTools', () => {
 
       const result = await tools.get_engine_analysis?.execute?.(
         { fen: ENGINE_EVAL.fen },
-        { toolCallId: '1', messages: [] }
+        TOOL_OPTIONS
       );
 
       expect(result).toEqual(ENGINE_EVAL);
@@ -137,7 +142,7 @@ describe('buildCoachTools', () => {
       const ctx = await setupCtx();
       const deps = makeDeps();
       const tools = buildCoachTools(ctx, deps);
-      const call = (fen: string) => tools.get_engine_analysis?.execute?.({ fen }, { toolCallId: '1', messages: [] });
+      const call = (fen: string) => tools.get_engine_analysis?.execute?.({ fen }, TOOL_OPTIONS);
 
       await call(`${ENGINE_EVAL.fen} 1`);
       await call(`${ENGINE_EVAL.fen} 2`);
@@ -153,8 +158,8 @@ describe('buildCoachTools', () => {
       const tools = buildCoachTools(ctx, deps);
       const args = { fen: ENGINE_EVAL.fen };
 
-      const first = await tools.get_engine_analysis?.execute?.(args, { toolCallId: '1', messages: [] });
-      const second = await tools.get_engine_analysis?.execute?.(args, { toolCallId: '2', messages: [] });
+      const first = await tools.get_engine_analysis?.execute?.(args, TOOL_OPTIONS);
+      const second = await tools.get_engine_analysis?.execute?.(args, TOOL_OPTIONS);
 
       expect(second).toEqual(first);
       expect(deps.analyzePosition).toHaveBeenCalledTimes(1);
@@ -168,7 +173,7 @@ describe('buildCoachTools', () => {
 
       const result = await tools.check_position?.execute?.(
         { moveNumber: 2, color: 'white' },
-        { toolCallId: '1', messages: [] }
+        TOOL_OPTIONS
       );
 
       expect(result).toEqual({
@@ -183,7 +188,7 @@ describe('buildCoachTools', () => {
 
       const result = await tools.check_position?.execute?.(
         { moveNumber: 20, color: 'white' },
-        { toolCallId: '1', messages: [] }
+        TOOL_OPTIONS
       );
 
       expect(result).toEqual({ error: 'that move does not exist in this game' });
@@ -203,7 +208,7 @@ describe('buildCoachTools', () => {
           description: 'Hung a knight.',
           isPositive: false
         },
-        { toolCallId: '1', messages: [] }
+        TOOL_OPTIONS
       );
 
       expect(result).toEqual({ recorded: true });
@@ -223,7 +228,7 @@ describe('buildCoachTools', () => {
         results.push(
           await tools.propose_focus_area_update?.execute?.(
             { category, action: 'create', note: 'note' },
-            { toolCallId: '1', messages: [] }
+            TOOL_OPTIONS
           )
         );
       }
@@ -248,7 +253,7 @@ describe('buildCoachTools', () => {
         }
       ];
 
-      const result = await tools.update_threads?.execute?.({ threads }, { toolCallId: '1', messages: [] });
+      const result = await tools.update_threads?.execute?.({ threads }, TOOL_OPTIONS);
 
       expect(result).toEqual(threads);
       const row = await db
@@ -268,7 +273,7 @@ describe('buildCoachTools', () => {
       ];
 
       await expect(
-        tools.update_threads?.execute?.({ threads }, { toolCallId: '1', messages: [] })
+        tools.update_threads?.execute?.({ threads }, TOOL_OPTIONS)
       ).rejects.toThrow();
     });
   });
@@ -281,14 +286,14 @@ describe('buildCoachTools', () => {
       // moveRefToPly(1, 'black') === 2.
       const ok = await tools.record_move_note?.execute?.(
         { moveNumber: 1, color: 'black', note: 'discussed the fork' },
-        { toolCallId: '1', messages: [] }
+        TOOL_OPTIONS
       );
       expect(ok).toEqual({ recorded: true });
 
       // moveRefToPly(500, 'white') === 999, far beyond this short game.
       const rejected = await tools.record_move_note?.execute?.(
         { moveNumber: 500, color: 'white', note: 'x' },
-        { toolCallId: '2', messages: [] }
+        TOOL_OPTIONS
       );
       expect(rejected).toEqual({ error: 'that move does not exist in this game' });
     });
@@ -302,7 +307,7 @@ describe('buildCoachTools', () => {
       // moveRefToPly(1, 'black') === 2.
       const nothingYet = await tools.recall_move?.execute?.(
         { moveNumber: 1, color: 'black' },
-        { toolCallId: '1', messages: [] }
+        TOOL_OPTIONS
       );
       expect(nothingYet).toEqual({ text: 'nothing recorded for that move yet' });
 
@@ -312,11 +317,11 @@ describe('buildCoachTools', () => {
       // a fourth distinct call (never cached) is the one that actually hits it.
       // moveRefToPly(2, 'black') === 4, moveRefToPly(3, 'black') === 6,
       // moveRefToPly(1, 'white') === 1.
-      await tools.recall_move?.execute?.({ moveNumber: 2, color: 'black' }, { toolCallId: '2', messages: [] });
-      await tools.recall_move?.execute?.({ moveNumber: 3, color: 'black' }, { toolCallId: '3', messages: [] });
+      await tools.recall_move?.execute?.({ moveNumber: 2, color: 'black' }, TOOL_OPTIONS);
+      await tools.recall_move?.execute?.({ moveNumber: 3, color: 'black' }, TOOL_OPTIONS);
       const overBudget = await tools.recall_move?.execute?.(
         { moveNumber: 1, color: 'white' },
-        { toolCallId: '4', messages: [] }
+        TOOL_OPTIONS
       );
       expect(overBudget).toEqual({ error: 'budget_exhausted — answer with what you have' });
     });

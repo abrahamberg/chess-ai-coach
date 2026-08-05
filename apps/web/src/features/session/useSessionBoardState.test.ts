@@ -52,7 +52,7 @@ describe('useSessionBoardState', () => {
       result.current.handleToolCall({
         toolCallId: '6',
         toolName: 'annotate_board',
-        args: { arrows: [], highlights: [{ square: 'd5', color: '#4a7fb5' }] }
+        input: { arrows: [], highlights: [{ square: 'd5', color: '#4a7fb5' }] }
       });
     });
 
@@ -95,7 +95,7 @@ describe('useSessionBoardState', () => {
       toolResult = result.current.handleToolCall({
         toolCallId: '1',
         toolName: 'show_position',
-        args: { moveNumber: 2, color: 'black' }
+        input: { moveNumber: 2, color: 'black' }
       });
     });
 
@@ -115,7 +115,7 @@ describe('useSessionBoardState', () => {
       toolResult = result.current.handleToolCall({
         toolCallId: '2',
         toolName: 'annotate_board',
-        args: { arrows: [{ from: 'd1', to: 'd8', color: '#4a7fb5' }], highlights: [] }
+        input: { arrows: [{ from: 'd1', to: 'd8', color: '#4a7fb5' }], highlights: [] }
       });
     });
 
@@ -128,7 +128,7 @@ describe('useSessionBoardState', () => {
 
     let toolResult: unknown;
     act(() => {
-      toolResult = result.current.handleToolCall({ toolCallId: '3', toolName: 'record_finding', args: {} });
+      toolResult = result.current.handleToolCall({ toolCallId: '3', toolName: 'record_finding', input: {} });
     });
 
     expect(toolResult).toBeUndefined();
@@ -152,7 +152,7 @@ describe('useSessionBoardState', () => {
       result.current.handleToolCall({
         toolCallId: '5',
         toolName: 'show_position',
-        args: { moveNumber: 0, color: null }
+        input: { moveNumber: 0, color: null }
       });
     });
     act(() => {
@@ -204,7 +204,7 @@ describe('useSessionBoardState', () => {
       result.current.handleToolCall({
         toolCallId: '7',
         toolName: 'show_position',
-        args: { moveNumber: 2, color: 'black' }
+        input: { moveNumber: 2, color: 'black' }
       });
     });
 
@@ -260,7 +260,7 @@ describe('useSessionBoardState', () => {
       result.current.handleToolCall({
         toolCallId: '4',
         toolName: 'show_position',
-        args: { moveNumber: 0, color: null }
+        input: { moveNumber: 0, color: null }
       });
     });
 
@@ -277,7 +277,7 @@ describe('pre-move anchor + red arrow (universal default, not gated behind showE
       result.current.handleToolCall({
         toolCallId: '1',
         toolName: 'show_position',
-        args: { moveNumber: 1, color: 'black' }
+        input: { moveNumber: 1, color: 'black' }
       });
     });
 
@@ -294,7 +294,7 @@ describe('pre-move anchor + red arrow (universal default, not gated behind showE
       result.current.handleToolCall({
         toolCallId: '1',
         toolName: 'show_position',
-        args: { moveNumber: 0, color: null }
+        input: { moveNumber: 0, color: null }
       });
     });
 
@@ -310,7 +310,7 @@ describe('pre-move anchor + red arrow (universal default, not gated behind showE
       result.current.handleToolCall({
         toolCallId: '1',
         toolName: 'show_position',
-        args: { moveNumber: 1, color: 'black' }
+        input: { moveNumber: 1, color: 'black' }
       });
     });
     act(() => {
@@ -335,7 +335,7 @@ describe('pre-move anchor + red arrow (universal default, not gated behind showE
       result.current.handleToolCall({
         toolCallId: '1',
         toolName: 'show_position',
-        args: { moveNumber: 1, color: 'black' }
+        input: { moveNumber: 1, color: 'black' }
       });
     });
     act(() => {
@@ -378,14 +378,14 @@ describe('pre-move anchor + red arrow (universal default, not gated behind showE
       result.current.handleToolCall({
         toolCallId: '1',
         toolName: 'show_position',
-        args: { moveNumber: 1, color: 'black' }
+        input: { moveNumber: 1, color: 'black' }
       });
     });
     act(() => {
       result.current.handleToolCall({
         toolCallId: '2',
         toolName: 'annotate_board',
-        args: { arrows: [{ from: 'g1', to: 'f3', color: '#4a7fb5' }], highlights: [] }
+        input: { arrows: [{ from: 'g1', to: 'f3', color: '#4a7fb5' }], highlights: [] }
       });
     });
 

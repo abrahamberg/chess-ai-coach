@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { formatDataStreamPart } from 'ai';
+import { textFrames, toolCallFrame } from '../../../test/helpers/uiMessageStream.js';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ChessboardOptions, PieceDropHandlerArgs } from 'react-chessboard';
@@ -160,7 +160,7 @@ describe('SessionPage', () => {
 
   test('dragging a move in answer mode (no expect_move signal) builds a diverged line locally, sending nothing', async () => {
     const fetchMock = mockFetch({}, (path) =>
-      path === '/api/sessions/session-1/messages' ? streamResponse([formatDataStreamPart('text', 'ok')]) : undefined
+      path === '/api/sessions/session-1/messages' ? streamResponse([...textFrames('ok')]) : undefined
     );
     vi.stubGlobal('fetch', fetchMock);
     renderSessionPage();
@@ -204,7 +204,7 @@ describe('SessionPage', () => {
 
   test('sending a message while a diverged line is pending bundles the line + comment into one [diverged_line] message', async () => {
     const fetchMock = mockFetch({}, (path) =>
-      path === '/api/sessions/session-1/messages' ? streamResponse([formatDataStreamPart('text', 'ok')]) : undefined
+      path === '/api/sessions/session-1/messages' ? streamResponse([...textFrames('ok')]) : undefined
     );
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
@@ -276,7 +276,7 @@ describe('SessionPage', () => {
               {
                 type: 'tool-call',
                 toolName: 'show_position',
-                args: { moveNumber: 1, color: 'black' },
+                input: { moveNumber: 1, color: 'black' },
                 toolCallId: 'call-1'
               }
             ]
@@ -312,7 +312,7 @@ describe('SessionPage', () => {
               {
                 type: 'tool-call',
                 toolName: 'show_position',
-                args: { moveNumber: 1, color: 'black' },
+                input: { moveNumber: 1, color: 'black' },
                 toolCallId: 'call-1'
               }
             ]
@@ -343,7 +343,7 @@ describe('SessionPage', () => {
             role: 'assistant',
             content: [
               { type: 'text', text: 'Let me show you.' },
-              { type: 'tool-call', toolName: 'show_position', args: { ply: 2 }, toolCallId: 'call-1' }
+              { type: 'tool-call', toolName: 'show_position', input: { ply: 2 }, toolCallId: 'call-1' }
             ]
           }
         ]
@@ -368,7 +368,7 @@ describe('SessionPage', () => {
       { messages: [{ id: 'm1', role: 'user', content: '[session_start]' }] },
       (path) =>
         path === '/api/sessions/session-1/messages'
-          ? streamResponse([formatDataStreamPart('text', 'Hi! Ready to dig into your game?')])
+          ? streamResponse([...textFrames('Hi! Ready to dig into your game?')])
           : undefined
     );
     vi.stubGlobal('fetch', fetchMock);
@@ -393,14 +393,14 @@ describe('SessionPage', () => {
               {
                 type: 'tool-call',
                 toolName: 'show_position',
-                args: { moveNumber: 1, color: 'black' },
+                input: { moveNumber: 1, color: 'black' },
                 toolCallId: 'call-1'
               }
             ]
           }
         ]
       },
-      (path) => (path === '/api/sessions/session-1/messages' ? streamResponse([formatDataStreamPart('text', 'Sure.')]) : undefined)
+      (path) => (path === '/api/sessions/session-1/messages' ? streamResponse([...textFrames('Sure.')]) : undefined)
     );
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
@@ -531,5 +531,47 @@ describe('SessionPage', () => {
 
     expect(window.confirm).toHaveBeenCalled();
     expect(fetchMock.mock.calls.some((call) => call[0] === '/api/sessions/session-1/reset')).toBe(false);
+  });
+
+  // The live path: a show_position tool call arriving mid-stream must move the
+  // board, not just draw a divider in the transcript. Every other
+  // show_position test covers the reload path (reading persisted tool-call
+  // parts), which exercises entirely different code.
+  test('a show_position tool call arriving over the live stream moves the board', async () => {
+    // The tool call comes back once; the client tool's result round-trips as a
+    // second POST, which must NOT replay the same tool call or the two would
+    // bounce forever.
+    let turn = 0;
+    const fetchMock = mockFetch({}, (path) => {
+      if (path !== '/api/sessions/session-1/messages') return undefined;
+      turn += 1;
+      return turn === 1
+        ? streamResponse([
+            ...textFrames('Let me show you.'),
+            toolCallFrame({ toolCallId: 'call-1', toolName: 'show_position', input: { moveNumber: 1, color: 'black' } })
+          ])
+        : streamResponse([...textFrames('There it is.')]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await vi.waitFor(() => expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument());
+    expect(capturedOptions.at(-1)?.position).toBe(START_FEN);
+
+    await user.type(screen.getByPlaceholderText(/type a reply/i), 'show me move 1 for black');
+    await user.keyboard('{Enter}');
+
+    // Anchors one ply BEFORE the move being discussed (the pre-move default),
+    // i.e. the position after 1.e4.
+    await vi.waitFor(() =>
+      expect(capturedOptions.at(-1)?.position).toBe('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1')
+    );
+
+    // ...and marks the jump in the transcript with a position divider.
+    const divider = within(screen.getByTestId('message-list'))
+      .getByText(/move 1 \(black\)/i)
+      .closest('.position-divider');
+    expect(divider).toHaveTextContent('e5');
   });
 });

@@ -10,16 +10,26 @@ const TurnUsageSchema = z.object({
   freshInputTokens: z.number(),
   cacheReadTokens: z.number(),
   cacheWriteTokens: z.number().nullable(),
-  outputTokens: z.number()
+  outputTokens: z.number(),
+  /** Added with reasoning support. Snapshots written before then have no such
+   * field — the stored snapshot is latest-turn-only and overwritten every
+   * turn, so this default just keeps the panel readable until the session's
+   * next turn rather than 404-ing the first load after a deploy. */
+  reasoningTokens: z.number().default(0)
 });
 
 const TurnDebugSnapshotSchema = z.object({
   request: z.object({
     provider: z.string(),
     model: z.string(),
+    /** The cached system layers. Absent on pre-upgrade snapshots, where the
+     * system blocks were still the head of `messages`. */
+    instructions: z.array(z.unknown()).default([]),
     messages: z.array(z.unknown()),
     tools: z.array(z.object({ name: z.string(), description: z.string(), parameters: z.unknown() })),
-    maxSteps: z.number()
+    maxSteps: z.number(),
+    reasoning: z.string().default('provider-default'),
+    providerOptions: z.unknown()
   }),
   response: z.object({
     messages: z.array(z.unknown()),

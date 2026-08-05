@@ -18,7 +18,7 @@ import {
 } from '@chess-coach/prompts';
 import { moveRefToPly } from '@chess-coach/chess-analysis';
 import type { Finding, FocusAreaUpdate, PositionAnalysis, Thread } from '@chess-coach/shared';
-import { tool, type ToolSet } from 'ai';
+import { tool, type ToolSet } from '../llm/tools.js';
 import type { Kysely } from 'kysely';
 import * as sessionsRepo from '../db/repositories/sessions.js';
 import type { Database } from '../db/schema.js';
@@ -66,71 +66,71 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
   return {
     show_position: tool({
       description: coachToolDescription('show_position'),
-      parameters: showPositionParameters
+      inputSchema: showPositionParameters
     }),
     annotate_board: tool({
       description: coachToolDescription('annotate_board'),
-      parameters: annotateBoardParameters
+      inputSchema: annotateBoardParameters
     }),
     expect_move: tool({
       description: coachToolDescription('expect_move'),
-      parameters: expectMoveParameters
+      inputSchema: expectMoveParameters
     }),
     hypothetical_line: tool({
       description: coachToolDescription('hypothetical_line'),
-      parameters: hypotheticalLineParameters
+      inputSchema: hypotheticalLineParameters
     }),
     check_position: tool({
       description: coachToolDescription('check_position'),
-      parameters: checkPositionParameters,
+      inputSchema: checkPositionParameters,
       execute: withTurnGuards(guardState, 'check_position', (args: { moveNumber: number; color: 'white' | 'black' | null }) =>
         checkPosition(deps, ctx, args)
       )
     }),
     get_engine_analysis: tool({
       description: coachToolDescription('get_engine_analysis'),
-      parameters: getEngineAnalysisParameters,
+      inputSchema: getEngineAnalysisParameters,
       execute: withTurnGuards(guardState, 'get_engine_analysis', (args: EngineAnalysisArgs) => getEngineAnalysis(deps, args))
     }),
     get_user_profile: tool({
       description: coachToolDescription('get_user_profile'),
-      parameters: getUserProfileParameters,
+      inputSchema: getUserProfileParameters,
       execute: withTurnGuards(guardState, 'get_user_profile', () => getUserProfileText(deps.db, ctx.userId))
     }),
     record_finding: tool({
       description: coachToolDescription('record_finding'),
-      parameters: recordFindingParameters,
+      inputSchema: recordFindingParameters,
       execute: withTurnGuards(guardState, 'record_finding', (finding: Finding) =>
         recordFindingTool(deps.db, ctx, finding)
       )
     }),
     propose_focus_area_update: tool({
       description: coachToolDescription('propose_focus_area_update'),
-      parameters: proposeFocusAreaUpdateParameters,
+      inputSchema: proposeFocusAreaUpdateParameters,
       execute: withTurnGuards(guardState, 'propose_focus_area_update', (update: FocusAreaUpdate) =>
         progressService.applyFocusAreaUpdate(deps.db, ctx.userId, update)
       )
     }),
     update_threads: tool({
       description: coachToolDescription('update_threads'),
-      parameters: updateThreadsParameters,
+      inputSchema: updateThreadsParameters,
       execute: withTurnGuards(guardState, 'update_threads', (args: { threads: Thread[] }) =>
         createThreadsService(deps.db).replace(ctx.sessionId, args.threads)
       )
     }),
     record_move_note: tool({
       description: coachToolDescription('record_move_note'),
-      parameters: recordMoveNoteParameters,
+      inputSchema: recordMoveNoteParameters,
       execute: withTurnGuards(guardState, 'record_move_note', (args: MoveNoteArgs) => recordMoveNote(deps.db, ctx, args))
     }),
     recall_move: tool({
       description: coachToolDescription('recall_move'),
-      parameters: recallMoveParameters,
+      inputSchema: recallMoveParameters,
       execute: withTurnGuards(guardState, 'recall_move', (args: MoveAddress) => recallMoveTool(deps, ctx, args))
     }),
     end_session: tool({
       description: coachToolDescription('end_session'),
-      parameters: endSessionParameters,
+      inputSchema: endSessionParameters,
       execute: withTurnGuards(guardState, 'end_session', () => endSessionTool(deps, ctx))
     })
   };

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeAll, afterAll } from 'vitest';
 import type { Kysely } from 'kysely';
-import type { CoreMessage } from 'ai';
+import type { ChatMessage } from '../llm/messages.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
 import * as usersRepo from '../db/repositories/users.js';
 import * as gamesRepo from '../db/repositories/games.js';
@@ -20,8 +20,8 @@ const PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6';
 
 describe('buildEpisodeMessages', () => {
   test('four cached system blocks each with their own ephemeral breakpoint, one uncached, then the episode conversation verbatim', () => {
-    const episodeMessages: CoreMessage[] = [{ role: 'user', content: 'hi coach' }];
-    const messages = buildEpisodeMessages(
+    const episodeMessages: ChatMessage[] = [{ role: 'user', content: 'hi coach' }];
+    const context = buildEpisodeMessages(
       {
         staticPart: 'STATIC',
         dynamicPart: 'DYNAMIC',
@@ -33,13 +33,15 @@ describe('buildEpisodeMessages', () => {
     );
 
     const cacheControl = { anthropic: { cacheControl: { type: 'ephemeral' } } };
-    expect(messages).toHaveLength(6);
-    expect(messages[0]).toEqual({ role: 'system', content: 'STATIC', providerOptions: cacheControl });
-    expect(messages[1]).toEqual({ role: 'system', content: 'DYNAMIC', providerOptions: cacheControl });
-    expect(messages[2]).toEqual({ role: 'system', content: 'PGN', providerOptions: cacheControl });
-    expect(messages[3]).toEqual({ role: 'system', content: 'OTHER', providerOptions: cacheControl });
-    expect(messages[4]).toEqual({ role: 'system', content: 'CURRENT' });
-    expect(messages[5]).toBe(episodeMessages[0]);
+    const { instructions, messages } = context;
+    expect(instructions).toHaveLength(5);
+    expect(instructions[0]).toEqual({ role: 'system', content: 'STATIC', providerOptions: cacheControl });
+    expect(instructions[1]).toEqual({ role: 'system', content: 'DYNAMIC', providerOptions: cacheControl });
+    expect(instructions[2]).toEqual({ role: 'system', content: 'PGN', providerOptions: cacheControl });
+    expect(instructions[3]).toEqual({ role: 'system', content: 'OTHER', providerOptions: cacheControl });
+    // The current-move block is deliberately the only uncached layer.
+    expect(instructions[4]).toEqual({ role: 'system', content: 'CURRENT' });
+    expect(messages).toEqual(episodeMessages);
   });
 });
 
@@ -237,7 +239,7 @@ describe('coach-context', () => {
       const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
       const freshSession = { ...session, currentPly: 6 };
 
-      const messages = await buildEpisodeContext({
+      const context = await buildEpisodeContext({
         db,
         callLightModel: vi.fn(),
         session: freshSession,
@@ -249,6 +251,7 @@ describe('coach-context', () => {
         showEngineAnalysis: false
       });
 
+      const messages = [...context.instructions, ...context.messages];
       const serialized = JSON.stringify(messages);
       expect(serialized).not.toContain('raw talk about move 18');
       expect(serialized).toContain('discussed the knight development');
@@ -261,7 +264,7 @@ describe('coach-context', () => {
       await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
       const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
 
-      const messages = await buildEpisodeContext({
+      const context = await buildEpisodeContext({
         db,
         callLightModel: vi.fn(),
         session,
@@ -273,7 +276,9 @@ describe('coach-context', () => {
         showEngineAnalysis: false
       });
 
-      const currentMoveBlock = messages.find(
+      // The block is a system instruction when the episode already has a
+      // conversation, and the leading user message when it does not.
+      const currentMoveBlock = [...context.instructions, ...context.messages].find(
         (message) => typeof message.content === 'string' && message.content.includes('## Current position')
       );
       // ply 2 is after 1.e4 e5 — the pre-move fen is after 1.e4 only.
@@ -301,7 +306,7 @@ describe('coach-context', () => {
       };
       const analyzePosition = vi.fn().mockResolvedValue(analysis);
 
-      const messages = await buildEpisodeContext({
+      const context = await buildEpisodeContext({
         db,
         callLightModel: vi.fn(),
         session,
@@ -315,6 +320,7 @@ describe('coach-context', () => {
 
       expect(analyzePosition).toHaveBeenCalledWith('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
       expect(analyzePosition).toHaveBeenCalledTimes(2);
+      const messages = [...context.instructions, ...context.messages];
       const serialized = JSON.stringify(messages);
       expect(serialized).not.toContain('Full engine analysis');
       expect(serialized).toContain('Played e5');
@@ -337,7 +343,7 @@ describe('coach-context', () => {
       };
       const analyzePosition = vi.fn().mockResolvedValue(analysis);
 
-      const messages = await buildEpisodeContext({
+      const context = await buildEpisodeContext({
         db,
         callLightModel: vi.fn(),
         session,
@@ -350,6 +356,7 @@ describe('coach-context', () => {
       });
 
       expect(analyzePosition).toHaveBeenCalledTimes(1);
+      const messages = [...context.instructions, ...context.messages];
       const serialized = JSON.stringify(messages);
       expect(serialized).toContain('This was the engine’s top choice.');
     });
@@ -364,7 +371,7 @@ describe('coach-context', () => {
 
       const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
 
-      const messages = await buildEpisodeContext({
+      const context = await buildEpisodeContext({
         db,
         callLightModel: vi.fn(),
         session,
@@ -376,6 +383,7 @@ describe('coach-context', () => {
         showEngineAnalysis: false
       });
 
+      const messages = [...context.instructions, ...context.messages];
       const serialized = JSON.stringify(messages);
       expect(serialized).toContain('[this move so far] first visit: discussed the pin');
       expect(serialized).not.toContain('first visit raw message you should never see again');
@@ -393,7 +401,7 @@ describe('coach-context', () => {
       const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
       const callLightModel = vi.fn().mockResolvedValue('short digest');
 
-      const messages = await buildEpisodeContext({
+      const context = await buildEpisodeContext({
         db,
         callLightModel,
         session,
@@ -405,6 +413,7 @@ describe('coach-context', () => {
         showEngineAnalysis: false
       });
 
+      const messages = [...context.instructions, ...context.messages];
       const serialized = JSON.stringify(messages);
       expect(serialized).toContain('[this move so far] short digest');
       expect(serialized).not.toContain('OLDEST_MARKER_XYZ');
@@ -446,7 +455,7 @@ describe('coach-context', () => {
       const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
       const callLightModel = vi.fn().mockResolvedValue('short digest');
 
-      const messages = await buildEpisodeContext({
+      const context = await buildEpisodeContext({
         db,
         callLightModel,
         session,
@@ -458,6 +467,7 @@ describe('coach-context', () => {
         showEngineAnalysis: false
       });
 
+      const messages = [...context.instructions, ...context.messages];
       assertNoOrphanedToolResults(messages);
       // The tool-call/tool-result pair should have been pulled into the
       // kept (replayed) half together, not folded away separately.
@@ -475,7 +485,7 @@ describe('coach-context', () => {
  * or OpenAI) rejects a request that opens with — or otherwise contains — a
  * bare tool_result.
  */
-function assertNoOrphanedToolResults(messages: CoreMessage[]): void {
+function assertNoOrphanedToolResults(messages: ChatMessage[]): void {
   const nonSystem = messages.filter((message) => message.role !== 'system');
   nonSystem.forEach((message, index) => {
     const resultCallIds = toolResultCallIds(message);
@@ -493,15 +503,15 @@ function assertNoOrphanedToolResults(messages: CoreMessage[]): void {
   });
 }
 
-function toolResultCallIds(message: CoreMessage): string[] {
+function toolResultCallIds(message: ChatMessage): string[] {
   return callIdsForType(message, 'tool-result');
 }
 
-function toolCallIds(message: CoreMessage): string[] {
+function toolCallIds(message: ChatMessage): string[] {
   return callIdsForType(message, 'tool-call');
 }
 
-function callIdsForType(message: CoreMessage, type: 'tool-call' | 'tool-result'): string[] {
+function callIdsForType(message: ChatMessage, type: 'tool-call' | 'tool-result'): string[] {
   if (!Array.isArray(message.content)) return [];
   const ids: string[] = [];
   for (const part of message.content) {

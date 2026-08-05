@@ -4,6 +4,7 @@ import type { SessionMessageRow } from '../db/repositories/session-messages.js';
 import * as sessionMoveNotesRepo from '../db/repositories/session-move-notes.js';
 import { compact } from './session-context.js';
 import { type CoachContextDependencies, toStoredMessages } from './coach-context-replay.js';
+import { isToolCallPart, isToolResultPart, toolCallId, toolCallInput, toolResultValue } from '../lib/tool-parts.js';
 
 /**
  * Design doc §3: when an episode closes (the coach or the student moves on
@@ -75,14 +76,12 @@ function collectRecordMoveNoteCallIds(messages: SessionMessageRow[], ply: number
 }
 
 function recordMoveNoteCallIdForPly(part: unknown, ply: number): string | null {
-  if (typeof part !== 'object' || part === null) return null;
-  const candidate = part as { type?: unknown; toolName?: unknown; toolCallId?: unknown; args?: unknown };
-  if (candidate.type !== 'tool-call' || candidate.toolName !== 'record_move_note') return null;
-  const args = candidate.args as { moveNumber?: unknown; color?: unknown } | undefined;
-  if (typeof args?.moveNumber !== 'number') return null;
-  const color = (args.color === 'white' || args.color === 'black' ? args.color : null) as 'white' | 'black' | null;
-  if (moveRefToPly(args.moveNumber, color) !== ply) return null;
-  return typeof candidate.toolCallId === 'string' ? candidate.toolCallId : null;
+  if (!isToolCallPart(part, 'record_move_note')) return null;
+  const input = toolCallInput(part) as { moveNumber?: unknown; color?: unknown } | undefined;
+  if (typeof input?.moveNumber !== 'number') return null;
+  const color = (input.color === 'white' || input.color === 'black' ? input.color : null) as 'white' | 'black' | null;
+  if (moveRefToPly(input.moveNumber, color) !== ply) return null;
+  return toolCallId(part);
 }
 
 function hasSuccessfulToolResult(message: SessionMessageRow, callIds: Set<string>): boolean {
@@ -91,10 +90,9 @@ function hasSuccessfulToolResult(message: SessionMessageRow, callIds: Set<string
 }
 
 function isSuccessfulRecordMoveNoteResult(part: unknown, callIds: Set<string>): boolean {
-  if (typeof part !== 'object' || part === null) return false;
-  const candidate = part as { type?: unknown; toolCallId?: unknown; result?: unknown };
-  if (candidate.type !== 'tool-result' || typeof candidate.toolCallId !== 'string') return false;
-  if (!callIds.has(candidate.toolCallId)) return false;
-  const result = candidate.result as { recorded?: unknown } | undefined;
+  if (!isToolResultPart(part)) return false;
+  const id = toolCallId(part);
+  if (id === null || !callIds.has(id)) return false;
+  const result = toolResultValue(part) as { recorded?: unknown } | undefined;
   return result?.recorded === true;
 }

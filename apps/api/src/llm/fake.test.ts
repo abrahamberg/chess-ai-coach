@@ -1,4 +1,4 @@
-import { generateText, streamText } from 'ai';
+import { generateObject, generateText, streamText } from 'ai';
 import { CoachingPlanSchema, SessionOutcomeSchema } from '@chess-coach/shared';
 import { describe, expect, test } from 'vitest';
 import { buildFakeModel } from './fake.js';
@@ -44,6 +44,31 @@ describe('buildFakeModel', () => {
     });
 
     expect(SessionOutcomeSchema.safeParse(JSON.parse(result.text)).success).toBe(true);
+  });
+
+  // The planner and summarizer ask for schema-constrained output, which sends
+  // the field names in the response format rather than in the prompt text. If
+  // the sniffing in fake.ts only looked at the prompt, LLM_FAKE=1 would hand
+  // both jobs a chat reply and scripts/smoke.sh would fail — these two are the
+  // canary for that.
+  test('returns a valid CoachingPlan for a schema-constrained planner call', async () => {
+    const result = await generateObject({
+      model: buildFakeModel(),
+      schema: CoachingPlanSchema,
+      prompt: 'Here is the game.'
+    });
+
+    expect(result.object.gameSummary.length).toBeGreaterThan(0);
+  });
+
+  test('returns a valid SessionOutcome for a schema-constrained summarizer call', async () => {
+    const result = await generateObject({
+      model: buildFakeModel(),
+      schema: SessionOutcomeSchema,
+      prompt: 'Here is the transcript.'
+    });
+
+    expect(result.object.sessionSummary.length).toBeGreaterThan(0);
   });
 
   test('returns plain prose for an ordinary chat prompt (neither planner nor summarizer)', async () => {

@@ -1,4 +1,4 @@
-import type { CoreMessage } from 'ai';
+import { cachedSystemMessage, systemMessage, type ChatMessage, type SystemChatMessage } from '../llm/messages.js';
 import {
   applySanSequence,
   computePositionFeatures,
@@ -57,6 +57,15 @@ export interface EpisodeLayers {
   currentMoveBlock: string;
 }
 
+/** The request split the model call takes: the system layers as
+ * `instructions` (the provider's own system slot), the episode's turns as
+ * `messages`. Keeping them apart is what lets the cached prefix stay
+ * byte-identical while the conversation grows underneath it. */
+export interface EpisodeContext {
+  instructions: SystemChatMessage[];
+  messages: ChatMessage[];
+}
+
 /**
  * Design doc §5: four cached system blocks (static/dynamic/annotated-PGN/
  * other-moves), each with its own breakpoint, then the uncached
@@ -64,21 +73,34 @@ export interface EpisodeLayers {
  * cached system messages already worked this way (the old
  * buildCacheableMessages) — this extends the same pattern to five.
  */
-export function buildEpisodeMessages(layers: EpisodeLayers, episodeMessages: CoreMessage[]): CoreMessage[] {
-  // Four breakpoints below (static/dynamic/annotatedPgn/otherMovesSummary) is
-  // Anthropic's exact per-request cache-breakpoint maximum (final review
+export function buildEpisodeMessages(layers: EpisodeLayers, episodeMessages: ChatMessage[]): EpisodeContext {
+  // Four cached blocks below (static/dynamic/annotatedPgn/otherMovesSummary)
+  // is Anthropic's exact per-request cache-breakpoint maximum (final review
   // #10) — a fifth cached layer can't just be added here without first
   // dropping one of these four, or the request will start failing at the
   // provider.
-  const cacheControl = { anthropic: { cacheControl: { type: 'ephemeral' as const } } };
-  return [
-    { role: 'system', content: layers.staticPart, providerOptions: cacheControl },
-    { role: 'system', content: layers.dynamicPart, providerOptions: cacheControl },
-    { role: 'system', content: layers.annotatedPgn, providerOptions: cacheControl },
-    { role: 'system', content: layers.otherMovesSummary, providerOptions: cacheControl },
-    { role: 'system', content: layers.currentMoveBlock },
-    ...episodeMessages
+  const cachedLayers = [
+    cachedSystemMessage(layers.staticPart),
+    cachedSystemMessage(layers.dynamicPart),
+    cachedSystemMessage(layers.annotatedPgn),
+    cachedSystemMessage(layers.otherMovesSummary)
   ];
+
+  // An episode legitimately starts with no conversation of its own — the
+  // coach's opening turn, and every jump to a move nobody has discussed yet.
+  // Providers reject a request with an empty message list, so in that case
+  // the current-move block becomes the thing the coach is responding to
+  // rather than an instruction about it. Safe for prompt caching either way:
+  // it is the one UNCACHED layer, and it sits after the last breakpoint, so
+  // the cached prefix is byte-identical in both shapes.
+  if (episodeMessages.length === 0) {
+    return { instructions: cachedLayers, messages: [{ role: 'user', content: layers.currentMoveBlock }] };
+  }
+
+  return {
+    instructions: [...cachedLayers, systemMessage(layers.currentMoveBlock)],
+    messages: episodeMessages
+  };
 }
 
 export interface BuildEpisodeContextInput extends CoachContextDependencies {
@@ -105,7 +127,7 @@ export interface BuildEpisodeContextInput extends CoachContextDependencies {
  * replay (design doc §5) — purely a function of what's in the DB right now,
  * so a session resumed on a different pod after a restart reconstructs the
  * same layering with no in-memory state. */
-export async function buildEpisodeContext(input: BuildEpisodeContextInput): Promise<CoreMessage[]> {
+export async function buildEpisodeContext(input: BuildEpisodeContextInput): Promise<EpisodeContext> {
   const episode = currentEpisode(input.historyAfterTurn, input.currentPly);
   const orphanExtendedMessages = includeOrphanedToolCall(input.historyAfterTurn, episode.messages);
 

@@ -42,7 +42,10 @@ export function DebugPanelContent({
   onCopy: (snapshot: TurnDebugSnapshot) => void;
   onClose: () => void;
 }): ReactNode {
-  const requestMessages = snapshot.request.messages as DebugMessage[];
+  // The system layers travel in the model call's own `instructions` slot, but
+  // the panel exists to show the request as the provider sees it — cache
+  // breakpoints and all — so they render first, ahead of the conversation.
+  const requestMessages = [...snapshot.request.instructions, ...snapshot.request.messages] as DebugMessage[];
   const responseMessages = snapshot.response.messages as DebugMessage[];
   const usage = snapshot.response.usage;
 
@@ -55,6 +58,8 @@ export function DebugPanelContent({
             <span>{snapshot.request.provider}</span>
             <span className="debug-panel__dot">·</span>
             <span>{snapshot.request.model}</span>
+            <span className="debug-panel__dot">·</span>
+            <span>reasoning {snapshot.request.reasoning}</span>
             <span className="debug-panel__dot">·</span>
             <span>
               session {sessionId.slice(0, 4)}…{sessionId.slice(-4)}
@@ -74,6 +79,7 @@ export function DebugPanelContent({
         <StatTile kind="read" label="Cache read" value={usage.cacheReadTokens} />
         <StatTile kind="write" label="Cache write" value={usage.cacheWriteTokens} />
         <StatTile kind="output" label="Output" value={usage.outputTokens} />
+        <StatTile kind="output" label="Reasoning" value={usage.reasoningTokens} />
       </div>
 
       <div className="debug-panel__body">

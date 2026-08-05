@@ -1,4 +1,3 @@
-import { generateText } from 'ai';
 import { buildSummarizerMessages } from '@chess-coach/prompts';
 import { SessionOutcomeSchema } from '@chess-coach/shared';
 import type { Task } from 'graphile-worker';
@@ -11,6 +10,8 @@ import * as usersRepo from '../db/repositories/users.js';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import type { Database } from '../db/schema.js';
 import { getModelForUser, recordUsage, type GatewayConfig } from '../llm/gateway.js';
+import { generateStructured } from '../llm/text.js';
+import { toBillableTokens } from '../llm/usage.js';
 import { applySessionOutcome } from '../services/progress.js';
 import * as userProfileService from '../services/user-profile.js';
 
@@ -55,7 +56,14 @@ export function createSummarizeSessionTask(options: SummarizeSessionTaskOptions)
     });
 
     const resolution = await getModelForUser(options.db, options.gatewayConfig, session.userId, 'light');
-    const result = await generateText({ model: resolution.model, system: messages.system, prompt: messages.user });
+    // Constrained to SessionOutcomeSchema by the provider — this throws rather
+    // than handing back something that would need re-validating below.
+    const result = await generateStructured({
+      resolution,
+      system: messages.system,
+      prompt: messages.user,
+      schema: SessionOutcomeSchema
+    });
 
     await recordUsage(options.db, {
       userId: session.userId,
@@ -63,24 +71,15 @@ export function createSummarizeSessionTask(options: SummarizeSessionTaskOptions)
       provider: resolution.provider,
       model: resolution.modelId,
       tier: 'light',
-      usage: {
-        inputTokens: result.usage.promptTokens,
-        outputTokens: result.usage.completionTokens,
-        cachedInputTokens: 0
-      },
+      usage: toBillableTokens(result.usage),
       purpose: 'summary',
       metered: resolution.metered
     });
 
-    const parsed = SessionOutcomeSchema.safeParse(safeJsonParse(result.text));
-    if (!parsed.success) {
-      throw new Error(`Summarizer output failed validation: ${JSON.stringify(parsed.error.issues)}`);
-    }
-
     await applySessionOutcome(
       options.db,
       { userId: session.userId, sessionId, gameId: session.gameId },
-      parsed.data
+      result.object
     );
   };
 }
@@ -94,12 +93,4 @@ function renderRecordedFindings(findings: findingsRepo.FindingRow[]): string {
   return findings
     .map((finding) => `- [${finding.isPositive ? '+' : '-'}] ${finding.category} (ply ${finding.ply ?? '?'}): ${finding.description}`)
     .join('\n');
-}
-
-function safeJsonParse(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
 }

@@ -6,6 +6,7 @@ import * as gamesRepo from '../db/repositories/games.js';
 import * as sessionsRepo from '../db/repositories/sessions.js';
 import type { Database } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
+import { pipeCoachStreamToResponse } from '../llm/stream-response.js';
 import * as coachAgent from '../services/coach-agent.js';
 import * as userProfileService from '../services/user-profile.js';
 import type { CoachAgentDependencies } from '../services/coach-agent.js';
@@ -55,15 +56,10 @@ export function registerSessionsRoutes(
       throw new ValidationError(parsed.error.issues.map((issue) => issue.message).join('; '));
     }
 
-    const streamResult = await coachAgent.startTurn(agentDeps, session, parsed.data);
+    const turn = await coachAgent.startTurn(agentDeps, session, parsed.data);
 
     reply.hijack();
-    streamResult.pipeDataStreamToResponse(reply.raw, {
-      getErrorMessage: (error) => {
-        console.error('coach stream error:', error);
-        return 'An error occurred.';
-      }
-    });
+    void pipeCoachStreamToResponse(reply.raw, turn);
   });
 
   app.get<{ Params: { id: string } }>('/api/sessions/:id/debug/last-turn', async (request) => {

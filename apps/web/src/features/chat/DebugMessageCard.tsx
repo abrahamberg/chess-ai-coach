@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { toolCallInput, toolResultValue } from './toolParts.js';
 import type { DebugMessage } from './useTurnDebugSnapshot.js';
 
 function roleOf(message: DebugMessage): string {
@@ -102,7 +103,7 @@ function ContentPart({ part }: { part: unknown }): ReactNode {
     return (
       <div className="debug-panel__tool-block">
         <span className="debug-panel__tool-name">{String(record.toolName ?? '')}</span>
-        <pre>{JSON.stringify(record.args, null, 2)}</pre>
+        <pre>{JSON.stringify(toolCallInput(record), null, 2)}</pre>
       </div>
     );
   }
@@ -110,7 +111,7 @@ function ContentPart({ part }: { part: unknown }): ReactNode {
     return (
       <div className="debug-panel__tool-block">
         <span className="debug-panel__tool-name">{String(record.toolName ?? '')} result</span>
-        <pre>{JSON.stringify(record.result, null, 2)}</pre>
+        <pre>{JSON.stringify(toolResultValue(record), null, 2)}</pre>
       </div>
     );
   }

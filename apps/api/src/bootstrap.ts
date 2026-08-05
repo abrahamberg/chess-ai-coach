@@ -1,9 +1,11 @@
-import { generateText } from 'ai';
+import { OpenAiServiceTierSchema, ReasoningEffortSchema } from '@chess-coach/shared';
 import type { Kysely } from 'kysely';
 import type { Database } from './db/schema.js';
 import type { JobQueue } from './jobs/queue.js';
-import { buildModel, type GatewayConfig } from './llm/gateway.js';
+import { buildModel, resolveCallOptions, type GatewayConfig, type ModelResolution } from './llm/gateway.js';
 import { buildFakeModel } from './llm/fake.js';
+import { DEFAULT_MODEL_TUNING, type ModelTuning } from './llm/model-options.js';
+import { generateProse } from './llm/text.js';
 import type { KeyVault } from './llm/key-vault.js';
 import type { CoachAgentDependencies } from './services/coach-agent.js';
 import { getOrComputePositionAnalysis } from './services/position-analysis-cache.js';
@@ -36,8 +38,51 @@ export function buildGatewayConfigFromEnv(keyVault: KeyVault): GatewayConfig {
         openai: requireEnv('LLM_LIGHT_MODEL_OPENAI')
       }
     },
+    tuning: buildModelTuningFromEnv(),
     fake: process.env.LLM_FAKE === '1'
   };
+}
+
+/** How each tier is called. All optional with working defaults — a deployment
+ * that sets none of these gets `medium` reasoning on the coach, none on light
+ * subagents, and OpenAI's normal service tier. Bad values fail here at boot
+ * rather than as an opaque 400 from the provider on the first real turn. */
+export function buildModelTuningFromEnv(): ModelTuning {
+  return {
+    reasoning: {
+      standard: parseEnum(ReasoningEffortSchema, 'LLM_REASONING_STANDARD', DEFAULT_MODEL_TUNING.reasoning.standard),
+      light: parseEnum(ReasoningEffortSchema, 'LLM_REASONING_LIGHT', DEFAULT_MODEL_TUNING.reasoning.light)
+    },
+    // `flex` is roughly half price but slower and can be refused under load —
+    // off by default, flipped on per-deployment.
+    openaiServiceTier: parseEnum(
+      OpenAiServiceTierSchema,
+      'LLM_OPENAI_SERVICE_TIER',
+      DEFAULT_MODEL_TUNING.openaiServiceTier
+    ),
+    streamTimeouts: {
+      firstChunkMs: parsePositiveInt('LLM_STREAM_FIRST_CHUNK_TIMEOUT_MS', DEFAULT_MODEL_TUNING.streamTimeouts.firstChunkMs),
+      chunkMs: parsePositiveInt('LLM_STREAM_CHUNK_TIMEOUT_MS', DEFAULT_MODEL_TUNING.streamTimeouts.chunkMs)
+    }
+  };
+}
+
+function parseEnum<T extends string>(schema: { safeParse: (v: unknown) => { success: boolean; data?: T } }, name: string, fallback: T): T {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success || parsed.data === undefined) {
+    throw new Error(`Invalid ${name}: ${raw}`);
+  }
+  return parsed.data;
+}
+
+function parsePositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) throw new Error(`Invalid ${name}: ${raw}`);
+  return value;
 }
 
 /** Wires the real (non-test) CoachAgentDependencies: engine HTTP client for
@@ -50,7 +95,7 @@ export function buildCoachAgentDependencies(
   gatewayConfig: GatewayConfig,
   engineUrl: string
 ): CoachAgentDependencies {
-  const lightModel = buildLightModel(gatewayConfig);
+  const lightResolution = buildLightResolution(gatewayConfig);
 
   return {
     db,
@@ -58,7 +103,11 @@ export function buildCoachAgentDependencies(
     gatewayConfig,
     analyzePosition: (fen) => getOrComputePositionAnalysis(db, engineUrl, fen),
     callLightModel: async (messages) => {
-      const result = await generateText({ model: lightModel, system: messages.system, prompt: messages.user });
+      const result = await generateProse({
+        resolution: lightResolution,
+        system: messages.system,
+        prompt: messages.user
+      });
       return result.text;
     }
   };
@@ -86,11 +135,30 @@ export function buildStripeClientFromEnv(): StripeClient | undefined {
   });
 }
 
-function buildLightModel(gatewayConfig: GatewayConfig) {
-  if (gatewayConfig.fake) return buildFakeModel();
+/** The light model as a ModelResolution, so it carries the same reasoning and
+ * provider tuning as a gateway-resolved one. `metered: false` because these
+ * digests are not attributed to a specific user's BYOK — see the doc comment
+ * on buildCoachAgentDependencies. */
+function buildLightResolution(gatewayConfig: GatewayConfig): ModelResolution {
+  if (gatewayConfig.fake) {
+    return {
+      model: buildFakeModel(),
+      metered: false,
+      provider: 'anthropic',
+      modelId: 'llm-fake',
+      callOptions: resolveCallOptions(gatewayConfig, 'anthropic', 'light')
+    };
+  }
   const provider = gatewayConfig.platformKeys.anthropic ? 'anthropic' : 'openai';
   const apiKey = gatewayConfig.platformKeys[provider];
   if (!apiKey) throw new Error('No platform LLM key configured (required for callLightModel)');
-  return buildModel(provider, apiKey, gatewayConfig.modelIds.light[provider]);
+  const modelId = gatewayConfig.modelIds.light[provider];
+  return {
+    model: buildModel(provider, apiKey, modelId),
+    metered: false,
+    provider,
+    modelId,
+    callOptions: resolveCallOptions(gatewayConfig, provider, 'light')
+  };
 }
 

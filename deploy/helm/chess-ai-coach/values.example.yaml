@@ -68,6 +68,11 @@ llm:
   lightModel:
     anthropic: claude-haiku-4-5
     openai: gpt-5.4-mini
+  reasoning:
+    standard: medium
+    light: none
+  # Set to `flex` to trade coach latency for roughly half the OpenAI spend.
+  openaiServiceTier: auto
   fake: false
   masterKey:
     existingSecret: llm-key-master-key

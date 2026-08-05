@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { formatDataStreamPart } from 'ai';
+import { errorFrame, reasoningFrames, textDeltaFrame, textFrames, textStartFrame, toolCallFrame } from '../../test/helpers/uiMessageStream.js';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { useCoachChat } from './useCoachChat.js';
 
@@ -22,7 +22,7 @@ describe('useCoachChat', () => {
   test('sendMessage posts {content} and streams the assistant reply into messages', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(streamResponse([formatDataStreamPart('text', 'Hello '), formatDataStreamPart('text', 'there!')]));
+      .mockResolvedValue(streamResponse([...textFrames('Hello '), ...textFrames('there!')]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useCoachChat('session-1'));
@@ -44,8 +44,9 @@ describe('useCoachChat', () => {
     let enqueueText: (() => void) | undefined;
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
+        controller.enqueue(encoder.encode(textStartFrame()));
         enqueueText = () => {
-          controller.enqueue(encoder.encode(formatDataStreamPart('text', 'Hello')));
+          controller.enqueue(encoder.encode(textDeltaFrame('Hello')));
           controller.close();
         };
       }
@@ -72,7 +73,7 @@ describe('useCoachChat', () => {
   });
 
   test('kickoff posts an empty body (resumes the pending [session_start] turn) without adding a user bubble', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(streamResponse([formatDataStreamPart('text', 'Welcome back!')]));
+    const fetchMock = vi.fn().mockResolvedValue(streamResponse([...textFrames('Welcome back!')]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useCoachChat('session-1'));
@@ -94,9 +95,9 @@ describe('useCoachChat', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        streamResponse([formatDataStreamPart('tool_call', { toolCallId: 'call-1', toolName: 'show_position', args: { ply: 4 } })])
+        streamResponse([toolCallFrame({ toolCallId: 'call-1', toolName: 'show_position', input: { ply: 4 } })])
       )
-      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+      .mockResolvedValueOnce(streamResponse([...textFrames('ok')]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
@@ -105,7 +106,7 @@ describe('useCoachChat', () => {
     });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(onToolCall).toHaveBeenCalledWith({ toolCallId: 'call-1', toolName: 'show_position', args: { ply: 4 } });
+    expect(onToolCall).toHaveBeenCalledWith({ toolCallId: 'call-1', toolName: 'show_position', input: { ply: 4 } });
     expect(fetchMock).toHaveBeenLastCalledWith(
       '/api/sessions/session-1/messages',
       expect.objectContaining({
@@ -122,14 +123,14 @@ describe('useCoachChat', () => {
       .fn()
       .mockResolvedValueOnce(
         streamResponse([
-          formatDataStreamPart('tool_call', {
+          toolCallFrame({
             toolCallId: 'call-3',
             toolName: 'show_position',
-            args: { moveNumber: 1, color: 'black' }
+            input: { moveNumber: 1, color: 'black' }
           })
         ])
       )
-      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+      .mockResolvedValueOnce(streamResponse([...textFrames('ok')]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useCoachChat('session-1', { onToolCall, sanMoves: ['e4', 'e5', 'Nf3'] }));
@@ -147,14 +148,14 @@ describe('useCoachChat', () => {
       .fn()
       .mockResolvedValueOnce(
         streamResponse([
-          formatDataStreamPart('tool_call', {
+          toolCallFrame({
             toolCallId: 'call-5',
             toolName: 'annotate_board',
-            args: { arrows: [{ from: 'e2', to: 'e4', color: '#c9762a' }], highlights: [] }
+            input: { arrows: [{ from: 'e2', to: 'e4', color: '#c9762a' }], highlights: [] }
           })
         ])
       )
-      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+      .mockResolvedValueOnce(streamResponse([...textFrames('ok')]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
@@ -174,14 +175,14 @@ describe('useCoachChat', () => {
       .fn()
       .mockResolvedValueOnce(
         streamResponse([
-          formatDataStreamPart('tool_call', {
+          toolCallFrame({
             toolCallId: 'call-6',
             toolName: 'annotate_board',
-            args: { arrows: [], highlights: [] }
+            input: { arrows: [], highlights: [] }
           })
         ])
       )
-      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+      .mockResolvedValueOnce(streamResponse([...textFrames('ok')]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
@@ -198,14 +199,14 @@ describe('useCoachChat', () => {
       .fn()
       .mockResolvedValueOnce(
         streamResponse([
-          formatDataStreamPart('tool_call', {
+          toolCallFrame({
             toolCallId: 'call-7',
             toolName: 'hypothetical_line',
-            args: { moves: ['a4'] }
+            input: { moves: ['a4'] }
           })
         ])
       )
-      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+      .mockResolvedValueOnce(streamResponse([...textFrames('ok')]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
@@ -225,14 +226,14 @@ describe('useCoachChat', () => {
       .fn()
       .mockResolvedValueOnce(
         streamResponse([
-          formatDataStreamPart('tool_call', {
+          toolCallFrame({
             toolCallId: 'call-8',
             toolName: 'hypothetical_line',
-            args: { moves: ['Zz9'] }
+            input: { moves: ['Zz9'] }
           })
         ])
       )
-      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+      .mockResolvedValueOnce(streamResponse([...textFrames('ok')]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
@@ -248,9 +249,9 @@ describe('useCoachChat', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        streamResponse([formatDataStreamPart('tool_call', { toolCallId: 'call-9', toolName: 'expect_move', args: {} })])
+        streamResponse([toolCallFrame({ toolCallId: 'call-9', toolName: 'expect_move', input: {} })])
       )
-      .mockResolvedValueOnce(streamResponse([formatDataStreamPart('text', 'ok')]));
+      .mockResolvedValueOnce(streamResponse([...textFrames('ok')]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useCoachChat('session-1', { onToolCall }));
@@ -259,7 +260,7 @@ describe('useCoachChat', () => {
     });
 
     expect(result.current.messages.some((m) => m.text.startsWith('[diverged_line_start]'))).toBe(false);
-    expect(onToolCall).toHaveBeenCalledWith({ toolCallId: 'call-9', toolName: 'expect_move', args: {} });
+    expect(onToolCall).toHaveBeenCalledWith({ toolCallId: 'call-9', toolName: 'expect_move', input: {} });
   });
 
   test('design.md §5.3: activeToolName is set while a visible tool call is in flight, then cleared once text resumes', async () => {
@@ -268,10 +269,10 @@ describe('useCoachChat', () => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(
-          encoder.encode(formatDataStreamPart('tool_call', { toolCallId: 'call-4', toolName: 'get_engine_analysis', args: {} }))
+          encoder.encode(toolCallFrame({ toolCallId: 'call-4', toolName: 'get_engine_analysis', input: {} }))
         );
         enqueueText = () => {
-          controller.enqueue(encoder.encode(formatDataStreamPart('text', 'Here is what I found.')));
+          for (const chunk of textFrames('Here is what I found.')) controller.enqueue(encoder.encode(chunk));
           controller.close();
         };
       }
@@ -301,8 +302,8 @@ describe('useCoachChat', () => {
     const onToolCall = vi.fn().mockReturnValue(undefined);
     const fetchMock = vi.fn().mockResolvedValueOnce(
       streamResponse([
-        formatDataStreamPart('tool_call', { toolCallId: 'call-2', toolName: 'record_finding', args: {} }),
-        formatDataStreamPart('text', 'noted')
+        toolCallFrame({ toolCallId: 'call-2', toolName: 'record_finding', input: {} }),
+        ...textFrames('noted')
       ])
     );
     vi.stubGlobal('fetch', fetchMock);
@@ -313,5 +314,49 @@ describe('useCoachChat', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // The v4 protocol had no way to surface a mid-stream failure to this hook —
+  // the assistant bubble just stopped growing with no explanation. The error
+  // frame is now read, and must not abort the rest of the stream.
+  test('an error frame is reported and the stream keeps draining', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(streamResponse([...textFrames('Partial'), errorFrame('provider exploded')]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1'));
+    await act(async () => {
+      await result.current.sendMessage('hi coach');
+    });
+
+    expect(errorSpy).toHaveBeenCalledWith('coach stream error:', 'provider exploded');
+    expect(result.current.messages.at(-1)?.text).toBe('Partial');
+    errorSpy.mockRestore();
+  });
+
+  // Reasoning is routed to the debug popup, never the student's transcript
+  // (apps/api/src/llm/stream-response.ts). Even if a reasoning frame reaches
+  // the browser, nothing may render it or the Socratic framing is undermined.
+  test('reasoning frames never appear in the transcript', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        streamResponse([
+          ...reasoningFrames('The student missed the fork on c7 — do not tell them.'),
+          ...textFrames('What did Qb3 threaten?')
+        ])
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1'));
+    await act(async () => {
+      await result.current.sendMessage('why was that bad?');
+    });
+
+    const transcript = result.current.messages.map((m) => m.text).join('\n');
+    expect(transcript).not.toContain('missed the fork');
+    expect(result.current.messages.at(-1)?.text).toBe('What did Qb3 threaten?');
   });
 });

@@ -674,3 +674,93 @@ Umbrella chart `deploy/helm/chess-ai-coach`, dependencies pinned:
   state (`record_finding`, `propose_focus_area_update`, `end_session`) validate
   against closed enums server-side.
 - Rate limits: 10 game imports/day and 60 coach turns/hour per user (config).
+
+## 13. AI SDK v7 upgrade (appended)
+
+The Vercel AI SDK moved from `ai@4` to `ai@7` (`@ai-sdk/anthropic`/`@ai-sdk/openai@4`).
+Three majors of renames landed at once, so the upgrade was done together with the
+boundary work that keeps the next one cheap.
+
+### 13.1 `apps/api/src/llm/` is now the only importer of `ai`
+
+AGENTS.md rule 6 used to be aspirational — the gateway resolved a model, but
+`streamText`, `tool`, `CoreMessage` and `processDataStream` were imported directly
+across services, jobs, routes, a React hook and the tests. Now:
+
+| File | Owns |
+|---|---|
+| `gateway.ts` | BYOK/tier→model resolution, `recordUsage`. Returns `ModelResolution` incl. `callOptions`. |
+| `model-options.ts` | `Tier`, reasoning effort, OpenAI service tier, stream timeouts. The only place these are decided. |
+| `chat.ts` | `runCoachTurn` — the sole `streamText` call. Returns app-owned `CoachTurnStream`/`CoachTurnCompletion`. |
+| `text.ts` | `generateProse`/`generateStructured` — the sole `generateText`/`generateObject` calls. |
+| `messages.ts` | `ChatMessage`/`SystemChatMessage`/`ResponseChatMessage` aliases, `cachedSystemMessage`. |
+| `tools.ts` | `tool`/`ToolSet` re-export, `toolJsonSchema` for the debug snapshot. |
+| `stream-response.ts` | SSE encoding of a turn onto a Fastify raw response. |
+| `usage.ts` | `TurnUsage`, `toTurnUsage`, `toBillableTokens`. |
+| `fake.ts` | `LLM_FAKE=1` canned model (`MockLanguageModelV4`). |
+
+Services depend on the app-owned types only. `apps/web` has one exception,
+`hooks/coachStream.ts`. The grep in AGENTS.md rule 6 is the check.
+
+### 13.2 Reasoning and OpenAI flex
+
+`ModelTuning` (`model-options.ts`) carries both, read from env in `bootstrap.ts`:
+
+- `LLM_REASONING_STANDARD` (default `medium`) / `LLM_REASONING_LIGHT` (default `none`)
+  → the SDK's **portable** `reasoning` setting, which both Anthropic and OpenAI
+  translate natively. Validated through `ReasoningEffortSchema` in `packages/shared`.
+- `LLM_OPENAI_SERVICE_TIER` (default `auto`) → `providerOptions.openai.serviceTier`.
+  Set to `flex` for roughly half price at the cost of latency and occasional
+  resource-unavailable errors.
+- `LLM_STREAM_FIRST_CHUNK_TIMEOUT_MS` / `LLM_STREAM_CHUNK_TIMEOUT_MS` — new. Before
+  these, a provider that opened a stream and then stalled held the per-session turn
+  lock forever and wedged every later message in that session.
+
+**Trap:** `providerOptions` must never carry `openai.reasoningEffort` or
+`anthropic.thinking`. The SDK gives those full precedence and silently ignores the
+top-level `reasoning` setting. `model-options.test.ts` guards this.
+
+### 13.3 Prompt caching moved to `instructions`
+
+`buildEpisodeContext` now returns `{ instructions, messages }` instead of one array.
+The four `cacheControl: ephemeral` breakpoints (Anthropic's per-request maximum) sit
+in `instructions`; the episode conversation is `messages`. When an episode has no
+conversation yet — the coach's opening turn, and every jump to an undiscussed move —
+the uncached current-move block moves into `messages` as the user turn instead,
+because providers reject an empty message list. The cached prefix is byte-identical
+either way, so caching is unaffected.
+
+### 13.4 Stored tool parts have two shapes forever
+
+`session_messages` is append-only, so rows written before the upgrade keep the old
+field names: a tool call's arguments under `args` (now `input`), and a tool result's
+payload as a bare `result` (now a tagged `output` union). `apps/api/src/lib/tool-parts.ts`
+holds tolerant readers plus `upgradeStoredParts`, which rewrites on replay — without
+it the provider rejects the request and every pre-existing session is permanently
+bricked, not just once. `apps/web/src/features/session/sessionMessages.ts` reads both
+shapes for the same reason.
+
+### 13.5 Other notable changes
+
+- `usage` is normalized across providers (`inputTokenDetails.{noCacheTokens,
+  cacheReadTokens,cacheWriteTokens}`), so the old provider-branching
+  `normalizeUsage` is gone. `TurnUsage` gained `reasoningTokens`.
+- `onFinish` must read `event.responseMessages` (all steps), **not** the deprecated
+  `event.response.messages` (final step only) — the latter drops earlier steps'
+  tool-call/tool-result pairs and corrupts the transcript.
+- The planner and summarizer use `generateObject` against `CoachingPlanSchema` /
+  `SessionOutcomeSchema`, replacing the hand-rolled JSON-parse-and-retry loop.
+- The wire format is now SSE of UI message chunks; `apps/web` reads it with
+  `parseJsonEventStream` + `uiMessageChunkSchema` and now surfaces `error` frames,
+  which were silently dropped before.
+- **Where the coach's thinking goes.** `sendReasoning: false` keeps reasoning out of
+  the student's transcript — the coaching is Socratic and the thinking states plainly
+  what the questioning is meant to draw out. It is not discarded: `onFinish` still
+  receives it on the assistant message, so it lands in `session_messages`, in the
+  debug snapshot, and in the debug popup's Copy JSON. `DebugMessageCard` renders it as
+  a distinct reasoning block. How raw it is depends on the provider — Anthropic
+  streams real thinking blocks, while OpenAI's Responses API never exposes reasoning
+  tokens at all, so `providerOptions.openai.reasoningSummary: 'detailed'` (the most it
+  will give) is set to keep that section from being empty.
+- `maxSteps` → `stopWhen: stepCountIs(8)`; tools declare `inputSchema`, not
+  `parameters`; `toolOrder` pins tool order so the cached prefix stays stable.

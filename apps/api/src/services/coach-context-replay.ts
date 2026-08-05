@@ -1,4 +1,4 @@
-import type { CoreMessage } from 'ai';
+import type { ChatMessage } from '../llm/messages.js';
 import type { Kysely } from 'kysely';
 import { EPISODE_FOLD_SYSTEM_PROMPT } from '@chess-coach/prompts';
 import type { SessionMessageRow } from '../db/repositories/session-messages.js';
@@ -6,6 +6,7 @@ import * as sessionMoveNotesRepo from '../db/repositories/session-move-notes.js'
 import type { Database } from '../db/schema.js';
 import { compact, prepareContext, type StoredMessage, type SummarizeFn } from './session-context.js';
 import { extendPastOrphanedToolResult } from './coach-context-orphan-boundary.js';
+import { upgradeStoredParts } from '../lib/tool-parts.js';
 
 const EPISODE_BUDGET_TOKENS = 6000;
 
@@ -31,14 +32,14 @@ export async function resolveEpisodeReplay(
   sessionId: string,
   episodeMessages: SessionMessageRow[],
   currentPly: number
-): Promise<CoreMessage[]> {
+): Promise<ChatMessage[]> {
   const stored = toStoredMessages(episodeMessages);
   const existingNote = await sessionMoveNotesRepo.findByPly(deps.db, sessionId, currentPly);
   const initialDigest = existingNote?.note ?? null;
   const prepared = prepareContext(stored, initialDigest, EPISODE_BUDGET_TOKENS);
 
   if (!prepared.needsCompaction) {
-    return withEpisodeDigest(initialDigest, stored).map(toCoreMessage);
+    return withEpisodeDigest(initialDigest, stored).map(toChatMessage);
   }
 
   const keptCount = Math.ceil(stored.length / 2);
@@ -46,7 +47,7 @@ export async function resolveEpisodeReplay(
     // Nothing left to fold (e.g. a single oversized message) — replay
     // verbatim rather than compacting an empty slice and clobbering the
     // note for no token savings.
-    return withEpisodeDigest(initialDigest, stored).map(toCoreMessage);
+    return withEpisodeDigest(initialDigest, stored).map(toChatMessage);
   }
 
   // final review #2: the naive fold point (stored.length - keptCount) is
@@ -70,7 +71,7 @@ export async function resolveEpisodeReplay(
   await sessionMoveNotesRepo.upsert(deps.db, sessionId, currentPly, newDigest);
 
   const kept = stored.slice(keptStart);
-  return withEpisodeDigest(newDigest, kept).map(toCoreMessage);
+  return withEpisodeDigest(newDigest, kept).map(toChatMessage);
 }
 
 function withEpisodeDigest(digest: string | null, messages: StoredMessage[]): StoredMessage[] {
@@ -83,6 +84,6 @@ export function toStoredMessages(messages: SessionMessageRow[]): StoredMessage[]
   return messages.map((message) => ({ id: message.id, role: message.role, content: message.content }));
 }
 
-function toCoreMessage(message: StoredMessage): CoreMessage {
-  return { role: message.role, content: message.content } as CoreMessage;
+function toChatMessage(message: StoredMessage): ChatMessage {
+  return { role: message.role, content: upgradeStoredParts(message.content) } as ChatMessage;
 }

@@ -1,6 +1,6 @@
 import { moveRefToPly } from '@chess-coach/chess-analysis';
-import { processDataStream } from 'ai';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { readCoachStream } from './coachStream.js';
 import { encodeDivergedLineStart } from '../features/chat/divergedLine.js';
 import { encodeAnnotationNote, encodePositionDivider, sanForPly, type AnnotationNoteState } from '../features/chat/positionDivider.js';
 
@@ -13,7 +13,7 @@ export interface CoachMessage {
 export interface CoachToolCall {
   toolCallId: string;
   toolName: string;
-  args: unknown;
+  input: unknown;
 }
 
 export interface UseCoachChatOptions {
@@ -46,10 +46,11 @@ export interface UseCoachChatResult {
   kickoff: () => Promise<void>;
 }
 
-/** Drives POST /api/sessions/:id/messages (architecture §7.2). Built on AI
- * SDK's low-level processDataStream rather than useChat: useChat's wire
- * protocol (a resubmitted {messages: [...]} array) doesn't match this
- * project's {content} / {clientToolResult} request contract. */
+/** Drives POST /api/sessions/:id/messages (architecture §7.2). Reads the
+ * stream directly (see ./coachStream.ts) rather than using `useChat`: this
+ * project's request contract is {content} / {clientToolResult}, and a client
+ * tool result is a fresh POST that resumes the same turn — neither of which
+ * matches useChat's own message-array protocol. */
 export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {}): UseCoachChatResult {
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -81,19 +82,21 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
       setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', text: '' }]);
 
       try {
-        await processDataStream({
-          stream: response.body,
-          onTextPart: (delta) => {
+        await readCoachStream(response.body, {
+          onTextDelta: (delta) => {
             setActiveToolName(null);
             assistantText += delta;
             setMessages((prev) =>
               prev.map((message) => (message.id === assistantId ? { ...message, text: assistantText } : message))
             );
           },
-          onToolCallPart: async (toolCall) => {
+          onError: (message) => {
+            console.error('coach stream error:', message);
+          },
+          onToolCall: async (toolCall) => {
             setActiveToolName(toolCall.toolName);
             if (toolCall.toolName === 'show_position') {
-              const { moveNumber, color } = toolCall.args as { moveNumber: number; color: 'white' | 'black' | null };
+              const { moveNumber, color } = toolCall.input as { moveNumber: number; color: 'white' | 'black' | null };
               const ply = moveRefToPly(moveNumber, color);
               const san = sanForPly(options.sanMoves ?? [], ply);
               if (san) {
@@ -104,7 +107,7 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
               }
             }
             if (toolCall.toolName === 'annotate_board') {
-              const annotation = toolCall.args as AnnotationNoteState;
+              const annotation = toolCall.input as AnnotationNoteState;
               if (annotation.arrows.length > 0 || annotation.highlights.length > 0) {
                 setMessages((prev) => [
                   ...prev,

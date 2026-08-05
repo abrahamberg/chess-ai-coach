@@ -1,10 +1,12 @@
-import { generateText } from 'ai';
+import { CoachingPlanSchema, type CoachingPlan } from '@chess-coach/shared';
 import type { Task } from 'graphile-worker';
 import type { Kysely } from 'kysely';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import * as gamesRepo from '../db/repositories/games.js';
 import type { Database } from '../db/schema.js';
 import { getModelForUser, recordUsage, type GatewayConfig } from '../llm/gateway.js';
+import { generateStructured } from '../llm/text.js';
+import { toBillableTokens } from '../llm/usage.js';
 import { analyzeGameViaEngine } from '../services/engine-client.js';
 import { runAnalyzeGameJob, type AnalysisJobDependencies, type PlannerMessages } from '../services/analysis.js';
 import type { DeepenAnalysisJobPayload } from './deepen-analysis.js';
@@ -52,23 +54,24 @@ async function callPlannerModel(
   gatewayConfig: GatewayConfig,
   userId: string,
   messages: PlannerMessages
-): Promise<string> {
+): Promise<CoachingPlan> {
   const resolution = await getModelForUser(db, gatewayConfig, userId, 'light');
-  const result = await generateText({ model: resolution.model, system: messages.system, prompt: messages.user });
+  const result = await generateStructured({
+    resolution,
+    system: messages.system,
+    prompt: messages.user,
+    schema: CoachingPlanSchema
+  });
 
   await recordUsage(db, {
     userId,
     provider: resolution.provider,
     model: resolution.modelId,
     tier: 'light',
-    usage: {
-      inputTokens: result.usage.promptTokens,
-      outputTokens: result.usage.completionTokens,
-      cachedInputTokens: 0
-    },
+    usage: toBillableTokens(result.usage),
     purpose: 'analysis_plan',
     metered: resolution.metered
   });
 
-  return result.text;
+  return result.object;
 }

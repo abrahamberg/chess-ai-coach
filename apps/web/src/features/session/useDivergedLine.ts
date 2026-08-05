@@ -108,7 +108,7 @@ export function useDivergedLine(): UseDivergedLineResult {
         return { acknowledged: true };
       }
       if (toolCall.toolName === 'hypothetical_line') {
-        const { moves: sanMoves } = toolCall.args as { moves: string[] };
+        const { moves: sanMoves } = toolCall.input as { moves: string[] };
         const startFen = line?.moves.at(-1)?.fen ?? real.fen;
         const applied = applySanSequence(startFen, sanMoves);
         const basePly = line?.basePly ?? real.ply;

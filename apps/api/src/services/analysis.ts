@@ -1,5 +1,5 @@
 import { classifyMoves, findCandidateMoments, parsePgn } from '@chess-coach/chess-analysis';
-import { CoachingPlanSchema, type CoachingPlan, type EngineEval } from '@chess-coach/shared';
+import type { CoachingPlan, EngineEval } from '@chess-coach/shared';
 import { buildPlannerMessages, type PlannerPromptInput } from '@chess-coach/prompts';
 import type { Kysely } from 'kysely';
 import * as analysesRepo from '../db/repositories/analyses.js';
@@ -15,8 +15,10 @@ export interface PlannerMessages {
 export interface AnalysisJobDependencies {
   /** Wraps `POST engine/analyze-game` (architecture §4). */
   analyzeGamePositions: (fens: string[]) => Promise<EngineEval[]>;
-  /** Wraps the gateway's light-tier model call; returns the raw model text. */
-  callPlanner: (messages: PlannerMessages) => Promise<string>;
+  /** Wraps the gateway's light-tier model call. The model is constrained to
+   * CoachingPlanSchema by the provider, so this yields an already-valid plan
+   * or throws — LLM output never reaches the DB unvalidated. */
+  callPlanner: (messages: PlannerMessages) => Promise<CoachingPlan>;
 }
 
 /**
@@ -64,7 +66,7 @@ export async function runAnalyzeGameJob(
       moves: classifiedMoves,
       candidateMoments
     };
-    const plan = await generatePlanWithRetry(deps, plannerInput);
+    const plan = await generatePlan(deps, plannerInput);
 
     await analysesRepo.markReady(db, analysis.id, plan);
   } catch (error) {
@@ -72,31 +74,8 @@ export async function runAnalyzeGameJob(
   }
 }
 
-async function generatePlanWithRetry(
-  deps: AnalysisJobDependencies,
-  input: PlannerPromptInput
-): Promise<CoachingPlan> {
-  const messages = buildPlannerMessages(input);
-
-  const first = CoachingPlanSchema.safeParse(safeJsonParse(await deps.callPlanner(messages)));
-  if (first.success) return first.data;
-
-  const retryMessages: PlannerMessages = {
-    system: messages.system,
-    user: `${messages.user}\n\nVALIDATION ERROR — your previous output failed schema validation: ${JSON.stringify(first.error.issues)}\nFix it and output ONLY the corrected JSON object.`
-  };
-  const second = CoachingPlanSchema.safeParse(safeJsonParse(await deps.callPlanner(retryMessages)));
-  if (second.success) return second.data;
-
-  throw new Error(`Planner output failed validation twice: ${JSON.stringify(second.error.issues)}`);
-}
-
-function safeJsonParse(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
+async function generatePlan(deps: AnalysisJobDependencies, input: PlannerPromptInput): Promise<CoachingPlan> {
+  return deps.callPlanner(buildPlannerMessages(input));
 }
 
 function describeError(error: unknown): string {

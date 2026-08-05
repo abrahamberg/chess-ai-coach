@@ -1,6 +1,6 @@
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import type { EngineEval } from '@chess-coach/shared';
+import { CoachingPlanSchema, type EngineEval } from '@chess-coach/shared';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import * as gamesRepo from '../db/repositories/games.js';
 import * as usersRepo from '../db/repositories/users.js';
@@ -15,7 +15,7 @@ const PGN = `[Event "Test"]
 
 1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0`;
 
-const VALID_PLAN_JSON = JSON.stringify({
+const VALID_PLAN = CoachingPlanSchema.parse({
   gameSummary: 'A sharp Scholar\'s-mate-adjacent game.',
   openingNote: 'Fine through the opening.',
   themes: ['king_safety'],
@@ -74,7 +74,7 @@ describe('runAnalyzeGameJob', () => {
 
   test('valid plan on the first try -> analysis ready with stored evals and plan', async () => {
     const { gameId, analysisId } = await setupGame();
-    const callPlanner = vi.fn().mockResolvedValue(VALID_PLAN_JSON);
+    const callPlanner = vi.fn().mockResolvedValue(VALID_PLAN);
     const deps: AnalysisJobDependencies = { analyzeGamePositions: fakeEngine(), callPlanner };
 
     await runAnalyzeGameJob(db, deps, gameId);
@@ -96,30 +96,14 @@ describe('runAnalyzeGameJob', () => {
     expect(classifiedMoves[0]).toMatchObject({ ply: 1, moveSan: 'e4' });
   });
 
-  test('invalid planner JSON once, then valid -> retries once and succeeds', async () => {
+  // The planner is now constrained to CoachingPlanSchema by the provider, so
+  // there is no local parse-and-retry loop left to exercise: the call either
+  // yields a valid plan or throws. What still has to hold is that a throw
+  // leaves the analysis 'failed' with an error, never half-written or stuck
+  // in 'planning' forever.
+  test('a planner that cannot produce a valid plan -> failed with an error message', async () => {
     const { gameId, analysisId } = await setupGame();
-    const callPlanner = vi
-      .fn()
-      .mockResolvedValueOnce('not valid json at all')
-      .mockResolvedValueOnce(VALID_PLAN_JSON);
-    const deps: AnalysisJobDependencies = { analyzeGamePositions: fakeEngine(), callPlanner };
-
-    await runAnalyzeGameJob(db, deps, gameId);
-
-    const row = await db
-      .selectFrom('analyses')
-      .select(['status'])
-      .where('id', '=', analysisId)
-      .executeTakeFirstOrThrow();
-    expect(row.status).toBe('ready');
-    expect(callPlanner).toHaveBeenCalledTimes(2);
-    const [, retryCallArgs] = callPlanner.mock.calls;
-    expect(retryCallArgs?.[0].user).toContain('VALIDATION ERROR');
-  });
-
-  test('invalid planner JSON twice -> failed with an error message', async () => {
-    const { gameId, analysisId } = await setupGame();
-    const callPlanner = vi.fn().mockResolvedValue('still not json');
+    const callPlanner = vi.fn().mockRejectedValue(new Error('could not generate a valid object'));
     const deps: AnalysisJobDependencies = { analyzeGamePositions: fakeEngine(), callPlanner };
 
     await runAnalyzeGameJob(db, deps, gameId);
@@ -131,7 +115,7 @@ describe('runAnalyzeGameJob', () => {
       .executeTakeFirstOrThrow();
     expect(row.status).toBe('failed');
     expect(row.error).toBeTruthy();
-    expect(callPlanner).toHaveBeenCalledTimes(2);
+    expect(callPlanner).toHaveBeenCalledTimes(1);
   });
 
   test('engine failure -> failed with an error message, planner never called', async () => {

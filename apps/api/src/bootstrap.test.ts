@@ -3,6 +3,7 @@ import { noopJobQueue } from './jobs/queue.js';
 import {
   buildCoachAgentDependencies,
   buildGatewayConfigFromEnv,
+  buildModelTuningFromEnv,
   buildStripeClientFromEnv,
   requireEnv
 } from './bootstrap.js';
@@ -214,5 +215,64 @@ describe('buildCoachAgentDependencies', () => {
 
     const text = await deps.callLightModel({ system: 'sys', user: 'hi' });
     expect(text.length).toBeGreaterThan(0);
+  });
+});
+
+describe('buildModelTuningFromEnv', () => {
+  const TUNING_VARS = [
+    'LLM_REASONING_STANDARD',
+    'LLM_REASONING_LIGHT',
+    'LLM_OPENAI_SERVICE_TIER',
+    'LLM_STREAM_FIRST_CHUNK_TIMEOUT_MS',
+    'LLM_STREAM_CHUNK_TIMEOUT_MS'
+  ];
+
+  beforeEach(() => {
+    for (const key of TUNING_VARS) delete process.env[key];
+  });
+  afterEach(() => {
+    for (const key of TUNING_VARS) delete process.env[key];
+  });
+
+  test('with nothing set, reasons on the coach tier only and leaves flex off', () => {
+    const tuning = buildModelTuningFromEnv();
+
+    expect(tuning.reasoning).toEqual({ standard: 'medium', light: 'none' });
+    expect(tuning.openaiServiceTier).toBe('auto');
+    expect(tuning.streamTimeouts.firstChunkMs).toBeGreaterThan(0);
+  });
+
+  test('reads reasoning effort per tier', () => {
+    process.env.LLM_REASONING_STANDARD = 'high';
+    process.env.LLM_REASONING_LIGHT = 'low';
+
+    expect(buildModelTuningFromEnv().reasoning).toEqual({ standard: 'high', light: 'low' });
+  });
+
+  test('reads the OpenAI service tier, which is how flex gets switched on', () => {
+    process.env.LLM_OPENAI_SERVICE_TIER = 'flex';
+
+    expect(buildModelTuningFromEnv().openaiServiceTier).toBe('flex');
+  });
+
+  test('reads stream timeouts', () => {
+    process.env.LLM_STREAM_FIRST_CHUNK_TIMEOUT_MS = '5000';
+    process.env.LLM_STREAM_CHUNK_TIMEOUT_MS = '2500';
+
+    expect(buildModelTuningFromEnv().streamTimeouts).toEqual({ firstChunkMs: 5000, chunkMs: 2500 });
+  });
+
+  // A typo here would otherwise surface as an opaque provider 400 on the first
+  // real turn, long after the deploy that caused it.
+  test.each([
+    ['LLM_REASONING_STANDARD', 'aggressive'],
+    ['LLM_REASONING_LIGHT', 'off'],
+    ['LLM_OPENAI_SERVICE_TIER', 'cheap'],
+    ['LLM_STREAM_CHUNK_TIMEOUT_MS', 'soon'],
+    ['LLM_STREAM_CHUNK_TIMEOUT_MS', '-1']
+  ])('rejects an invalid %s at boot rather than at the provider', (name, value) => {
+    process.env[name] = value;
+
+    expect(() => buildModelTuningFromEnv()).toThrow(name);
   });
 });

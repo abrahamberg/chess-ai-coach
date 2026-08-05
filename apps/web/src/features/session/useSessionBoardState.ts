@@ -132,7 +132,7 @@ export function useSessionBoardState(
   const handleToolCall = useCallback(
     (toolCall: CoachToolCall): unknown => {
       if (toolCall.toolName === 'show_position') {
-        const { moveNumber, color } = toolCall.args as { moveNumber: number; color: 'white' | 'black' | null };
+        const { moveNumber, color } = toolCall.input as { moveNumber: number; color: 'white' | 'black' | null };
         const newPly = moveRefToPly(moveNumber, color);
         setPly(newPly);
         setCoachPly(newPly);
@@ -144,7 +144,7 @@ export function useSessionBoardState(
         return { moveNumber, color, ply: newPly };
       }
       if (toolCall.toolName === 'annotate_board') {
-        annotations.setAnnotations(toolCall.args as AnnotationState);
+        annotations.setAnnotations(toolCall.input as AnnotationState);
         dock.expand();
         return { acknowledged: true };
       }

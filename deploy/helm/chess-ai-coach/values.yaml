@@ -128,6 +128,17 @@ llm:
   lightModel:
     anthropic: ""
     openai: ""
+  # Reasoning effort per tier. One portable setting that both Anthropic and
+  # OpenAI translate natively: provider-default|none|minimal|low|medium|high|xhigh.
+  # The coach reasons about positions and its own Socratic strategy; light-tier
+  # subagents only reformat text that has already been decided.
+  reasoning:
+    standard: medium
+    light: none
+  # OpenAI's service tier: auto|default|flex|priority. `flex` is roughly half
+  # price but slower and can be refused under load — leave on `auto` unless
+  # latency is not a concern. Anthropic has no equivalent and ignores this.
+  openaiServiceTier: auto
   # LLM_FAKE=1: short-circuit every model call. Smoke tests only.
   fake: false
   # Envelope key for user-supplied (BYOK) provider keys.

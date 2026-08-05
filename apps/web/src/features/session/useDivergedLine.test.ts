@@ -99,7 +99,7 @@ describe('useDivergedLine', () => {
 
     act(() => {
       result.current.appendMove(MOVE_A, REAL);
-      result.current.handleToolCall({ toolCallId: '1', toolName: 'expect_move', args: {} }, REAL);
+      result.current.handleToolCall({ toolCallId: '1', toolName: 'expect_move', input: {} }, REAL);
     });
     act(() => {
       result.current.exit();
@@ -114,7 +114,7 @@ describe('useDivergedLine', () => {
     const { result } = renderHook(() => useDivergedLine());
 
     act(() => {
-      result.current.handleToolCall({ toolCallId: '1', toolName: 'expect_move', args: {} }, REAL);
+      result.current.handleToolCall({ toolCallId: '1', toolName: 'expect_move', input: {} }, REAL);
     });
     expect(result.current.expectingMove).toBe(true);
 
@@ -130,7 +130,7 @@ describe('useDivergedLine', () => {
     let toolResult: unknown;
     act(() => {
       toolResult = result.current.handleToolCall(
-        { toolCallId: '1', toolName: 'hypothetical_line', args: { moves: ['a4'] } },
+        { toolCallId: '1', toolName: 'hypothetical_line', input: { moves: ['a4'] } },
         REAL
       );
     });
@@ -153,7 +153,7 @@ describe('useDivergedLine', () => {
       result.current.appendMove(MOVE_A, REAL);
     });
     act(() => {
-      result.current.handleToolCall({ toolCallId: '1', toolName: 'hypothetical_line', args: { moves: ['Nf6'] } }, REAL);
+      result.current.handleToolCall({ toolCallId: '1', toolName: 'hypothetical_line', input: { moves: ['Nf6'] } }, REAL);
     });
 
     expect(result.current.line?.moves).toHaveLength(2);
@@ -171,7 +171,7 @@ describe('useDivergedLine', () => {
     let toolResult: unknown;
     act(() => {
       toolResult = result.current.handleToolCall(
-        { toolCallId: '1', toolName: 'hypothetical_line', args: { moves: ['Zz9'] } },
+        { toolCallId: '1', toolName: 'hypothetical_line', input: { moves: ['Zz9'] } },
         REAL
       );
     });
@@ -189,7 +189,7 @@ describe('useDivergedLine', () => {
     let toolResult: unknown;
     act(() => {
       toolResult = result.current.handleToolCall(
-        { toolCallId: '1', toolName: 'show_position', args: { moveNumber: 2, color: 'black' } },
+        { toolCallId: '1', toolName: 'show_position', input: { moveNumber: 2, color: 'black' } },
         REAL
       );
     });
@@ -205,7 +205,7 @@ describe('useDivergedLine', () => {
       result.current.appendMove(MOVE_A, REAL);
     });
     act(() => {
-      result.current.handleToolCall({ toolCallId: '1', toolName: 'annotate_board', args: {} }, REAL);
+      result.current.handleToolCall({ toolCallId: '1', toolName: 'annotate_board', input: {} }, REAL);
     });
 
     expect(result.current.line?.moves).toEqual([MOVE_A]);

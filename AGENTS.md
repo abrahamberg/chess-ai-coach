@@ -81,10 +81,23 @@ Socratically while tracking their progress over time. The initial build
    apps). If a function could be tested with plain inputs/outputs, it belongs
    there or in a `lib/` folder — not inline in a service.
 
-6. **No direct LLM SDK calls.** Everything goes through
-   `apps/api/src/llm/gateway.ts` (BYOK resolution, tier→model mapping, metering,
-   logging, prompt-cache breakpoints). Prompt text lives only in
-   `packages/prompts` and must match `docs/prompts.md` — update both together.
+6. **Nothing outside `apps/api/src/llm/` may import `ai` or `@ai-sdk/*`.** That
+   directory owns the whole provider surface: `gateway.ts` (BYOK resolution,
+   tier→model mapping, metering, logging), `model-options.ts` (reasoning
+   effort, OpenAI service tier), `chat.ts`/`text.ts` (the only `streamText`/
+   `generateText`/`generateObject` calls), `messages.ts`, `tools.ts`,
+   `stream-response.ts`, `usage.ts`. Services take app-owned types
+   (`ChatMessage`, `TurnUsage`, `CoachTurnStream`) and never see SDK ones.
+   `apps/web` gets exactly one exception, `hooks/coachStream.ts`, for reading
+   the wire format. Check it:
+
+   ```sh
+   grep -rn "from 'ai'\|@ai-sdk/" apps/api/src packages services --include=*.ts | grep -v "apps/api/src/llm/"
+   ```
+
+   This is what keeps the next SDK major a handful of files instead of thirty.
+   Prompt text lives only in `packages/prompts` and must match
+   `docs/prompts.md` — update both together.
 
 7. **React: components + hooks, small.** Presentational components in
    `components/` take props and render — no fetching. Data fetching lives in

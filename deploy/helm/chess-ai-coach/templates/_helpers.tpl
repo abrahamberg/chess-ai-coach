@@ -147,6 +147,12 @@ imagePullSecrets:
   value: {{ .Values.llm.lightModel.openai | quote }}
 - name: LLM_FAKE
   value: {{ ternary "1" "0" .Values.llm.fake | quote }}
+- name: LLM_REASONING_STANDARD
+  value: {{ .Values.llm.reasoning.standard | quote }}
+- name: LLM_REASONING_LIGHT
+  value: {{ .Values.llm.reasoning.light | quote }}
+- name: LLM_OPENAI_SERVICE_TIER
+  value: {{ .Values.llm.openaiServiceTier | quote }}
 - name: LLM_KEY_MASTER_KEY
   valueFrom:
     secretKeyRef:

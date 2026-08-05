@@ -1,5 +1,6 @@
 import type { Kysely } from 'kysely';
-import { MockLanguageModelV1 } from 'ai/test';
+import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
+import { MockLanguageModelV4 } from 'ai/test';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { CoachingPlan, PositionAnalysis } from '@chess-coach/shared';
 import { buildApp } from '../app.js';
@@ -13,6 +14,7 @@ import type { Database } from '../db/schema.js';
 import { createKeyVault } from '../llm/key-vault.js';
 import type { GatewayConfig } from '../llm/gateway.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
+import { mockResolution, mockUsage, stepParts, type MockToolCall } from '../../test/helpers/mock-model.js';
 import type { CoachAgentDependencies } from '../services/coach-agent.js';
 
 const PLAN: CoachingPlan = {
@@ -40,36 +42,24 @@ const PGN = `[Event "Test"]
 
 1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0`;
 
-function textStreamModel(text: string, toolCall?: { toolCallId: string; toolName: string; args: unknown }) {
-  const parts: Array<Record<string, unknown>> = [{ type: 'text-delta', textDelta: text }];
-  if (toolCall) {
-    parts.push({
-      type: 'tool-call',
-      toolCallType: 'function',
-      toolCallId: toolCall.toolCallId,
-      toolName: toolCall.toolName,
-      args: JSON.stringify(toolCall.args)
-    });
-  }
-  parts.push({
-    type: 'finish',
-    finishReason: toolCall ? 'tool-calls' : 'stop',
-    usage: { promptTokens: 500, completionTokens: 50 }
-  });
+function textStreamModel(text: string, toolCall?: MockToolCall) {
+  const parts = stepParts(
+    { text, toolCall, finishReason: toolCall ? 'tool-calls' : 'stop' },
+    mockUsage(500, 50)
+  );
 
-  const doStream = vi.fn().mockImplementation((options: unknown) =>
+  const doStream = vi.fn().mockImplementation(() =>
     Promise.resolve({
-      stream: new ReadableStream({
+      stream: new ReadableStream<LanguageModelV4StreamPart>({
         start(controller) {
           for (const part of parts) controller.enqueue(part);
           controller.close();
         }
-      }),
-      rawCall: { rawPrompt: options, rawSettings: {} }
+      })
     })
   );
 
-  const model = new MockLanguageModelV1({ doStream });
+  const model = new MockLanguageModelV4({ doStream });
   return { model, doStream };
 }
 
@@ -111,7 +101,7 @@ describe('sessions routes', () => {
     return { 'x-auth-request-email': user.email, 'x-auth-request-user': user.displayName };
   }
 
-  function coachAgentDeps(model: MockLanguageModelV1): CoachAgentDependencies {
+  function coachAgentDeps(model: MockLanguageModelV4): CoachAgentDependencies {
     const gatewayConfig: GatewayConfig = {
       keyVault,
       platformKeys: { anthropic: 'platform-key' },
@@ -153,7 +143,7 @@ describe('sessions routes', () => {
         }
       } satisfies PositionAnalysis),
       callLightModel: vi.fn().mockResolvedValue('engine says the position is roughly equal.'),
-      resolveModel: () => Promise.resolve({ model, metered: true, provider: 'anthropic', modelId: 'claude-standard' })
+      resolveModel: () => Promise.resolve(mockResolution(model))
     };
   }
 
@@ -322,7 +312,7 @@ describe('sessions routes', () => {
 
     await sessionMessagesRepo.insert(db, sessionId, 'assistant', [
       { type: 'text', text: 'Hold on, one sec.' },
-      { type: 'tool-call', toolCallId: 'call-1', toolName: 'update_threads', args: { threads: [] } }
+      { type: 'tool-call', toolCallId: 'call-1', toolName: 'update_threads', input: { threads: [] } }
     ]);
     await sessionMessagesRepo.insert(db, sessionId, 'tool', [
       { type: 'tool-result', toolCallId: 'call-1', toolName: 'update_threads', result: [] }
@@ -381,7 +371,7 @@ describe('sessions routes', () => {
       const { model } = textStreamModel('Let me show you.', {
         toolCallId: 'call-1',
         toolName: 'show_position',
-        args: { moveNumber: 2, color: 'black' }
+        input: { moveNumber: 2, color: 'black' }
       });
       const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
       const created = await app.inject({
@@ -493,6 +483,28 @@ describe('sessions routes', () => {
       expect(response.payload).toContain('Hi! Ready to dig into your game?');
       expect(doStream).toHaveBeenCalledOnce();
 
+      // The wire format apps/web's readCoachStream parses: Server-Sent Events
+      // whose data lines are UI message chunks. Asserted literally here
+      // because the browser client and this endpoint have no shared code —
+      // only this contract — and a silent drift shows up as a chat window
+      // that just never renders anything.
+      expect(response.headers['content-type']).toContain('text/event-stream');
+      const chunks = response.payload
+        .split('\n\n')
+        .filter((frame) => frame.startsWith('data: '))
+        .map((frame) => frame.slice('data: '.length))
+        .filter((data) => data !== '[DONE]')
+        .map((data) => JSON.parse(data) as { type: string; delta?: string });
+      expect(chunks.map((chunk) => chunk.type)).toEqual(
+        expect.arrayContaining(['start', 'text-start', 'text-delta', 'text-end', 'finish'])
+      );
+      expect(
+        chunks
+          .filter((chunk) => chunk.type === 'text-delta')
+          .map((chunk) => chunk.delta)
+          .join('')
+      ).toBe('Hi! Ready to dig into your game?');
+
       const messages = await sessionMessagesRepo.listBySession(db, sessionId);
       expect(messages).toHaveLength(2);
       expect(messages[0]?.content).toBe('[session_start]');
@@ -578,24 +590,22 @@ describe('sessions routes', () => {
 
     test('returns the literal request/response snapshot after a turn completes, with real cache-read numbers on the second turn', async () => {
       const { user, game } = await setupReadyGame('debug-snapshot@example.com');
-      const doStream = vi.fn().mockImplementation((options: unknown) =>
+      const doStream = vi.fn().mockImplementation(() =>
         Promise.resolve({
-          stream: new ReadableStream({
+          stream: new ReadableStream<LanguageModelV4StreamPart>({
             start(controller) {
-              controller.enqueue({ type: 'text-delta', textDelta: 'Hello!' });
-              controller.enqueue({
-                type: 'finish',
-                finishReason: 'stop',
-                usage: { promptTokens: 300, completionTokens: 40 },
-                providerMetadata: { anthropic: { cacheCreationInputTokens: 900, cacheReadInputTokens: 0 } }
-              });
+              for (const part of stepParts({ text: 'Hello!', finishReason: 'stop' }, {
+                inputTokens: { total: 1200, noCache: 300, cacheRead: 0, cacheWrite: 900 },
+                outputTokens: { total: 40, text: 40, reasoning: undefined }
+              })) {
+                controller.enqueue(part);
+              }
               controller.close();
             }
-          }),
-          rawCall: { rawPrompt: options, rawSettings: {} }
+          })
         })
       );
-      const model = new MockLanguageModelV1({ doStream });
+      const model = new MockLanguageModelV4({ doStream });
       const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
       const created = await app.inject({
         method: 'POST',
@@ -621,13 +631,14 @@ describe('sessions routes', () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.request.provider).toBe('anthropic');
-      expect(body.request.messages.filter((m: { role: string }) => m.role === 'system')).toHaveLength(5);
+      expect(body.request.instructions.filter((m: { role: string }) => m.role === 'system')).toHaveLength(5);
       expect(body.request.tools.some((t: { name: string }) => t.name === 'show_position')).toBe(true);
       expect(body.response.usage).toEqual({
         freshInputTokens: 300,
         cacheReadTokens: 0,
         cacheWriteTokens: 900,
-        outputTokens: 40
+        outputTokens: 40,
+        reasoningTokens: 0
       });
       expect(body.response.finishReason).toBe('stop');
     }, 15000);
@@ -664,6 +675,58 @@ describe('sessions routes', () => {
 
       expect(response.statusCode).toBe(200);
       expect(JSON.stringify(response.json())).toContain('From producer pod.');
+    }, 15000);
+
+    // Reasoning is stripped from the student's stream but must survive into
+    // the debug snapshot — that popup (and its Copy JSON) is the only place
+    // the coach's thinking is visible at all.
+    test("the coach's reasoning reaches the debug snapshot even though it never reaches the browser", async () => {
+      const { user, game } = await setupReadyGame('debug-reasoning@example.com');
+      const model = new MockLanguageModelV4({
+        doStream: () =>
+          Promise.resolve({
+            stream: new ReadableStream<LanguageModelV4StreamPart>({
+              start(controller) {
+                for (const part of stepParts({
+                  reasoning: 'The student missed the fork on c7 — ask, do not tell.',
+                  text: 'What did Qb3 threaten?',
+                  finishReason: 'stop'
+                })) {
+                  controller.enqueue(part);
+                }
+                controller.close();
+              }
+            })
+          })
+      });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/sessions',
+        headers: headersFor(user),
+        payload: { gameId: game.id }
+      });
+      const sessionId = created.json().id;
+
+      const streamed = await app.inject({
+        method: 'POST',
+        url: `/api/sessions/${sessionId}/messages`,
+        headers: headersFor(user),
+        payload: { content: 'why was that bad?' }
+      });
+
+      expect(streamed.payload).toContain('What did Qb3 threaten?');
+      expect(streamed.payload).not.toContain('missed the fork');
+
+      const debug = await app.inject({
+        method: 'GET',
+        url: `/api/sessions/${sessionId}/debug/last-turn`,
+        headers: headersFor(user)
+      });
+
+      expect(debug.statusCode).toBe(200);
+      expect(JSON.stringify(debug.json().response.messages)).toContain('missed the fork');
+      expect(debug.json().request.reasoning).toBe('medium');
     }, 15000);
   });
 });

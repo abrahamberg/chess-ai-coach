@@ -34,7 +34,17 @@ export async function applyClientToolResult(
     deps.db,
     session.id,
     'tool',
-    [{ type: 'tool-result', toolCallId: toolResult.toolCallId, toolName: toolResult.toolName, result }],
+    [
+      {
+        type: 'tool-result',
+        toolCallId: toolResult.toolCallId,
+        toolName: toolResult.toolName,
+        // Tool output is a tagged union, not a bare value — see
+        // `toModelToolResultPart` in coach-context-replay.ts, which upgrades
+        // rows written before that was true.
+        output: { type: 'json', value: result }
+      }
+    ],
     ply
   );
   return ply;

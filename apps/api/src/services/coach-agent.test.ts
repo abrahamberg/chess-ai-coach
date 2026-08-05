@@ -1,9 +1,20 @@
+import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
 import type { CoachingPlan, PositionAnalysis } from '@chess-coach/shared';
+import { MockLanguageModelV4 } from 'ai/test';
 import { EPISODE_FOLD_SYSTEM_PROMPT } from '@chess-coach/prompts';
-import { MockLanguageModelV1 } from 'ai/test';
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
+import {
+  controllableStreamModel,
+  drain,
+  erroringStreamModel,
+  instantTextModel,
+  mockResolution,
+  mockUsage,
+  multiStepModel,
+  stepParts
+} from '../../test/helpers/mock-model.js';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import * as creditsRepo from '../db/repositories/credits.js';
 import * as gamesRepo from '../db/repositories/games.js';
@@ -31,111 +42,6 @@ const PGN = `[Event "Test"]
 
 1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0`;
 
-/** Same shape as sessions.test.ts's textStreamModel helper, but exposes the
- * ReadableStreamDefaultController so the test can control exactly when the
- * mocked model "finishes" generating — the trigger for onFinish. */
-function controllableStreamModel(text: string, toolCall: { toolCallId: string; toolName: string; args: unknown }) {
-  let controllerRef: ReadableStreamDefaultController | undefined;
-  const doStream = vi.fn().mockImplementation((options: unknown) =>
-    Promise.resolve({
-      stream: new ReadableStream({
-        start(controller) {
-          controllerRef = controller;
-        }
-      }),
-      rawCall: { rawPrompt: options, rawSettings: {} }
-    })
-  );
-  const model = new MockLanguageModelV1({ doStream });
-
-  const finish = async (): Promise<void> => {
-    while (!controllerRef) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    controllerRef.enqueue({ type: 'text-delta', textDelta: text });
-    controllerRef.enqueue({
-      type: 'tool-call',
-      toolCallType: 'function',
-      toolCallId: toolCall.toolCallId,
-      toolName: toolCall.toolName,
-      args: JSON.stringify(toolCall.args)
-    });
-    controllerRef.enqueue({
-      type: 'finish',
-      finishReason: 'tool-calls',
-      usage: { promptTokens: 500, completionTokens: 50 }
-    });
-    controllerRef.close();
-  };
-
-  return { model, finish };
-}
-
-/** Instantly-resolving model for the turn after the client tool-result — its
- * stream finishes synchronously so drain() never blocks on it. */
-function instantTextModel(text: string) {
-  const doStream = vi.fn().mockImplementation((options: unknown) =>
-    Promise.resolve({
-      stream: new ReadableStream({
-        start(controller) {
-          controller.enqueue({ type: 'text-delta', textDelta: text });
-          controller.enqueue({ type: 'finish', finishReason: 'stop', usage: { promptTokens: 10, completionTokens: 5 } });
-          controller.close();
-        }
-      }),
-      rawCall: { rawPrompt: options, rawSettings: {} }
-    })
-  );
-  return new MockLanguageModelV1({ doStream });
-}
-
-/** A model that resolves each of `steps` synchronously in order — one
- * doStream() call per step. Used for turns where the model calls a
- * SERVER-executed tool (has an `execute`, e.g. record_move_note): the AI
- * SDK auto-runs the tool and then calls doStream() again for the model's
- * follow-up step, unlike client tools (show_position) which stop the turn
- * after the tool-call. */
-function multiStepModel(
-  steps: Array<{ text?: string; toolCall?: { toolCallId: string; toolName: string; args: unknown }; finishReason: string }>
-) {
-  let call = 0;
-  const doStream = vi.fn().mockImplementation((options: unknown) => {
-    const step = steps[call++];
-    if (!step) throw new Error('multiStepModel: doStream called more times than steps provided');
-    return Promise.resolve({
-      stream: new ReadableStream({
-        start(controller) {
-          if (step.text) controller.enqueue({ type: 'text-delta', textDelta: step.text });
-          if (step.toolCall) {
-            controller.enqueue({
-              type: 'tool-call',
-              toolCallType: 'function',
-              toolCallId: step.toolCall.toolCallId,
-              toolName: step.toolCall.toolName,
-              args: JSON.stringify(step.toolCall.args)
-            });
-          }
-          controller.enqueue({
-            type: 'finish',
-            finishReason: step.finishReason,
-            usage: { promptTokens: 10, completionTokens: 5 }
-          });
-          controller.close();
-        }
-      }),
-      rawCall: { rawPrompt: options, rawSettings: {} }
-    });
-  });
-  return new MockLanguageModelV1({ doStream });
-}
-
-async function drain(result: { fullStream: AsyncIterable<unknown> }): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  for await (const _part of result.fullStream) {
-    // consume so the AI SDK actually processes the stream through to onFinish
-  }
-}
-
 describe('coach-agent startTurn concurrency', () => {
   let testDb: TestDb;
   let db: Kysely<Database>;
@@ -150,7 +56,7 @@ describe('coach-agent startTurn concurrency', () => {
     await testDb.cleanup();
   });
 
-  function deps(model: MockLanguageModelV1): CoachAgentDependencies {
+  function deps(model: MockLanguageModelV4): CoachAgentDependencies {
     const gatewayConfig: GatewayConfig = {
       keyVault,
       platformKeys: { anthropic: 'platform-key' },
@@ -192,7 +98,7 @@ describe('coach-agent startTurn concurrency', () => {
         }
       } satisfies PositionAnalysis),
       callLightModel: vi.fn().mockResolvedValue('roughly equal.'),
-      resolveModel: () => Promise.resolve({ model, metered: true, provider: 'anthropic', modelId: 'claude-standard' })
+      resolveModel: () => Promise.resolve(mockResolution(model))
     };
   }
 
@@ -218,7 +124,7 @@ describe('coach-agent startTurn concurrency', () => {
     const { model, finish } = controllableStreamModel('Let me show you.', {
       toolCallId: 'call-race-1',
       toolName: 'show_position',
-      args: { moveNumber: 2, color: 'black' }
+      input: { moveNumber: 2, color: 'black' }
     });
 
     // Gate turn 1's onFinish persistence of its own assistant/tool-call
@@ -288,19 +194,8 @@ describe('coach-agent startTurn concurrency', () => {
     const session = await coachAgent.createSession(db, user.id, game.id);
 
     // No 'finish' part at all — mirrors a provider rejecting the request
-    // mid-stream, the case where the AI SDK never calls onFinish.
-    const doStream = vi.fn().mockImplementation((options: unknown) =>
-      Promise.resolve({
-        stream: new ReadableStream({
-          start(controller) {
-            controller.enqueue({ type: 'error', error: new Error('provider rejected the request') });
-            controller.close();
-          }
-        }),
-        rawCall: { rawPrompt: options, rawSettings: {} }
-      })
-    );
-    const erroringModel = new MockLanguageModelV1({ doStream });
+    // mid-stream, the case where the SDK never calls onFinish.
+    const erroringModel = erroringStreamModel(new Error('provider rejected the request'));
 
     const turn1 = await coachAgent.startTurn(deps(erroringModel), session, { content: 'hi coach' });
     await drain(turn1);
@@ -329,31 +224,34 @@ describe('coach-agent startTurn concurrency', () => {
     await analysesRepo.markReady(db, analysis.id, PLAN);
     const session = await coachAgent.createSession(db, user.id, game.id);
 
-    const doStream = vi.fn().mockImplementation((options: unknown) =>
-      Promise.resolve({
-        stream: new ReadableStream({
-          start(controller) {
-            controller.enqueue({ type: 'text-delta', textDelta: 'Hello!' });
-            controller.enqueue({
-              type: 'finish',
-              finishReason: 'stop',
-              usage: { promptTokens: 400, completionTokens: 50 },
-              providerMetadata: { anthropic: { cacheCreationInputTokens: 0, cacheReadInputTokens: 2000 } }
-            });
-            controller.close();
-          }
-        }),
-        rawCall: { rawPrompt: options, rawSettings: {} }
-      })
-    );
-    const model = new MockLanguageModelV1({ doStream });
+    // 400 fresh + 2000 read back from cache. The SDK reports these in one
+    // normalized shape now, so there is no provider-specific metadata here.
+    const model = new MockLanguageModelV4({
+      doStream: () =>
+        Promise.resolve({
+          stream: new ReadableStream<LanguageModelV4StreamPart>({
+            start(controller) {
+              for (const part of stepParts(
+                { text: 'Hello!', finishReason: 'stop' },
+                {
+                  inputTokens: { total: 2400, noCache: 400, cacheRead: 2000, cacheWrite: 0 },
+                  outputTokens: { total: 50, text: 50, reasoning: undefined }
+                }
+              )) {
+                controller.enqueue(part);
+              }
+              controller.close();
+            }
+          })
+        })
+    });
 
     const turn = await coachAgent.startTurn(deps(model), session, { content: 'hi coach' });
     await drain(turn);
 
     const logs = await db.selectFrom('llmCallLog').selectAll().where('userId', '=', user.id).execute();
     expect(logs).toHaveLength(1);
-    // 400 fresh + 2000 cache-read, not the raw promptTokens (400) alone.
+    // 400 fresh + 2000 cache-read, not the fresh count alone.
     expect(logs[0]?.inputTokens).toBe(2400);
     expect(logs[0]?.cachedInputTokens).toBe(2000);
   }, 15000);
@@ -390,8 +288,9 @@ describe('coach-agent startTurn concurrency', () => {
     const toolResultMessage = messages.find(
       (m) => m.role === 'tool' && JSON.stringify(m.content).includes('call-fen-1')
     );
-    const content = toolResultMessage?.content as Array<{ result: unknown }>;
-    expect(content[0]?.result).toEqual({
+    // Tool output is a tagged union — the payload lives under output.value.
+    const content = toolResultMessage?.content as Array<{ output: { value: unknown } }>;
+    expect(content[0]?.output.value).toEqual({
       moveNumber: 2,
       color: 'black',
       ply: 4,
@@ -425,7 +324,7 @@ describe('coach-agent startTurn concurrency', () => {
     const { model: showModel, finish: showFinish } = controllableStreamModel('Let me show you.', {
       toolCallId: 'call-show-1',
       toolName: 'show_position',
-      args: { moveNumber: 2, color: 'black' }
+      input: { moveNumber: 2, color: 'black' }
     });
     const turn1 = await coachAgent.startTurn(deps(showModel), session, { content: 'hi coach' });
     const drain1 = drain(turn1);
@@ -456,7 +355,7 @@ describe('coach-agent startTurn concurrency', () => {
     await drain(turn3);
 
     const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
-    const conversation = (snapshot?.request.messages ?? []).filter((m) => (m as { role: string }).role !== 'system');
+    const conversation = snapshot?.request.messages ?? [];
 
     // The episode's first message must be the assistant's tool-call, never a
     // bare tool-result with no matching tool-call earlier in the same request
@@ -503,36 +402,33 @@ describe('coach-agent startTurn concurrency', () => {
     // shape seen in production: the server-executed tool's result sits
     // between the tool-call message and show_position's own later-confirmed
     // result, so the naive "check one message back" guard misses it.
-    const doStream = vi.fn().mockImplementation((options: unknown) =>
-      Promise.resolve({
-        stream: new ReadableStream({
-          start(controller) {
-            controller.enqueue({
-              type: 'tool-call',
-              toolCallType: 'function',
-              toolCallId: 'call-note-1',
-              toolName: 'record_move_note',
-              args: JSON.stringify({ moveNumber: 1, color: 'white', note: 'Sharp opening.' })
-            });
-            controller.enqueue({
-              type: 'tool-call',
-              toolCallType: 'function',
-              toolCallId: 'call-show-2',
-              toolName: 'show_position',
-              args: JSON.stringify({ moveNumber: 2, color: 'black' })
-            });
-            controller.enqueue({
-              type: 'finish',
-              finishReason: 'tool-calls',
-              usage: { promptTokens: 10, completionTokens: 5 }
-            });
-            controller.close();
-          }
-        }),
-        rawCall: { rawPrompt: options, rawSettings: {} }
-      })
-    );
-    const model = new MockLanguageModelV1({ doStream });
+    const model = new MockLanguageModelV4({
+      doStream: () =>
+        Promise.resolve({
+          stream: new ReadableStream<LanguageModelV4StreamPart>({
+            start(controller) {
+              controller.enqueue({
+                type: 'tool-call',
+                toolCallId: 'call-note-1',
+                toolName: 'record_move_note',
+                input: JSON.stringify({ moveNumber: 1, color: 'white', note: 'Sharp opening.' })
+              });
+              controller.enqueue({
+                type: 'tool-call',
+                toolCallId: 'call-show-2',
+                toolName: 'show_position',
+                input: JSON.stringify({ moveNumber: 2, color: 'black' })
+              });
+              controller.enqueue({
+                type: 'finish',
+                finishReason: { unified: 'tool-calls', raw: undefined },
+                usage: mockUsage()
+              });
+              controller.close();
+            }
+          })
+        })
+    });
 
     const turn1 = await coachAgent.startTurn(deps(model), session, { content: 'hi coach' });
     await drain(turn1);
@@ -559,7 +455,7 @@ describe('coach-agent startTurn concurrency', () => {
     await drain(turn3);
 
     const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
-    const conversation = (snapshot?.request.messages ?? []).filter((m) => (m as { role: string }).role !== 'system');
+    const conversation = snapshot?.request.messages ?? [];
 
     expect(conversation[0]).toMatchObject({ role: 'assistant' });
     const toolResultToolCallIds = conversation
@@ -599,7 +495,7 @@ describe('coach-agent startTurn concurrency', () => {
     // "You are now discussing" is unique to episode-context.ts's per-turn current-position
     // block — unlike the "## Current position" heading text alone, which a tool description
     // in the static system prompt may also legitimately quote (get_engine_analysis's).
-    const currentPositionMessage = (snapshot?.request.messages ?? []).find(
+    const currentPositionMessage = (snapshot?.request.instructions ?? []).find(
       (m) => typeof (m as { content?: unknown }).content === 'string' && (m as { content: string }).content.includes('You are now discussing')
     ) as { content: string } | undefined;
     expect(currentPositionMessage?.content).toContain('This was the engine’s top choice.');
@@ -644,7 +540,7 @@ describe('coach-agent startTurn concurrency', () => {
     await drain(jumpTurn);
 
     const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
-    const requestMessages = JSON.stringify(snapshot?.request.messages);
+    const requestMessages = JSON.stringify([...(snapshot?.request.instructions ?? []), ...(snapshot?.request.messages ?? [])]);
 
     expect(requestMessages).not.toContain('Talking about move 2.');
     expect(requestMessages).toContain('different opening');
@@ -687,7 +583,7 @@ describe('coach-agent startTurn concurrency', () => {
         toolCall: {
           toolCallId: 'call-note-1',
           toolName: 'record_move_note',
-          args: { moveNumber: 0, color: null, note: 'coach note: discussed the opening plan' }
+          input: { moveNumber: 0, color: null, note: 'coach note: discussed the opening plan' }
         },
         finishReason: 'tool-calls'
       },
@@ -780,7 +676,7 @@ describe('coach-agent startTurn concurrency', () => {
     await drain(turn3);
 
     const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
-    const otherMovesLayer = snapshot?.request.messages[3] as { content: string } | undefined;
+    const otherMovesLayer = snapshot?.request.instructions[3] as { content: string } | undefined;
     expect(otherMovesLayer?.content).toContain('## Other moves discussed');
     expect(otherMovesLayer?.content).toContain('AUTO NOTE: discussed the opening move order.');
     expect(otherMovesLayer?.content).toContain('the game start');
@@ -821,7 +717,7 @@ describe('coach-agent startTurn concurrency', () => {
     await drain(turn2);
 
     const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
-    const [systemStatic, systemDynamic, systemPgn, systemOther, systemCurrent] = snapshot?.request.messages ?? [];
+    const [systemStatic, systemDynamic, systemPgn, systemOther, systemCurrent] = snapshot?.request.instructions ?? [];
     expect(systemStatic).toMatchObject({ role: 'system' });
     expect(systemDynamic).toMatchObject({ role: 'system' });
     expect(systemPgn).toMatchObject({ role: 'system' });
@@ -862,54 +758,6 @@ describe('coach-agent startTurn concurrency', () => {
     const followUp = await coachAgent.startTurn(deps(instantTextModel('Still here.')), session, { content: 'hello?' });
     await drain(followUp);
     const snapshot = await coachAgent.getLastTurnDebugSnapshot(db, session.id);
-    expect(snapshot?.request.messages.length).toBeGreaterThan(0);
+    expect(snapshot?.request.instructions.length).toBeGreaterThan(0);
   }, 20000);
 });
-
-describe('normalizeUsage', () => {
-  test('anthropic: fresh input is promptTokens as-is (already fresh-only); cache stats come from providerMetadata.anthropic', () => {
-    const usage = coachAgent.normalizeUsage(
-      'anthropic',
-      { promptTokens: 412, completionTokens: 186 },
-      { anthropic: { cacheCreationInputTokens: 0, cacheReadInputTokens: 2180 } }
-    );
-    expect(usage).toEqual({
-      freshInputTokens: 412,
-      cacheReadTokens: 2180,
-      cacheWriteTokens: 0,
-      outputTokens: 186
-    });
-  });
-
-  test('anthropic: missing providerMetadata.anthropic defaults cache stats to 0, not undefined', () => {
-    const usage = coachAgent.normalizeUsage('anthropic', { promptTokens: 100, completionTokens: 20 }, undefined);
-    expect(usage).toEqual({ freshInputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 20 });
-  });
-
-  test('openai: promptTokens already includes cached tokens, so freshInputTokens subtracts cachedPromptTokens out', () => {
-    const usage = coachAgent.normalizeUsage(
-      'openai',
-      { promptTokens: 2592, completionTokens: 186 },
-      { openai: { cachedPromptTokens: 2180 } }
-    );
-    expect(usage).toEqual({
-      freshInputTokens: 412,
-      cacheReadTokens: 2180,
-      cacheWriteTokens: null,
-      outputTokens: 186
-    });
-  });
-
-  test('openai: cacheWriteTokens is null (not 0) — OpenAI has no cache-write concept, and null must never be displayed as "nothing cached"', () => {
-    const usage = coachAgent.normalizeUsage('openai', { promptTokens: 100, completionTokens: 20 }, undefined);
-    expect(usage.cacheWriteTokens).toBeNull();
-    expect(usage).toEqual({ freshInputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: null, outputTokens: 20 });
-  });
-
-  test('a NaN usage number (seen live from OpenAI on multi-step tool-calling turns) sanitizes to 0, not a JSON-null that would fail the frontend schema', () => {
-    const usage = coachAgent.normalizeUsage('openai', { promptTokens: NaN, completionTokens: NaN }, undefined);
-    expect(usage).toEqual({ freshInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: null, outputTokens: 0 });
-    expect(JSON.parse(JSON.stringify(usage))).toEqual(usage);
-  });
-});
-

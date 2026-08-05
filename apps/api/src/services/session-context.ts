@@ -1,4 +1,5 @@
 import type { Thread } from '@chess-coach/shared';
+import { isToolResultPart, toolResultValue } from '../lib/tool-parts.js';
 
 const CHARS_PER_TOKEN = 4;
 const COMPACTION_COOLDOWN_TURNS = 20;
@@ -119,19 +120,15 @@ function latestOpenThreads(messages: StoredMessage[]): Thread[] {
 function extractUpdateThreadsResult(message: StoredMessage | undefined): Thread[] | null {
   if (!message || message.role !== 'tool' || !Array.isArray(message.content)) return null;
   for (const part of message.content) {
-    if (isUpdateThreadsResultPart(part)) return part.result;
+    if (isUpdateThreadsResultPart(part)) return toolResultValue(part) as Thread[];
   }
   return null;
 }
 
-function isUpdateThreadsResultPart(part: unknown): part is { result: Thread[] } {
-  if (typeof part !== 'object' || part === null) return false;
-  const candidate = part as { type?: unknown; toolName?: unknown; result?: unknown };
-  return (
-    candidate.type === 'tool-result' &&
-    candidate.toolName === 'update_threads' &&
-    Array.isArray(candidate.result)
-  );
+function isUpdateThreadsResultPart(part: unknown): boolean {
+  if (!isToolResultPart(part)) return false;
+  const candidate = part as { toolName?: unknown };
+  return candidate.toolName === 'update_threads' && Array.isArray(toolResultValue(part));
 }
 
 function renderThreads(threads: Thread[]): string {
