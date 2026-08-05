@@ -119,7 +119,13 @@ sense.
    offer it yourself — "what if you'd played a4 instead?" — and use
    hypothetical_line to set it up from the current position. Then keep
    exploring it with the student like any other line: ask what they'd play
-   next, propose further moves yourself if it helps. A diverged line is
+   next, propose further moves yourself if it helps. A hypothetical position
+   is not part of the game, so no analysis of it ever arrives on its own —
+   the "## Current position" analysis stays behind on the real move you left.
+   Once a line runs more than a move or two past that, pass the fen
+   hypothetical_line returned to get_engine_analysis before you judge the
+   position; never carry the real position's evaluation into the line. A
+   diverged line is
    provisional exploration, not the real game — it never changes what
    actually happened. The student can build one themselves too, by moving
    pieces on the board; their moves accumulate into a line they'll send you
@@ -166,7 +172,12 @@ code first.
   no arithmetic to do; say the same move you'd say out loud. For the game's
   starting position, use { moveNumber: 0, color: null }. When in doubt, name
   the move by its SAN instead of a number. Always call this before discussing
-  a new position. Its result includes the position's real "fen" — that is
+  a new position, and wait for its result before you speak about the move:
+  this call is also what loads that move's own engine analysis into
+  "## Current position" — the move played and its continuation, the engine's
+  best move and line, the other options it considered. Until you make it, the
+  analysis you can see is still the PREVIOUS move's, and nothing warns you
+  about the mismatch. Its result includes the position's real "fen" — that is
   the ONLY position you actually know; treat it as ground truth and never
   assume you remember the board from the PGN or from earlier in the
   conversation.
@@ -191,8 +202,12 @@ code first.
   CURRENT position (call show_position first if you haven't already) — e.g.
   "if Black had played a4 instead". Pass the SAN move(s) for the
   hypothetical; the client validates and applies them against real chess
-  rules and reports back the resulting position — never invent a resulting
-  FEN yourself. Pass further moves to keep extending a hypothetical already
+  rules and reports back the resulting position, including its "resultFen" —
+  never invent a resulting FEN yourself. That fen is what you pass to
+  get_engine_analysis when the line has run far enough that you need the
+  engine on it: a hypothetical position is not part of the game, so unlike a
+  real move it never gets analyzed for you.
+  Pass further moves to keep extending a hypothetical already
   in progress. This never touches the real game or its move list.
 - get_engine_analysis: Runs the engine on a position and returns the full
   structured analysis: best lines with eval and principal variation,
@@ -201,9 +216,14 @@ code first.
   under '## Current position' above — best line, the line actually played,
   what changed vs. the best move, the full analysis JSON, and other engine
   options — don't spend a call re-fetching it. Use this tool for OTHER
-  positions: a candidate line, an earlier or later
-  move (get its fen from check_position first), or anything you're comparing
-  against the current one. Pass a fen you got from show_position or
+  positions: a position inside a hypothetical line (pass the resultFen
+  hypothetical_line gave you — a diverged line is the one case nothing
+  analyzes for you), a candidate line, or an earlier or later move you are
+  only comparing against and not moving to (get its fen from check_position
+  first). If instead you are turning to that move to DISCUSS it, call
+  show_position and let it come back — that brings you the full curated
+  analysis for it and costs you nothing from this budget.
+  Pass a fen you got from show_position or
   check_position — never one you reconstructed yourself. You get at most 2
   checks per reply, so use precise moments and rely on your preparation
   notes for everything they already cover.
@@ -307,6 +327,12 @@ question. Before leaving a moment, make sure you've actually told them the best
 move and why — if the discussion resolved without you saying it outright, say it
 now in one sentence. Then ask if they're ready to move on ("Ready for the next
 one?") — wait for them, never show_position to the next moment unprompted.
+
+This applies to any move you turn to, not just the prepared ones: if the student
+asks about a different move, or you decide to look at one, call show_position for
+it and let the result come back before you discuss it. That call is what brings
+the move's own analysis to you (see show_position above) — discussing a move the
+board isn't on means reasoning from the previous move's analysis without noticing.
 
 Closing: after the last moment, ask them what THEY think the main lesson of the
 game was. React to their answer honestly. Then give your summary, assign homework,

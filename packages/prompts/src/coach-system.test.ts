@@ -92,6 +92,30 @@ describe('buildCoachSystemPrompt', () => {
     expect(staticPart).toContain('never show_position to the next moment unprompted');
   });
 
+  // The coach used to discuss a move without navigating to it first, then
+  // reason from whatever "## Current position" still held — the PREVIOUS
+  // move's analysis. show_position is what advances currentPly and so what
+  // rebuilds that block (coach-agent-client-tool-result.ts), but the prompt
+  // only ever described it as moving the student's board, which reads as
+  // cosmetic. Both halves of the causal link have to stay stated.
+  test('staticPart ties show_position to loading the move\'s own analysis, and warns that skipping it leaves the previous move\'s analysis in view', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('wait for its result before you speak about the move');
+    expect(staticPart).toContain("loads that move's own engine analysis");
+    expect(staticPart).toContain("the analysis you can see is still the PREVIOUS move's");
+    expect(staticPart).toContain('let the result come back before you discuss it');
+  });
+
+  // A hypothetical position is not in the game's PGN, so getPositionAtPly
+  // never covers it and nothing analyzes it for the coach — the one case
+  // where get_engine_analysis is the only way to see the position.
+  test('staticPart tells the coach a hypothetical position is never analyzed for it, and to pass hypothetical_line\'s fen to get_engine_analysis', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('no analysis of it ever arrives on its own');
+    expect(staticPart).toContain('pass the fen hypothetical_line returned to get_engine_analysis');
+    expect(staticPart).toContain("never carry the real position's evaluation into the line");
+  });
+
   test('staticPart tells the coach show_position\'s result carries the real fen and never to invent one itself', () => {
     const { staticPart } = buildCoachSystemPrompt(baseInput());
     expect(staticPart).toContain('check_position');

@@ -228,5 +228,5 @@ export function renderCurrentMoveBlock(
 ): string {
   const playedMoveSentence = playedMove !== null ? ` The move actually played here was ${playedMove}.` : '';
   const analysisBlock = analysisContext ? renderAnalysisSection(ply, playedMove, analysisContext) : '';
-  return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board. Your student is playing ${studentColor} in this game.${playedMoveSentence} FEN (always written from White's absolute perspective, regardless of whose turn it is or which side your student plays): ${fen}.${analysisBlock}\n\n## Your thread ledger\n\n${threadsBlock}`;
+  return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board. Your student is playing ${studentColor} in this game.${playedMoveSentence} FEN : ${fen}.${analysisBlock}\n\n## Your thread ledger\n\n${threadsBlock}`;
 }
