@@ -67,17 +67,6 @@ describe('MessageList', () => {
     expect(container.scrollTo).not.toHaveBeenCalled();
   });
 
-  test('calls onScrollUp when the user scrolls away from the bottom', () => {
-    const onScrollUp = vi.fn();
-    render(<MessageList messages={[msg('1', 'hi')]} onScrollUp={onScrollUp} />);
-    const container = screen.getByTestId('message-list');
-
-    setScrollGeometry(container, { scrollTop: 0, scrollHeight: 500, clientHeight: 20 });
-    fireEvent.scroll(container);
-
-    expect(onScrollUp).toHaveBeenCalledOnce();
-  });
-
   test('design.md §5.3: renders a [board_move] message as a compact move card, not raw plumbing text', () => {
     render(
       <MessageList
@@ -250,16 +239,5 @@ describe('MessageList', () => {
     expect(move.tagName).toBe('STRONG');
     await user.hover(move);
     expect(onHoverMove).toHaveBeenCalledWith({ from: 'b2', to: 'b3' });
-  });
-
-  test('does not call onScrollUp while at the bottom', () => {
-    const onScrollUp = vi.fn();
-    render(<MessageList messages={[msg('1', 'hi')]} onScrollUp={onScrollUp} />);
-    const container = screen.getByTestId('message-list');
-
-    setScrollGeometry(container, { scrollTop: 100, scrollHeight: 120, clientHeight: 20 });
-    fireEvent.scroll(container);
-
-    expect(onScrollUp).not.toHaveBeenCalled();
   });
 });

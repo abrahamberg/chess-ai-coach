@@ -17,11 +17,10 @@ const ANCHOR_POSITIONS = [
 ];
 
 describe('useSessionBoardState', () => {
-  test('starts at ply 0, undocked, no annotations', () => {
+  test('starts at ply 0 with no annotations', () => {
     const { result } = renderHook(() => useSessionBoardState(POSITIONS));
 
     expect(result.current.fen).toBe(POSITIONS[0]?.fen);
-    expect(result.current.isDocked).toBe(false);
     expect(result.current.arrows).toEqual([]);
   });
 
@@ -81,13 +80,11 @@ describe('useSessionBoardState', () => {
     expect(result.current.fen).toBe(POSITIONS[1]?.fen);
   });
 
-  test('a show_position tool call updates the fen, clears annotations, and expands a docked board', () => {
+  test('a show_position tool call updates the fen and clears annotations', () => {
     const { result } = renderHook(() => useSessionBoardState(POSITIONS));
     act(() => {
       result.current.setAnnotations({ arrows: [{ from: 'e2', to: 'e4', color: '#c9762a' }], highlights: [] });
-      result.current.collapseDock();
     });
-    expect(result.current.isDocked).toBe(true);
     expect(result.current.arrows).toHaveLength(1);
 
     let toolResult: unknown;
@@ -103,7 +100,6 @@ describe('useSessionBoardState', () => {
     // The old coach-drawn annotate_board arrow is cleared — the only arrow
     // left is the new auto pre-move red arrow for the move being discussed.
     expect(result.current.arrows).toEqual([{ from: 'g1', to: 'f3', color: 'var(--played-move)' }]);
-    expect(result.current.isDocked).toBe(false);
     expect(toolResult).toEqual({ moveNumber: 2, color: 'black', ply: 4 });
   });
 

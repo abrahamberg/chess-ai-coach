@@ -78,8 +78,6 @@ const BOARD_MOVE_PATTERN = /^\[board_move\] I played (\S+) \(position now: (.+)\
 
 export interface MessageListProps {
   messages: CoachMessage[];
-  /** design.md §5.2: mobile board-docking collapses on chat scroll-up. */
-  onScrollUp?: () => void;
   /** Clicking a PositionDivider jumps the board to that ply (peek mode). */
   onSelectPly?: (ply: number) => void;
   /** The position currently on the board — resolves bare (no move-number)
@@ -105,7 +103,6 @@ const AT_BOTTOM_THRESHOLD_PX = 24;
  * never yank them while reading history. */
 export function MessageList({
   messages,
-  onScrollUp,
   onSelectPly,
   fen = '',
   positions = NO_POSITIONS,
@@ -118,7 +115,6 @@ export function MessageList({
     const el = containerRef.current;
     if (!el) return;
     isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_THRESHOLD_PX;
-    if (!isAtBottomRef.current) onScrollUp?.();
   }
 
   useEffect(() => {

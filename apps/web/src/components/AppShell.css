@@ -40,8 +40,10 @@
   flex-direction: column;
 }
 
+/* Matches the tab bar's full occupied height — 56px plus the home-indicator
+ * inset it pads itself with — so content never sits under it. */
 .app-shell[data-layout='mobile'] .app-shell__content {
-  padding-bottom: 56px;
+  padding-bottom: calc(56px + env(safe-area-inset-bottom));
 }
 
 .bottom-tab-bar {

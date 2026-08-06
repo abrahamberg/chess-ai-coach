@@ -2,7 +2,6 @@ import { moveRefToPly } from '@chess-coach/chess-analysis';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BoardArrow, BoardHighlight } from '../board/CoachBoard.js';
 import { useAnnotationLayer, type AnnotationState } from '../board/AnnotationLayer.js';
-import { useBoardDock } from '../../hooks/useBoardDock.js';
 import type { CoachToolCall } from '../../hooks/useCoachChat.js';
 
 export interface SessionPosition {
@@ -21,9 +20,6 @@ export interface UseSessionBoardStateResult {
   arrows: BoardArrow[];
   highlights: BoardHighlight[];
   setAnnotations: (next: AnnotationState) => void;
-  isDocked: boolean;
-  collapseDock: () => void;
-  expandDock: () => void;
   /** True while the board is showing the position BEFORE the move currently
    * being discussed, with a red arrow for the move that was actually played
    * (universal default, every student). False once revealPlayedMove() has
@@ -78,9 +74,8 @@ function playedMoveArrowFor(moveUci: string | null | undefined): BoardArrow[] {
 
 /**
  * Owns the board-facing consequences of the coach's tool calls (architecture
- * §7.1): show_position moves the board and auto-expands a docked mini-board
- * (design.md §5.2), clearing any prior annotations (design.md §5.4);
- * annotate_board sets arrows/highlights. Both are client tools, so their
+ * §7.1): show_position moves the board, clearing any prior annotations
+ * (design.md §5.4); annotate_board sets arrows/highlights. Both are client tools, so their
  * return value here becomes the tool result useCoachChat posts back.
  */
 export function useSessionBoardState(
@@ -96,7 +91,6 @@ export function useSessionBoardState(
   // move actually played — see isAnchoredPreMove.
   const [revealResult, setRevealResult] = useState(true);
   const annotations = useAnnotationLayer();
-  const dock = useBoardDock();
 
   // initialPly arrives after the session fetch resolves (a later render, not
   // mount), so it must be seeded via effect rather than useState's initial
@@ -140,17 +134,15 @@ export function useSessionBoardState(
         setPreviewFen(null);
         setRevealResult(newPly === 0);
         annotations.clear();
-        dock.expand();
         return { moveNumber, color, ply: newPly };
       }
       if (toolCall.toolName === 'annotate_board') {
         annotations.setAnnotations(toolCall.input as AnnotationState);
-        dock.expand();
         return { acknowledged: true };
       }
       return undefined;
     },
-    [annotations, dock]
+    [annotations]
   );
 
   const peekAt = useCallback((newPly: number) => {
@@ -191,9 +183,6 @@ export function useSessionBoardState(
     setAnnotations: annotations.setAnnotations,
     isAnchoredPreMove,
     revealPlayedMove,
-    isDocked: dock.isCollapsed,
-    collapseDock: dock.collapse,
-    expandDock: dock.expand,
     previewMove,
     clearPreview,
     handleToolCall,

@@ -20,12 +20,29 @@ describe('SessionHeader (design.md §5.1/§5.2)', () => {
     expect(onBack).toHaveBeenCalledOnce();
   });
 
-  test('tapping reset calls onReset', async () => {
+  test('reset lives behind the ⋯ menu, not the bar itself', async () => {
     const onReset = vi.fn();
     const user = userEvent.setup();
     render(<SessionHeader whiteName="daniel" blackName="Marta" result={null} onBack={vi.fn()} onReset={onReset} />);
 
-    await user.click(screen.getByRole('button', { name: /reset session/i }));
+    expect(screen.queryByRole('menuitem', { name: /reset session/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /session options/i }));
+    await user.click(screen.getByRole('menuitem', { name: /reset session/i }));
+
     expect(onReset).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('menuitem', { name: /reset session/i })).not.toBeInTheDocument();
+  });
+
+  test('the menu closes on Escape without resetting', async () => {
+    const onReset = vi.fn();
+    const user = userEvent.setup();
+    render(<SessionHeader whiteName="daniel" blackName="Marta" result={null} onBack={vi.fn()} onReset={onReset} />);
+
+    await user.click(screen.getByRole('button', { name: /session options/i }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('menuitem', { name: /reset session/i })).not.toBeInTheDocument();
+    expect(onReset).not.toHaveBeenCalled();
   });
 });

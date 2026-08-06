@@ -122,6 +122,34 @@ describe('SessionPage', () => {
     vi.useRealTimers();
   });
 
+  test('below 768px the board and the coach are two switchable panels, not a stack', async () => {
+    mockMatchMedia(false);
+    window.localStorage.clear();
+    vi.stubGlobal('fetch', mockFetch());
+    const user = userEvent.setup();
+    renderSessionPage();
+
+    await screen.findByTestId('mock-chessboard');
+    // Opens on the coach: the composer is reachable, the board's own controls
+    // are not (both panels are mounted — only one is exposed).
+    expect(screen.getByRole('textbox', { name: /reply/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /explore on your own/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /board/i }));
+
+    expect(screen.getByRole('button', { name: /explore on your own/i })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /reply/i })).not.toBeInTheDocument();
+  });
+
+  test('at/above 768px the split layout is unchanged — board and chat together, no view switch', async () => {
+    vi.stubGlobal('fetch', mockFetch());
+    renderSessionPage();
+
+    await screen.findByTestId('mock-chessboard');
+    expect(screen.getByRole('textbox', { name: /reply/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: /session view/i })).not.toBeInTheDocument();
+  });
+
   test('loads the session and game, then renders the board oriented to the user color', async () => {
     vi.stubGlobal('fetch', mockFetch());
     renderSessionPage();
@@ -508,7 +536,8 @@ describe('SessionPage', () => {
     renderSessionPage();
 
     await screen.findByTestId('mock-chessboard');
-    await user.click(screen.getByRole('button', { name: /reset session/i }));
+    await user.click(screen.getByRole('button', { name: /session options/i }));
+    await user.click(screen.getByRole('menuitem', { name: /reset session/i }));
 
     expect(window.confirm).toHaveBeenCalled();
     await waitFor(() =>
@@ -527,7 +556,8 @@ describe('SessionPage', () => {
     renderSessionPage();
 
     await screen.findByTestId('mock-chessboard');
-    await user.click(screen.getByRole('button', { name: /reset session/i }));
+    await user.click(screen.getByRole('button', { name: /session options/i }));
+    await user.click(screen.getByRole('menuitem', { name: /reset session/i }));
 
     expect(window.confirm).toHaveBeenCalled();
     expect(fetchMock.mock.calls.some((call) => call[0] === '/api/sessions/session-1/reset')).toBe(false);

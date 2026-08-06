@@ -19,7 +19,6 @@ export interface ChatPaneProps {
   /** design.md §5.7: shows the delayed 3-dot typing indicator. */
   isThinking?: boolean;
   onSend: (content: string) => void;
-  onScrollUp?: () => void;
   /** Clicking a PositionDivider jumps the board to that ply (peek mode). */
   onSelectPly?: (ply: number) => void;
   /** design.md §5.7: the student's own right-click-drawn arrows, synced into
@@ -53,7 +52,6 @@ export function ChatPane({
   activeToolName,
   isThinking = false,
   onSend,
-  onScrollUp,
   onSelectPly,
   boardArrows = NO_ARROWS,
   hasPendingLine = false,
@@ -93,7 +91,6 @@ export function ChatPane({
       </div>
       <MessageList
         messages={messages}
-        onScrollUp={onScrollUp}
         onSelectPly={onSelectPly}
         fen={fen}
         positions={positions}

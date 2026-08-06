@@ -1,6 +1,7 @@
 /* design.md §5: the session screen. A persistent header (game context) on
- * top; below it, desktop = board column + chat column side by side,
- * mobile/tablet = board docked top, chat scrolls beneath. */
+ * top; below it, >=768px = board column + chat column side by side,
+ * <768px = two full-screen panels (Board / Coach) behind a segmented
+ * control, switched by tap or horizontal swipe. */
 
 .session-page {
   display: flex;
@@ -109,18 +110,113 @@
   margin: 12px 6px 0;
 }
 
-/* --- mobile / tablet: board docked top, chat scrolls below --- */
+/* --- mobile (<768px): Board and Coach as two switchable full-height panels
+ * --- The switch's whole state is one number, --session-view-progress:
+ * 0 = Board, 1 = Coach, fractional while a swipe is in flight. The panel
+ * track and the segmented control's indicator both read it, so the control
+ * follows the finger rather than snapping after the fact. */
 .session-body.mobile {
   flex: 1;
   min-height: 0;
 }
 
-.session-body.mobile .session-board-column {
-  position: sticky;
-  top: 0;
+.session-view-tabs {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin: 8px 12px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.session-view-tabs button {
+  position: relative;
   z-index: 1;
-  background: var(--bg);
-  border-bottom: 1px solid rgb(0 0 0 / 8%);
+  flex: 1;
+  min-height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 600;
+  transition: color 160ms ease;
+}
+
+.session-view-tabs button[aria-selected='true'] {
+  color: var(--accent-contrast);
+}
+
+.session-view-tabs button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.session-view-tabs__indicator {
+  position: absolute;
+  z-index: 0;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 5px);
+  border-radius: 999px;
+  background: var(--accent);
+  transform: translateX(calc(var(--session-view-progress, 0) * (100% + 4px)));
+  transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* The unread dot rides the label rather than the tab's corner — it reads as
+ * "the coach said something", not as a badge count. */
+.session-view-tabs__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--annotate-1);
+  vertical-align: 1px;
+}
+
+.session-view-tabs button[aria-selected='true'] .session-view-tabs__dot {
+  background: var(--accent-contrast);
+}
+
+.session-views {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.session-views__track {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  transform: translateX(calc(var(--session-view-progress, 0) * -50%));
+  transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* While a finger is down both already follow it — a transition would only
+ * lag them a frame behind the touch. */
+.session-body.mobile[data-dragging] .session-views__track,
+.session-body.mobile[data-dragging] .session-view-tabs__indicator {
+  transition: none;
+}
+
+.session-view {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 50%;
+  width: 50%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The board panel owns the full screen now, so a short viewport (iPhone SE)
+ * scrolls it rather than clipping the Explore panel off the bottom. */
+.session-body.mobile #session-panel-board {
+  overflow-y: auto;
 }
 
 .session-body.mobile .chat-pane {
@@ -128,13 +224,66 @@
   min-height: 0;
 }
 
+/* Composer clears the home indicator; the 56px tab bar itself is accounted
+ * for by .app-shell__content's padding. */
+.session-body.mobile .chat-pane form {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+/* Position context while reading the coach — shown only once the board has
+ * something to show (see hasBoardContext). */
+.session-peek-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid rgb(0 0 0 / 8%);
+  background: var(--surface);
+  text-align: left;
+}
+
+.session-peek-bar__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.session-peek-bar__cue {
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* line-height: 0 is load-bearing. react-chessboard sizes each piece with
+ * height: 100% against a square whose height comes from aspect-ratio, which
+ * doesn't resolve — so the piece box falls back to the inherited line box
+ * (16px x 1.6 = 25.6px) and the piece is pushed out of its square. Invisible
+ * on the full board, where a square is far bigger than a line; fatal at
+ * thumbnail size, where the whole board renders as empty squares. */
 .mini-board {
+  display: block;
   border: none;
   background: none;
   padding: 0;
   align-self: flex-start;
   border-radius: 8px;
   overflow: hidden;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-views__track,
+  .session-view-tabs__indicator,
+  .session-view-tabs button {
+    transition: none;
+  }
 }
 
 /* --- desktop: board column | chat column, side by side --- */

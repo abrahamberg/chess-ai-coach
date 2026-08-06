@@ -35,4 +35,13 @@ describe('MiniBoard', () => {
     await user.click(screen.getByRole('button', { name: /expand board/i }));
     expect(onExpand).toHaveBeenCalledOnce();
   });
+
+  test('without onExpand it is not a button — it nests inside one (the chat peek bar)', () => {
+    capturedOptions.length = 0;
+    render(<MiniBoard fen={START_FEN} size={72} />);
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument();
+    expect(capturedOptions.at(-1)?.allowDragging).toBe(false);
+  });
 });

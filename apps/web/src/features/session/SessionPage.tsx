@@ -10,14 +10,18 @@ import { encodeDivergedLine } from '../chat/divergedLine.js';
 import type { HoverMove } from '../chat/MessageList.js';
 import { encodePositionContext, sanForPly } from '../chat/positionDivider.js';
 import { SessionSummaryCard } from '../chat/SessionSummaryCard.js';
+import { MobileSessionBody } from './MobileSessionBody.js';
 import { SessionBoardColumn } from './SessionBoardColumn.js';
 import { SessionHeader } from './SessionHeader.js';
+import { useMobileSessionView } from './useMobileSessionView.js';
 import { useSessionPageData } from './useSessionPageData.js';
 import './SessionPage.css';
 
 /** design.md §5: composes board + chat for an active coaching session.
  * All fetching lives in useSessionPageData (AGENTS.md rule 7); this is
- * presentational — local UI state, a few small handlers, and the layout. */
+ * presentational — local UI state, a few small handlers, and the layout.
+ * At/above 768px board and chat sit side by side; below it each owns a full
+ * screen and MobileSessionBody switches between them. */
 export function SessionPage(): ReactNode {
   const { id } = useParams<{ id: string }>();
   const sessionId = id ?? '';
@@ -43,6 +47,7 @@ export function SessionPage(): ReactNode {
 
   const [boardArrows, setBoardArrows] = useState<ArrowRef[]>([]);
   const [hoverMove, setHoverMove] = useState<HoverMove>(null);
+  const mobileView = useMobileSessionView(chat.messages.length);
 
   if (sessionQuery.isLoading || gameQuery.isLoading) return <p>Loading…</p>;
   if (sessionQuery.isError || !sessionQuery.data) return <p>Could not load this session.</p>;
@@ -87,11 +92,53 @@ export function SessionPage(): ReactNode {
   }
 
   const orientation = gameQuery.data?.userColor ?? 'white';
-  const showMiniBoard = !isSideBySide && boardState.isDocked;
   // Same fen SessionBoardColumn computes for the board itself — needed here
   // too so ChatPane can resolve move mentions against the position actually
-  // on screen (design.md §5.3).
+  // on screen (design.md §5.3), and so the mobile peek shows it.
   const fen = divergedLine.fen ?? boardState.fen;
+
+  const board = (
+    <SessionBoardColumn
+      boardState={boardState}
+      divergedLine={divergedLine}
+      currentRealPosition={currentRealPosition}
+      orientation={orientation}
+      sanMoves={sanMoves}
+      positions={positions}
+      classifiedMoves={gameQuery.data?.classifiedMoves}
+      isDesktop={isDesktop}
+      engine={engine}
+      autoplayIntervalMs={autoplayIntervalMs}
+      onChangeAutoplayInterval={setAutoplayIntervalMs}
+      sendMessage={(content) => void chat.sendMessage(content)}
+      onArrowsChange={setBoardArrows}
+      hoverMove={hoverMove}
+    />
+  );
+
+  const chatPanel =
+    session.status === 'paused_no_credits' ? (
+      <div className="session-paused-card">
+        <p>The session is saved. Add credits or your own API key to continue.</p>
+        <button type="button" onClick={() => navigate('/settings')}>
+          Add credits
+        </button>
+      </div>
+    ) : (
+      <ChatPane
+        sessionId={sessionId}
+        messages={chat.messages}
+        activeToolName={chat.activeToolName}
+        isThinking={chat.isThinking}
+        onSend={handleSendMessage}
+        onSelectPly={peekAt}
+        boardArrows={boardArrows}
+        hasPendingLine={Boolean(divergedLine.line)}
+        fen={fen}
+        positions={positions}
+        onHoverMove={setHoverMove}
+      />
+    );
 
   return (
     <div className="session-page">
@@ -102,67 +149,45 @@ export function SessionPage(): ReactNode {
         onBack={() => navigate('/games')}
         onReset={handleReset}
       />
-      <div className={isSideBySide ? 'session-body desktop' : 'session-body mobile'}>
-        {isDesktop &&
-          (divergedLine.line ? (
-            <DivergedLinePanel
-              line={divergedLine.line}
-              stepIndex={divergedLine.stepIndex}
-              onSelectStep={divergedLine.previewStep}
-              onExit={divergedLine.exit}
-              autoplayIntervalMs={autoplayIntervalMs}
-              onChangeAutoplayInterval={setAutoplayIntervalMs}
-            />
-          ) : (
-            <MoveExplorer
-              sanMoves={sanMoves}
-              classifiedMoves={gameQuery.data?.classifiedMoves ?? []}
-              positions={positions}
-              currentPly={boardState.ply}
-              onSelect={peekAt}
-            />
-          ))}
-        <SessionBoardColumn
-          boardState={boardState}
-          divergedLine={divergedLine}
-          currentRealPosition={currentRealPosition}
-          orientation={orientation}
-          showMiniBoard={showMiniBoard}
-          sanMoves={sanMoves}
-          positions={positions}
-          classifiedMoves={gameQuery.data?.classifiedMoves}
-          isDesktop={isDesktop}
-          engine={engine}
-          autoplayIntervalMs={autoplayIntervalMs}
-          onChangeAutoplayInterval={setAutoplayIntervalMs}
-          sendMessage={(content) => void chat.sendMessage(content)}
-          onArrowsChange={setBoardArrows}
-          hoverMove={hoverMove}
+      {isSideBySide ? (
+        <div className="session-body desktop">
+          {isDesktop &&
+            (divergedLine.line ? (
+              <DivergedLinePanel
+                line={divergedLine.line}
+                stepIndex={divergedLine.stepIndex}
+                onSelectStep={divergedLine.previewStep}
+                onExit={divergedLine.exit}
+                autoplayIntervalMs={autoplayIntervalMs}
+                onChangeAutoplayInterval={setAutoplayIntervalMs}
+              />
+            ) : (
+              <MoveExplorer
+                sanMoves={sanMoves}
+                classifiedMoves={gameQuery.data?.classifiedMoves ?? []}
+                positions={positions}
+                currentPly={boardState.ply}
+                onSelect={peekAt}
+              />
+            ))}
+          {board}
+          {chatPanel}
+        </div>
+      ) : (
+        <MobileSessionBody
+          board={board}
+          chat={chatPanel}
+          fen={fen}
+          boardContext={{
+            mode: boardState.mode,
+            ply: boardState.ply,
+            san: sanForPly(sanMoves, boardState.ply),
+            hasDivergedLine: Boolean(divergedLine.line),
+            isAnchoredPreMove: boardState.isAnchoredPreMove
+          }}
+          viewState={mobileView}
         />
-        {session.status === 'paused_no_credits' ? (
-          <div className="session-paused-card">
-            <p>The session is saved. Add credits or your own API key to continue.</p>
-            <button type="button" onClick={() => navigate('/settings')}>
-              Add credits
-            </button>
-          </div>
-        ) : (
-          <ChatPane
-            sessionId={sessionId}
-            messages={chat.messages}
-            activeToolName={chat.activeToolName}
-            isThinking={chat.isThinking}
-            onSend={handleSendMessage}
-            onScrollUp={boardState.collapseDock}
-            onSelectPly={peekAt}
-            boardArrows={boardArrows}
-            hasPendingLine={Boolean(divergedLine.line)}
-            fen={fen}
-            positions={positions}
-            onHoverMove={setHoverMove}
-          />
-        )}
-      </div>
+      )}
     </div>
   );
 }

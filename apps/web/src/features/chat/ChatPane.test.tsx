@@ -1,22 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatPane } from './ChatPane.js';
 
 describe('ChatPane', () => {
-  test('forwards MessageList scroll-up to onScrollUp', () => {
-    const onScrollUp = vi.fn();
-    render(<ChatPane sessionId="test-session" messages={[]} activeToolName={null} onSend={vi.fn()} onScrollUp={onScrollUp} />);
-
-    const container = screen.getByTestId('message-list');
-    Object.defineProperty(container, 'scrollTop', { value: 0, configurable: true });
-    Object.defineProperty(container, 'scrollHeight', { value: 500, configurable: true });
-    Object.defineProperty(container, 'clientHeight', { value: 20, configurable: true });
-    fireEvent.scroll(container);
-
-    expect(onScrollUp).toHaveBeenCalledOnce();
-  });
-
   test('sends the input text and clears it', async () => {
     const onSend = vi.fn();
     const user = userEvent.setup();

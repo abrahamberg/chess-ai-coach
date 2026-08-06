@@ -5,7 +5,6 @@ import { CoachBoard, type BoardArrow, type BoardHighlight } from '../board/Coach
 import { DivergedLinePanel } from '../board/DivergedLinePanel.js';
 import { EvalBar } from '../board/EvalBar.js';
 import { ExplorePanel } from '../board/ExplorePanel.js';
-import { MiniBoard } from '../board/MiniBoard.js';
 import { MoveStrip } from '../board/MoveStrip.js';
 import type { ArrowRef } from '../chat/arrowToken.js';
 import { encodeDivergedLine } from '../chat/divergedLine.js';
@@ -21,7 +20,6 @@ export interface SessionBoardColumnProps {
   divergedLine: ReturnType<typeof useDivergedLine>;
   currentRealPosition: { ply: number; fen: string };
   orientation: 'white' | 'black';
-  showMiniBoard: boolean;
   sanMoves: string[];
   /** ply-indexed positions (ply 0 = game start) — threaded through to
    * MoveStrip for the move analysis inspector's fen lookup. */
@@ -63,7 +61,6 @@ export function SessionBoardColumn({
   divergedLine,
   currentRealPosition,
   orientation,
-  showMiniBoard,
   sanMoves,
   positions,
   classifiedMoves,
@@ -113,23 +110,19 @@ export function SessionBoardColumn({
 
   return (
     <div className="session-board-column">
-      {showMiniBoard ? (
-        <MiniBoard fen={fen} size={96} onExpand={boardState.expandDock} />
-      ) : (
-        <div className="session-board-row">
-          <EvalBar ply={boardState.ply} classifiedMoves={classifiedMoves ?? []} orientation={orientation} />
-          <CoachBoard
-            fen={fen}
-            orientation={orientation}
-            mode={boardState.mode}
-            arrows={[...boardState.arrows, ...hoverMoveArrowsFor(hoverMove)]}
-            highlights={[...boardState.highlights, ...hoverMoveHighlightsFor(hoverMove)]}
-            onUserMove={handleUserMove}
-            onLocalMove={boardState.previewMove}
-            onArrowsChange={onArrowsChange}
-          />
-        </div>
-      )}
+      <div className="session-board-row">
+        <EvalBar ply={boardState.ply} classifiedMoves={classifiedMoves ?? []} orientation={orientation} />
+        <CoachBoard
+          fen={fen}
+          orientation={orientation}
+          mode={boardState.mode}
+          arrows={[...boardState.arrows, ...hoverMoveArrowsFor(hoverMove)]}
+          highlights={[...boardState.highlights, ...hoverMoveHighlightsFor(hoverMove)]}
+          onUserMove={handleUserMove}
+          onLocalMove={boardState.previewMove}
+          onArrowsChange={onArrowsChange}
+        />
+      </div>
       {pendingMove && (
         <p className="undo-pill">
           Sending {pendingMove.san}…{' '}

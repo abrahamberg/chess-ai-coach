@@ -38,12 +38,60 @@
   font-size: 14px;
 }
 
-.session-header__reset {
-  background: none;
-  border: 1px solid rgb(0 0 0 / 12%);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 12px;
-  color: var(--text-muted);
+.session-header__menu {
+  position: relative;
   flex-shrink: 0;
+}
+
+.session-header__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.session-header__more:hover,
+.session-header__more[aria-expanded='true'] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Anchored to the button's right edge so it can never run off-screen on a
+ * phone, where the header sits flush against the viewport. */
+.session-header__menu-items {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 10;
+  min-width: 168px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid rgb(0 0 0 / 8%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+}
+
+.session-header__menu-items button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-size: 15px;
+  text-align: left;
+}
+
+.session-header__menu-items button:hover {
+  background: var(--surface-2);
 }
