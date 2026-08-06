@@ -12,11 +12,6 @@ Socratically while tracking their progress over time. The initial build
 
 - `docs/architecture.md` — how it fits together (layout, DB, agent, K8s). Always relevant.
 
-  if something comming up to to lated append to the end of this doc.(dont read it if you are not working with it)
-- `docs/specs.md` — product invariants (differentiator, out-of-scope list, success
-  criteria). Read when adding a feature or scope is ambiguous — not for routine bug fixes.
-- `docs/plan.md` — remaining work only; the build is done and git log has that
-  history. Only two open deferred-work items live here now.
 
 ## Commands
 
