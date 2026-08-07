@@ -112,6 +112,25 @@ describe('buildCoachTools', () => {
     );
   });
 
+  test('defaults to analyze mode: play mode\'s 3 tools (get_candidate_moves, play_coach_move, undo_last_move) are absent unless mode is explicitly "play"', async () => {
+    const ctx = await setupCtx();
+    const tools = buildCoachTools(ctx, makeDeps());
+
+    expect(tools.get_candidate_moves).toBeUndefined();
+    expect(tools.play_coach_move).toBeUndefined();
+    expect(tools.undo_last_move).toBeUndefined();
+  });
+
+  test('mode: "play" adds get_candidate_moves, play_coach_move, and undo_last_move alongside the 13 analyze-mode tools, without removing any of them', async () => {
+    const ctx = await setupCtx();
+    const tools = buildCoachTools(ctx, makeDeps(), 'play');
+
+    expect(tools.get_candidate_moves).toBeDefined();
+    expect(tools.play_coach_move).toBeDefined();
+    expect(tools.undo_last_move).toBeDefined();
+    expect(Object.keys(tools)).toHaveLength(16);
+  });
+
   test('show_position, annotate_board, expect_move, and hypothetical_line have no execute (client tools)', async () => {
     const ctx = await setupCtx();
     const tools = buildCoachTools(ctx, makeDeps());

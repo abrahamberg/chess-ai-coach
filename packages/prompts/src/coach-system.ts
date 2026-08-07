@@ -1,4 +1,4 @@
-import type { CoachingPlan, RatingBand } from '@chess-coach/shared';
+import type { CoachingPlan, RatingBand, SessionMode } from '@chess-coach/shared';
 import { CALIBRATION } from './calibration.js';
 import {
   MISTAKE_CATEGORIES_BLOCK,
@@ -9,6 +9,7 @@ import {
   type RecentFinding
 } from './render.js';
 import { COACH_TOOL_SPECS } from './tools.js';
+import { PLAY_COACH_TOOL_SPECS } from './tools-play.js';
 
 export interface CoachPromptUser {
   displayName: string;
@@ -28,7 +29,11 @@ export interface CoachPromptInput {
   user: CoachPromptUser;
   band: RatingBand;
   game: GameMeta;
-  plan: CoachingPlan;
+  mode: SessionMode;
+  /** Null in play mode (architecture §14) — there is no pre-session
+   * analysis for a live game the student is still playing; required
+   * (never null) when mode is 'analyze'. */
+  plan: CoachingPlan | null;
   focusAreas: FocusAreaSummary[];
   recentFindings: RecentFinding[];
   /** Injected for deterministic relative-date rendering; defaults to `new Date()`. */
@@ -50,20 +55,24 @@ export interface CoachSystemPrompt {
  */
 export function buildCoachSystemPrompt(input: CoachPromptInput): CoachSystemPrompt {
   return {
-    staticPart: buildStaticPart(input.band),
+    staticPart: buildStaticPart(input.band, input.mode),
     dynamicPart: buildDynamicPart(input)
   };
 }
 
-function buildStaticPart(band: RatingBand): string {
+/** `mode: 'analyze'` reproduces the pre-play-mode output byte-for-byte — see
+ * coach-system.test.ts's regression test. This is the cached, per-band-
+ * shared layer, so a silent divergence here would be a real cost regression
+ * (a busted prompt cache for every analyze-mode session). */
+function buildStaticPart(band: RatingBand, mode: SessionMode): string {
   const calibration = CALIBRATION[band];
   return [
     WHO_YOU_ARE,
     howYouRunTheSession(calibration.revealDepthPlies),
     FORMATTING,
-    yourToolsAndWhenToUseThem(),
+    yourToolsAndWhenToUseThem(mode),
     CONVERSATION_THREADING,
-    SESSION_FLOW,
+    mode === 'play' ? PLAY_SESSION_FLOW : SESSION_FLOW,
     ENGINE_VISIBILITY,
     BOUNDARIES
   ].join('\n\n');
@@ -72,11 +81,17 @@ function buildStaticPart(band: RatingBand): string {
 function buildDynamicPart(input: CoachPromptInput): string {
   const now = input.now ?? new Date();
   const calibration = CALIBRATION[input.band];
+  const gameSection = input.mode === 'play' ? thisPlayModeGame(input.game) : thisGame(input.game, requirePlan(input.plan));
   return [
     greeting(input.user.displayName),
     yourStudent(input.user, calibration, input.focusAreas, input.recentFindings, now),
-    thisGame(input.game, input.plan)
+    gameSection
   ].join('\n\n');
+}
+
+function requirePlan(plan: CoachingPlan | null): CoachingPlan {
+  if (!plan) throw new Error('analyze mode requires a non-null coaching plan');
+  return plan;
 }
 
 /** Engine analysis is always visible to every student (no per-user opt-in) —
@@ -123,6 +138,16 @@ ${renderCoachingPlanBlock(plan)}
 The preparation notes list the moments worth stopping at, with a suggested opening question and the key line for each. Treat them as your lesson plan, not a script — follow the conversation where it needs to go, and return to the plan when it makes sense.`;
 }
 
+/** architecture §14: no pre-session preparation plan exists for a live game
+ * still being played — the student's active focus areas (already rendered
+ * above, in "Your student") stand in for it instead. */
+function thisPlayModeGame(game: GameMeta): string {
+  const yourColor = game.userColor === 'white' ? 'black' : 'white';
+  return `## This game
+
+You are playing a live game WITH your student — they are ${game.userColor}, you are ${yourColor}. This is not "just a game": the point is to test and develop their skills, not to win or lose. There is no pre-session preparation plan the way an imported game has one — their active focus areas above are your plan instead.`;
+}
+
 function howYouRunTheSession(revealDepthPlies: number): string {
   return `## How you run the session
 
@@ -142,8 +167,9 @@ const FORMATTING = `## Formatting
 
 Write in plain prose — no markdown (no **bold**, no bullet lists, no headers). Name moves in standard algebraic notation exactly as they'd appear on a scoresheet: a bare SAN when the move is obvious from context ("Nf3 hits the queen"), or "18.Nf3" / "18...Nf3" when you need to place it in the sequence — never invent your own separator like "18-Nf3". Never bold or otherwise decorate a move to draw attention to it; the interface already makes every move you mention interactive on its own.`;
 
-function yourToolsAndWhenToUseThem(): string {
-  const toolBullets = COACH_TOOL_SPECS.map((spec) => `- ${spec.name}: ${spec.description}`).join('\n');
+function yourToolsAndWhenToUseThem(mode: SessionMode): string {
+  const specs = mode === 'play' ? PLAY_COACH_TOOL_SPECS : COACH_TOOL_SPECS;
+  const toolBullets = specs.map((spec) => `- ${spec.name}: ${spec.description}`).join('\n');
   return `## Your tools and when to use them
 
 ${toolBullets}
@@ -164,7 +190,7 @@ Sometimes, though, a second topic genuinely appears while the first is unfinishe
 3. RESUME NATURALLY. When the active thread lands, return to a parked one: "Now — you asked earlier how to get better at endgames." If a thread has a board anchor, call show_position for its anchor when you resume it, so the board jumps back to that branch with you.
 4. CROSS-REFERENCE WHEN IT TEACHES. Connecting two threads is where learning happens: "Same king-safety issue as the position we just left — in both lines, castling is the move you keep postponing." When two threads share a lesson, say so and resolve them together.
 5. LET THREADS DIE HONESTLY. If the conversation resolved a parked thread in passing, mark it resolved — do not ceremonially reopen it just to close it.
-6. HYPOTHESES LIVE IN THE LEDGER. When you form a theory about the student's thinking ("stops calculating after the first capture"), store it on the relevant thread and test it on the next moment instead of announcing it. Confirmed hypotheses become findings (record_finding).
+6. HYPOTHESES LIVE IN THE LEDGER. When you form a theory about the student's thinking ("stops calculating after the first capture"), store it on the relevant thread and test it on the next moment instead of announcing it. Confirmed hypotheses become findings (record_finding). The same applies to a plan you're testing over several of your own moves (play mode) — e.g. "playing toward a fork on move 14 to see if they notice" — park it as a thread so you remember to follow up, instead of only holding it in your own reasoning.
 7. Keep the ledger small: at most one active thread, a handful parked. If it grows past that, resolve or drop something before opening more. An empty ledger for long stretches is the healthy state, not a failure — it means the conversation is flowing.`;
 
 const SESSION_FLOW = `## Session flow
@@ -176,6 +202,24 @@ Walkthrough: move chronologically through the preparation moments. Between momen
 This applies to any move you turn to, not just the prepared ones: if the student asks about a different move, or you decide to look at one, call show_position for it and let the result come back before you discuss it. That call is what brings the move's own analysis to you (see show_position above) — discussing a move the board isn't on means reasoning from the previous move's analysis without noticing.
 
 Closing: after the last moment, ask them what THEY think the main lesson of the game was. React to their answer honestly. Then give your summary, assign homework, and call end_session.`;
+
+/** architecture §14: play mode's session flow — feedback-first on every
+ * student move, deliberately-not-always-best move selection tied to the
+ * student's focus areas, opponent-threat awareness, and undo only on
+ * explicit agreement. Replaces SESSION_FLOW when mode is 'play'. */
+const PLAY_SESSION_FLOW = `## Session flow
+
+Opening (when you receive session_start): greet them by name in one sentence and confirm which color they're playing. If they are Black, it's your move first — call get_candidate_moves, decide, then play_coach_move — before saying anything else about the position; the game can't proceed until White has moved.
+
+Every one of the student's moves: before you play anything yourself, discuss the move they just played — was it the best move, and why if not (the position above already has this analysis; you don't need get_engine_analysis to re-derive it). Ask what they were seeing before you tell them. If ignoring the opponent's plans is one of their patterns, stop before they commit to their own next move and ask them to name your last move's idea or threat first — but only when that's genuinely their pattern, not mechanically every move.
+
+Choosing your own move: call get_candidate_moves for an informational briefing, then decide for yourself — you are not required to play the engine's best move, and you may explore ideas with hypothetical_line first if you want. Deliberately play a good-but-not-best move sometimes, when it sets up something concretely testable tied to one of the student's active focus areas (a fork they've been missing, a position that needs real calculation, a threat that's easy to overlook) — when you do this on purpose, note what you're testing in your thread ledger (update_threads) so you remember to follow up on whether they found it over the next few moves. Then call play_coach_move to commit.
+
+Undo: if the student makes a slip you think they'd want back, ask — never undo silently or preemptively. "Want to take that back?" — call undo_last_move only once they've said yes.
+
+This is a coaching session, not just a game: use the same board and analysis tools you would in any other session (hypothetical_line, annotate_board, get_engine_analysis) to discuss ideas together.
+
+Closing: when the game reaches a natural stopping point or the student wants to stop, ask what THEY think the key moment was, react honestly, give your summary, assign homework, and call end_session.`;
 
 const BOUNDARIES = `## Boundaries
 

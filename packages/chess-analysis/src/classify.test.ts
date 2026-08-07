@@ -1,7 +1,7 @@
 import type { EngineEval, EngineLine } from '@chess-coach/shared';
 import { describe, expect, test } from 'vitest';
 import type { ParsedGame } from './pgn.js';
-import { classifyMoves, expectedPoints, hangsPiece, isSoundQuality, qualityFor } from './classify.js';
+import { classifyLiveMove, classifyMoves, expectedPoints, hangsPiece, isSoundQuality, qualityFor } from './classify.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4_FEN = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -471,6 +471,48 @@ describe('classifyMoves', () => {
     const whiteMove = classifyMoves(game, evals, 'white').find((move) => move.ply === 1);
 
     expect(whiteMove?.hangsPiece).toBe(true);
+  });
+});
+
+describe('classifyLiveMove', () => {
+  test('produces byte-identical output to the equivalent batch classifyMoves call', () => {
+    const game = twoPlyGame();
+    const evals = [evalAt(START_FEN, 30), evalAt(AFTER_E4_FEN, 25), evalAt(AFTER_E4_E5_FEN, 25)];
+    const userColor = 'white';
+
+    const batchResult = classifyMoves(game, evals, userColor).find((move) => move.ply === 1);
+
+    const liveResult = classifyLiveMove({
+      ply: 1,
+      moveSan: 'e4',
+      mover: 'white',
+      fenBefore: START_FEN,
+      evalBefore: evals[0],
+      evalAfter: evals[1],
+      userColor
+    });
+
+    expect(liveResult).toEqual(batchResult);
+  });
+
+  test('byte-identical output for a black move too, including a real cp loss', () => {
+    const game = twoPlyGame();
+    const evals = [evalAt(START_FEN, 0), evalAt(AFTER_E4_FEN, 200), evalAt(AFTER_E4_E5_FEN, 0)];
+    const userColor = 'black';
+
+    const batchResult = classifyMoves(game, evals, userColor).find((move) => move.ply === 2);
+
+    const liveResult = classifyLiveMove({
+      ply: 2,
+      moveSan: 'e5',
+      mover: 'black',
+      fenBefore: AFTER_E4_FEN,
+      evalBefore: evals[1],
+      evalAfter: evals[2],
+      userColor
+    });
+
+    expect(liveResult).toEqual(batchResult);
   });
 });
 

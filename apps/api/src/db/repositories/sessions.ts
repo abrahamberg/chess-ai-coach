@@ -1,5 +1,5 @@
 import type { Kysely } from 'kysely';
-import type { Thread } from '@chess-coach/shared';
+import type { SessionMode, Thread } from '@chess-coach/shared';
 import type { Database } from '../schema.js';
 
 export type SessionStatus = 'active' | 'completed' | 'paused_no_credits' | 'abandoned';
@@ -9,6 +9,7 @@ export interface SessionRow {
   gameId: string;
   userId: string;
   status: SessionStatus;
+  mode: SessionMode;
   currentPly: number;
   summary: string | null;
   homework: string | null;
@@ -21,6 +22,7 @@ const BASE_COLUMNS = [
   'gameId',
   'userId',
   'status',
+  'mode',
   'currentPly',
   'summary',
   'homework',
@@ -31,6 +33,8 @@ const BASE_COLUMNS = [
 export interface NewSession {
   gameId: string;
   userId: string;
+  /** Defaults to 'analyze' (today's only mode) when omitted. */
+  mode?: SessionMode;
 }
 
 export function insert(db: Kysely<Database>, values: NewSession): Promise<SessionRow> {

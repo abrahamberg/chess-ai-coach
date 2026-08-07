@@ -34,6 +34,7 @@ export function SessionPage(): ReactNode {
     gameQuery,
     sanMoves,
     positions,
+    classifiedMoves,
     boardState,
     divergedLine,
     currentRealPosition,
@@ -42,7 +43,8 @@ export function SessionPage(): ReactNode {
     setAutoplayIntervalMs,
     engine,
     chat,
-    handleReset
+    handleReset,
+    handlePlayMoveCommitted
   } = useSessionPageData(sessionId);
 
   const [boardArrows, setBoardArrows] = useState<ArrowRef[]>([]);
@@ -113,6 +115,9 @@ export function SessionPage(): ReactNode {
       sendMessage={(content) => void chat.sendMessage(content)}
       onArrowsChange={setBoardArrows}
       hoverMove={hoverMove}
+      sessionMode={session.mode}
+      sessionId={sessionId}
+      onPlayMoveCommitted={handlePlayMoveCommitted}
     />
   );
 

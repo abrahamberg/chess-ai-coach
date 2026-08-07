@@ -1,5 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { errorFrame, reasoningFrames, textDeltaFrame, textFrames, textStartFrame, toolCallFrame } from '../../test/helpers/uiMessageStream.js';
+import {
+  errorFrame,
+  reasoningFrames,
+  textDeltaFrame,
+  textFrames,
+  textStartFrame,
+  toolCallFrame,
+  toolOutputFrame
+} from '../../test/helpers/uiMessageStream.js';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { useCoachChat } from './useCoachChat.js';
 
@@ -334,6 +342,54 @@ describe('useCoachChat', () => {
     expect(errorSpy).toHaveBeenCalledWith('coach stream error:', 'provider exploded');
     expect(result.current.messages.at(-1)?.text).toBe('Partial');
     errorSpy.mockRestore();
+  });
+
+  // architecture §14: play_coach_move/undo_last_move are server-executed —
+  // their result is already final by the time the chunk arrives, so this
+  // reports it without a client round-trip (unlike show_position above).
+  test('a play_coach_move server tool output invokes onServerToolResult with its toolName and output', async () => {
+    const onServerToolResult = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      streamResponse([
+        toolCallFrame({ toolCallId: 'call-10', toolName: 'play_coach_move', input: { san: 'Nf3' } }),
+        toolOutputFrame('call-10', { fen: 'fen-after', san: 'Nf3', ply: 3, quality: 'best' }),
+        ...textFrames('Good, now what?')
+      ])
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1', { onServerToolResult }));
+    await act(async () => {
+      await result.current.sendMessage('your move');
+    });
+
+    expect(onServerToolResult).toHaveBeenCalledWith('play_coach_move', {
+      fen: 'fen-after',
+      san: 'Nf3',
+      ply: 3,
+      quality: 'best'
+    });
+    // Server tools resolve inline — no extra round-trip like a client tool gets.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('a server tool output for a tool with nothing to render (e.g. get_candidate_moves) does not invoke onServerToolResult', async () => {
+    const onServerToolResult = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      streamResponse([
+        toolCallFrame({ toolCallId: 'call-11', toolName: 'get_candidate_moves', input: { fen: 'some-fen' } }),
+        toolOutputFrame('call-11', { briefing: 'internal briefing text' }),
+        ...textFrames('ok')
+      ])
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useCoachChat('session-1', { onServerToolResult }));
+    await act(async () => {
+      await result.current.sendMessage('what should I play?');
+    });
+
+    expect(onServerToolResult).not.toHaveBeenCalled();
   });
 
   // Reasoning is routed to the debug popup, never the student's transcript

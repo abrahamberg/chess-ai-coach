@@ -1,5 +1,5 @@
 import type { ColumnType, Generated } from 'kysely';
-import type { MistakeCategory, RatingBand } from '@chess-coach/shared';
+import type { MistakeCategory, MoveQuality, RatingBand, SessionMode } from '@chess-coach/shared';
 
 /** jsonb columns: pg parses them to JS values on select; inserts/updates must pass a JSON string. */
 type Jsonb<T> = ColumnType<T, string, string>;
@@ -27,7 +27,7 @@ export interface GamesTable {
   id: Generated<string>;
   userId: string;
   pgn: string;
-  source: 'paste' | 'upload' | 'lichess';
+  source: 'paste' | 'upload' | 'lichess' | 'coach_play';
   userColor: 'white' | 'black';
   whiteName: string | null;
   blackName: string | null;
@@ -55,6 +55,7 @@ export interface SessionsTable {
   gameId: string;
   userId: string;
   status: 'active' | 'completed' | 'paused_no_credits' | 'abandoned';
+  mode: Generated<SessionMode>;
   currentPly: Generated<number>;
   threads: ColumnType<unknown, string | undefined, string>;
   debugSnapshot: ColumnType<unknown, string | null | undefined, string | null>;
@@ -116,6 +117,19 @@ export interface CreditLedgerTable {
   createdAt: Generated<Date>;
 }
 
+export interface GameMoveQualitiesTable {
+  id: Generated<string>;
+  gameId: string;
+  ply: number;
+  moveSan: string;
+  mover: 'white' | 'black';
+  quality: MoveQuality;
+  cpLoss: number;
+  bestLineSan: Jsonb<string[]>;
+  evalAfterCp: number;
+  createdAt: Generated<Date>;
+}
+
 export interface PositionEvaluationsTable {
   fen: string;
   depth: number;
@@ -151,4 +165,5 @@ export interface Database {
   creditLedger: CreditLedgerTable;
   llmCallLog: LlmCallLogTable;
   positionEvaluations: PositionEvaluationsTable;
+  gameMoveQualities: GameMoveQualitiesTable;
 }

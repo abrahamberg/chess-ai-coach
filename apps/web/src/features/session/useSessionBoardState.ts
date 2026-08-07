@@ -48,6 +48,19 @@ export interface UseSessionBoardStateResult {
    * promotes the peeked position to the new coach position in place — unlike
    * backToCoach, this does not move the board back to the old coachPly. */
   anchorHere: () => void;
+  /** architecture §14 (play mode): the board-facing consequences of a move
+   * just committed server-side — the student's own move (POST /play-move)
+   * or the coach's (the play_coach_move tool's result). Similar to
+   * show_position's branch of handleToolCall, but reveals immediately
+   * (revealResult: true) rather than anchoring pre-move — that anchor
+   * exists to let the student guess before seeing a move under REVIEW
+   * (analyze mode); a move just actually played live has nothing to guess,
+   * hiding it behind a reveal click would just be confusing. The caller is
+   * expected to also append `{ply: newPly, fen, moveUci}` to the `positions`
+   * array it passes this hook, but doesn't have to land in the very same
+   * render — fen/moveUci are kept as a local fallback for the new ply until
+   * `positions` catches up, so the board is always correct on read. */
+  applyServerMove: (newPly: number, fen: string, moveUci?: string | null) => void;
 }
 
 /** UCI encodes a move as `<from><to>[promotion]` (chess-analysis's parsePgn),
@@ -86,6 +99,10 @@ export function useSessionBoardState(
   const [mode, setMode] = useState<BoardMode>('answer');
   const [coachPly, setCoachPly] = useState(0);
   const [previewFen, setPreviewFen] = useState<string | null>(null);
+  // Fallback for applyServerMove's new ply until the caller's `positions`
+  // array — owned outside this hook — actually contains it (same render or
+  // a later one; both must work, see applyServerMove's doc comment).
+  const [pendingServerPosition, setPendingServerPosition] = useState<SessionPosition | null>(null);
   // Universal default, every student: a fresh show_position anchors the
   // board one ply BEFORE the move being discussed, with a red arrow for the
   // move actually played — see isAnchoredPreMove.
@@ -106,7 +123,10 @@ export function useSessionBoardState(
     }
   }, [initialPly]);
 
-  const currentPosition = positions.find((position) => position.ply === ply) ?? positions[0];
+  const currentPosition =
+    positions.find((position) => position.ply === ply) ??
+    (pendingServerPosition?.ply === ply ? pendingServerPosition : undefined) ??
+    positions[0];
   const isAnchoredPreMove = mode === 'answer' && !revealResult && ply > 0 && Boolean(currentPosition?.moveUci);
   const displayPosition = isAnchoredPreMove
     ? (positions.find((position) => position.ply === ply - 1) ?? currentPosition)
@@ -173,6 +193,22 @@ export function useSessionBoardState(
     setRevealResult(true);
   }, []);
 
+  const applyServerMove = useCallback(
+    (newPly: number, fen: string, moveUci?: string | null) => {
+      setPendingServerPosition({ ply: newPly, fen, moveUci: moveUci ?? null });
+      setPly(newPly);
+      setCoachPly(newPly);
+      setMode('answer');
+      setPreviewFen(null);
+      // Always reveal immediately — unlike show_position's pre-move anchor
+      // (a deliberate "guess before you see it" quiz device for reviewing a
+      // past move), a move just actually played live has nothing to guess.
+      setRevealResult(true);
+      annotations.clear();
+    },
+    [annotations]
+  );
+
   return {
     fen,
     ply,
@@ -188,6 +224,7 @@ export function useSessionBoardState(
     handleToolCall,
     peekAt,
     backToCoach,
-    anchorHere
+    anchorHere,
+    applyServerMove
   };
 }

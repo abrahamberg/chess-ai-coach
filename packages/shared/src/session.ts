@@ -1,8 +1,15 @@
 import { z } from 'zod';
 import { FindingSchema, FocusAreaUpdateSchema } from './finding.js';
+import { PlayerColorSchema } from './game.js';
 
 export const SessionStatusSchema = z.enum(['active', 'completed', 'paused_no_credits', 'abandoned']);
 export type SessionStatus = z.infer<typeof SessionStatusSchema>;
+
+/** 'analyze': walking through an already-finished imported game (today's only
+ * mode). 'play': a live sparring game against the coach — see architecture.md
+ * §14 for the full play-mode design. */
+export const SessionModeSchema = z.enum(['analyze', 'play']);
+export type SessionMode = z.infer<typeof SessionModeSchema>;
 
 export const SessionOutcomeSchema = z.object({
   sessionSummary: z.string(),
@@ -16,6 +23,20 @@ export const CreateSessionRequestSchema = z.object({
   gameId: z.string().min(1)
 });
 export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
+
+/** architecture §14: starts a fresh live sparring game — no gameId, since
+ * play mode creates its own `coach_play` game rather than importing one. */
+export const CreatePlaySessionRequestSchema = z.object({
+  studentColor: PlayerColorSchema
+});
+export type CreatePlaySessionRequest = z.infer<typeof CreatePlaySessionRequestSchema>;
+
+/** POST /api/sessions/:id/play-move body — the student's move, validated
+ * and committed synchronously before any chat turn starts. */
+export const CommitPlayerMoveRequestSchema = z.object({
+  san: z.string().min(1)
+});
+export type CommitPlayerMoveRequest = z.infer<typeof CommitPlayerMoveRequestSchema>;
 
 export const ClientToolResultSchema = z.object({
   toolCallId: z.string(),

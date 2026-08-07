@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import { MISTAKE_CATEGORIES } from '@chess-coach/shared';
+import { MISTAKE_CATEGORIES, type CoachingPlan } from '@chess-coach/shared';
 import { buildCoachSystemPrompt, type CoachPromptInput } from './coach-system.js';
 
 const now = new Date('2026-07-28T12:00:00Z');
 
-const basePlan = {
+const basePlan: CoachingPlan = {
   gameSummary: 'summary',
   openingNote: 'opening',
-  themes: ['king_safety'] as CoachPromptInput['plan']['themes'],
+  themes: ['king_safety'],
   connectionToHistory: 'Second game in a row with a delayed castle.',
   moments: [
     {
@@ -26,6 +26,7 @@ function baseInput(overrides: Partial<CoachPromptInput> = {}): CoachPromptInput 
   return {
     user: { displayName: 'Ann', selfAssessment: 'I blunder pieces', sessionCount: 3 },
     band: 'club',
+    mode: 'analyze',
     game: {
       whiteName: 'Ann',
       blackName: 'Bob',
@@ -193,6 +194,49 @@ describe('buildCoachSystemPrompt', () => {
       const a = buildCoachSystemPrompt(baseInput());
       const b = buildCoachSystemPrompt(baseInput({ user: { displayName: 'Zed', selfAssessment: 'y', sessionCount: 40 } }));
       expect(a.staticPart).toBe(b.staticPart);
+    });
+  });
+
+  describe('play mode (architecture §14)', () => {
+    function basePlayInput(overrides: Partial<CoachPromptInput> = {}): CoachPromptInput {
+      return baseInput({ mode: 'play', plan: null, ...overrides });
+    }
+
+    test('mode: "analyze" (default input) never mentions any play-mode tool or session-flow content — regression guard against the two modes bleeding into each other', () => {
+      const { staticPart } = buildCoachSystemPrompt(baseInput());
+      expect(staticPart).not.toContain('get_candidate_moves');
+      expect(staticPart).not.toContain('play_coach_move');
+      expect(staticPart).not.toContain('undo_last_move');
+      expect(staticPart).not.toContain('Choosing your own move');
+    });
+
+    test('mode: "play" staticPart includes the 3 play tools and the play-mode session flow instead of the analyze-mode one', () => {
+      const { staticPart } = buildCoachSystemPrompt(basePlayInput());
+      expect(staticPart).toContain('get_candidate_moves');
+      expect(staticPart).toContain('play_coach_move');
+      expect(staticPart).toContain('undo_last_move');
+      expect(staticPart).toContain('Choosing your own move');
+      expect(staticPart).not.toContain('preparation moments');
+    });
+
+    test('mode: "play" staticPart still contains every analyze-mode tool too (get_candidate_moves etc. are additive, not a replacement)', () => {
+      const { staticPart } = buildCoachSystemPrompt(basePlayInput());
+      expect(staticPart).toContain('show_position');
+      expect(staticPart).toContain('record_move_note');
+    });
+
+    test('mode: "play" dynamicPart states the student\'s and coach\'s colors and never claims a preparation plan exists', () => {
+      const { dynamicPart } = buildCoachSystemPrompt(basePlayInput({ game: { ...baseInput().game, userColor: 'black' } }));
+      expect(dynamicPart).toContain('they are black, you are white');
+      expect(dynamicPart).not.toContain('preparation notes');
+    });
+
+    test('mode: "play" with plan: null does not throw (plan is only required in analyze mode)', () => {
+      expect(() => buildCoachSystemPrompt(basePlayInput())).not.toThrow();
+    });
+
+    test('mode: "analyze" with plan: null throws — analyze mode has no other source for the walkthrough plan', () => {
+      expect(() => buildCoachSystemPrompt(baseInput({ plan: null }))).toThrow();
     });
   });
 });

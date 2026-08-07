@@ -34,6 +34,13 @@ export function insert(db: Kysely<Database>, values: NewGame): Promise<GameRow> 
   return db.insertInto('games').values(values).returningAll().executeTakeFirstOrThrow();
 }
 
+/** The only place `games.pgn` is mutated post-insert — play-mode-only (a
+ * `source: 'coach_play'` game's PGN grows move by move; every other source
+ * is an immutable imported PGN). */
+export function updatePgn(db: Kysely<Database>, id: string, pgn: string): Promise<void> {
+  return db.updateTable('games').set({ pgn }).where('id', '=', id).execute().then(() => undefined);
+}
+
 export function listByUser(db: Kysely<Database>, userId: string): Promise<GameRow[]> {
   return db
     .selectFrom('games')

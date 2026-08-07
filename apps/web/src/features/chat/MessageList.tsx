@@ -75,6 +75,10 @@ function renderTextSegment(
 }
 
 const BOARD_MOVE_PATTERN = /^\[board_move\] I played (\S+) \(position now: (.+)\)$/;
+// architecture §14: play mode's student move sentinel — no fen, since the
+// board is already at the resulting position by the time this arrives
+// (see SessionBoardColumn's submitPlayMove).
+const PLAYER_MOVE_PATTERN = /^\[player_move\] I played (\S+)\.$/;
 
 export interface MessageListProps {
   messages: CoachMessage[];
@@ -133,6 +137,11 @@ export function MessageList({
           if (boardMove) {
             const [, san, fen] = boardMove;
             return <MoveCard key={message.id} san={san ?? ''} fen={fen ?? ''} />;
+          }
+          const playerMove = message.text.match(PLAYER_MOVE_PATTERN);
+          if (playerMove) {
+            const [, san] = playerMove;
+            return <MoveCard key={message.id} san={san ?? ''} fen="" />;
           }
           const divider = decodePositionDivider(message.text);
           if (divider) {

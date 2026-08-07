@@ -27,6 +27,12 @@ export interface UseCoachChatOptions {
   /** design.md §5.3: SAN of every played move, used to label a show_position
    * jump as "— move N, after <SAN> —" in the transcript. */
   sanMoves?: string[];
+  /** architecture §14: play mode's server-executed tools (play_coach_move,
+   * undo_last_move) resolve mid-stream with no client round-trip — this is
+   * how the caller hears the result to update the board/positions. Other
+   * tool names (get_candidate_moves, record_finding, ...) are silent and
+   * never reach this callback. */
+  onServerToolResult?: (toolName: string, output: unknown) => void;
 }
 
 export interface UseCoachChatResult {
@@ -44,6 +50,14 @@ export interface UseCoachChatResult {
    * [session_start] marker) without adding a new user-role message — how the
    * coach opens a fresh session on its own. */
   kickoff: () => Promise<void>;
+}
+
+const SERVER_TOOL_RESULT_NAMES = new Set(['play_coach_move', 'undo_last_move']);
+
+/** get_candidate_moves resolves too (architecture §14) but is purely
+ * informational — the coach uses it to decide, nothing to render. */
+function isServerToolResultName(toolName: string): boolean {
+  return SERVER_TOOL_RESULT_NAMES.has(toolName);
 }
 
 /** Drives POST /api/sessions/:id/messages (architecture §7.2). Reads the
@@ -92,6 +106,11 @@ export function useCoachChat(sessionId: string, options: UseCoachChatOptions = {
           },
           onError: (message) => {
             console.error('coach stream error:', message);
+          },
+          onToolOutput: (toolOutput) => {
+            if (isServerToolResultName(toolOutput.toolName)) {
+              options.onServerToolResult?.(toolOutput.toolName, toolOutput.output);
+            }
           },
           onToolCall: async (toolCall) => {
             setActiveToolName(toolCall.toolName);

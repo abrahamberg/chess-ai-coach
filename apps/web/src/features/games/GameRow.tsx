@@ -1,4 +1,4 @@
-import type { AnalysisStatus, GameListItem } from '@chess-coach/shared';
+import type { GameListItem } from '@chess-coach/shared';
 import type { ReactNode } from 'react';
 import './GameRow.css';
 
@@ -13,9 +13,16 @@ const RESULT_DOT: Record<string, { symbol: string; label: string }> = {
   '1/2-1/2': { symbol: 'D', label: 'draw' }
 };
 
-function chipFor(status: AnalysisStatus | null): { text: string; className: string } {
-  if (status === 'ready') return { text: 'ready — start session', className: 'game-row__chip--ready' };
-  if (status === 'failed') return { text: 'failed — retry', className: 'game-row__chip--failed' };
+/** architecture §14: a coach_play game never gets an `analyses` row, so its
+ * analysisStatus is always null — it needs its own chip logic rather than
+ * falling into analyze mode's "analyzing…" default. */
+function chipFor(game: GameListItem): { text: string; className: string } {
+  if (game.source === 'coach_play') {
+    if (game.sessionId) return { text: 'in progress — continue', className: 'game-row__chip--ready' };
+    return { text: 'game over', className: 'game-row__chip--analyzing' };
+  }
+  if (game.analysisStatus === 'ready') return { text: 'ready — start session', className: 'game-row__chip--ready' };
+  if (game.analysisStatus === 'failed') return { text: 'failed — retry', className: 'game-row__chip--failed' };
   return { text: 'analyzing…', className: 'game-row__chip--analyzing' };
 }
 
@@ -33,7 +40,7 @@ function userSideResult(game: GameListItem): { symbol: string; label: string } |
  * bold, W/L/D dot), date, time control, and an analysis status chip. The
  * whole row is tappable. */
 export function GameRow({ game, onSelect }: GameRowProps): ReactNode {
-  const chip = chipFor(game.analysisStatus);
+  const chip = chipFor(game);
   const dot = userSideResult(game);
   const date = game.playedAt ?? game.createdAt;
   const [whiteName, blackName] = [game.whiteName ?? '?', game.blackName ?? '?'];

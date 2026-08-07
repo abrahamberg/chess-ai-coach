@@ -17,12 +17,14 @@ import {
   updateThreadsParameters
 } from '@chess-coach/prompts';
 import { moveRefToPly } from '@chess-coach/chess-analysis';
-import type { Finding, FocusAreaUpdate, PositionAnalysis, Thread } from '@chess-coach/shared';
+import type { Finding, FocusAreaUpdate, PositionAnalysis, SessionMode, Thread } from '@chess-coach/shared';
 import { tool, type ToolSet } from '../llm/tools.js';
 import type { Kysely } from 'kysely';
 import * as sessionsRepo from '../db/repositories/sessions.js';
 import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
+import { buildPlayCoachTools } from './coach-tools-play.js';
+import { createTurnGuardState, withTurnGuards } from './coach-tool-guards.js';
 import { getPositionAtPly } from './game-positions.js';
 import { recallMove, recordMoveNote, type MoveAddress } from './move-notes.js';
 import * as progressService from './progress.js';
@@ -44,26 +46,14 @@ export interface CoachToolsDependencies {
   callLightModel: (messages: { system: string; user: string }) => Promise<string>;
 }
 
-/** architecture §8.3: max 2 get_engine_analysis calls, 1 get_user_profile call
- * per turn. Over budget the tool returns an error object instead of executing. */
-const TOOL_BUDGETS: Partial<Record<string, number>> = {
-  get_engine_analysis: 2,
-  get_user_profile: 1,
-  recall_move: 3
-};
-const BUDGET_EXHAUSTED = { error: 'budget_exhausted — answer with what you have' } as const;
-
-interface TurnGuardState {
-  callCounts: Map<string, number>;
-  cache: Map<string, unknown>;
-}
-
 /** Fresh budget/repeat-call state per call — buildCoachTools is expected to be
- * called once per agent turn (architecture §8.3's guardrails are per-turn). */
-export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependencies): ToolSet {
-  const guardState: TurnGuardState = { callCounts: new Map(), cache: new Map() };
+ * called once per agent turn (architecture §8.3's guardrails are per-turn).
+ * `mode` (default 'analyze', architecture §14) spreads in play mode's 3
+ * additional tools, sharing this same guard state, when set to 'play'. */
+export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependencies, mode: SessionMode = 'analyze'): ToolSet {
+  const guardState = createTurnGuardState();
 
-  return {
+  const analyzeTools: ToolSet = {
     show_position: tool({
       description: coachToolDescription('show_position'),
       inputSchema: showPositionParameters
@@ -134,30 +124,9 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
       execute: withTurnGuards(guardState, 'end_session', () => endSessionTool(deps, ctx))
     })
   };
-}
 
-function withTurnGuards<Args, Result>(
-  state: TurnGuardState,
-  name: string,
-  fn: (args: Args) => Promise<Result>
-): (args: Args) => Promise<Result | typeof BUDGET_EXHAUSTED> {
-  return async (args: Args) => {
-    const cacheKey = `${name}:${JSON.stringify(args)}`;
-    const cached = state.cache.get(cacheKey);
-    if (cached !== undefined) return cached as Result;
-
-    const budget = TOOL_BUDGETS[name];
-    if (budget !== undefined && (state.callCounts.get(name) ?? 0) >= budget) {
-      return BUDGET_EXHAUSTED;
-    }
-    if (budget !== undefined) {
-      state.callCounts.set(name, (state.callCounts.get(name) ?? 0) + 1);
-    }
-
-    const result = await fn(args);
-    state.cache.set(cacheKey, result);
-    return result;
-  };
+  if (mode !== 'play') return analyzeTools;
+  return { ...analyzeTools, ...buildPlayCoachTools(ctx, deps, guardState) };
 }
 
 interface EngineAnalysisArgs {

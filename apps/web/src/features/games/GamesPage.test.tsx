@@ -8,6 +8,7 @@ import { GamesPage } from './GamesPage.js';
 const GAMES_RESPONSE = [
   {
     id: 'g1',
+    source: 'paste',
     userColor: 'white',
     whiteName: 'daniel',
     blackName: 'Marta',
@@ -15,9 +16,24 @@ const GAMES_RESPONSE = [
     timeControl: '10+0',
     playedAt: '2026-07-20T10:00:00.000Z',
     createdAt: '2026-07-20T10:05:00.000Z',
-    analysisStatus: 'ready'
+    analysisStatus: 'ready',
+    sessionId: null
   }
 ];
+
+const PLAY_MODE_GAME = {
+  id: 'g2',
+  source: 'coach_play',
+  userColor: 'white',
+  whiteName: 'daniel',
+  blackName: 'Coach',
+  result: null,
+  timeControl: null,
+  playedAt: null,
+  createdAt: '2026-08-05T10:05:00.000Z',
+  analysisStatus: null,
+  sessionId: 'session-2'
+};
 
 function renderGamesPage(games: unknown[] = GAMES_RESPONSE) {
   const fetchMock = vi.fn().mockImplementation((path: string) => {
@@ -44,6 +60,7 @@ function renderGamesPage(games: unknown[] = GAMES_RESPONSE) {
         <Routes>
           <Route path="/games" element={<GamesPage />} />
           <Route path="/import" element={<div>import-page-marker</div>} />
+          <Route path="/play/new" element={<div>play-start-page-marker</div>} />
           <Route path="/session/:id" element={<div>session-page-marker</div>} />
         </Routes>
       </MemoryRouter>
@@ -72,6 +89,17 @@ describe('GamesPage (design.md §4.1)', () => {
     expect(await screen.findByText('import-page-marker')).toBeInTheDocument();
   });
 
+  // architecture §14: the second entry point into a coaching session — a
+  // live game against the coach, rather than reviewing an imported one.
+  test('the "Play the coach" CTA navigates to the play-mode start page', async () => {
+    const user = userEvent.setup();
+    renderGamesPage();
+    await screen.findByText('daniel');
+
+    await user.click(screen.getByRole('link', { name: /play the coach/i }));
+    expect(await screen.findByText('play-start-page-marker')).toBeInTheDocument();
+  });
+
   test('tapping a ready row starts a session and navigates to it', async () => {
     const user = userEvent.setup();
     const fetchMock = renderGamesPage();
@@ -84,6 +112,20 @@ describe('GamesPage (design.md §4.1)', () => {
       '/api/sessions',
       expect.objectContaining({ body: JSON.stringify({ gameId: 'g1' }) })
     );
+  });
+
+  // architecture §14: a coach_play row must link back into its existing
+  // session directly, never through analyze mode's gated POST /api/sessions
+  // (which would 409 — a play-mode game never has an `analyses` row).
+  test('tapping an in-progress play-mode row navigates straight to its session', async () => {
+    const user = userEvent.setup();
+    const fetchMock = renderGamesPage([PLAY_MODE_GAME]);
+    await screen.findByText('daniel');
+
+    await user.click(screen.getByRole('button', { name: /daniel.*coach/is }));
+
+    expect(await screen.findByText('session-page-marker')).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/sessions', expect.anything());
   });
 
   test('shows a friendly empty state with no games and no dummy data', async () => {

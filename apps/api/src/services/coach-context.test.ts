@@ -8,6 +8,7 @@ import * as sessionsRepo from '../db/repositories/sessions.js';
 import * as sessionMessagesRepo from '../db/repositories/session-messages.js';
 import * as sessionMoveNotesRepo from '../db/repositories/session-move-notes.js';
 import * as analysesRepo from '../db/repositories/analyses.js';
+import * as gameMoveQualitiesRepo from '../db/repositories/game-move-qualities.js';
 import type { Database } from '../db/schema.js';
 import {
   buildEpisodeContext,
@@ -60,6 +61,28 @@ describe('buildEpisodeMessages', () => {
     // The current-move block is deliberately the only uncached layer.
     expect(instructions[4]).toEqual({ role: 'system', content: 'CURRENT' });
     expect(messages).toEqual(episodeMessages);
+  });
+
+  test('play mode (annotatedPgn: null, architecture §14): only 3 cached breakpoints — layer 3 is skipped entirely, not cached as an empty block', () => {
+    const episodeMessages: ChatMessage[] = [{ role: 'user', content: 'hi coach' }];
+    const context = buildEpisodeMessages(
+      {
+        staticPart: 'STATIC',
+        dynamicPart: 'DYNAMIC',
+        annotatedPgn: null,
+        otherMovesSummary: 'OTHER',
+        currentMoveBlock: 'CURRENT'
+      },
+      episodeMessages
+    );
+
+    const cacheControl = { anthropic: { cacheControl: { type: 'ephemeral' } } };
+    const { instructions } = context;
+    expect(instructions).toHaveLength(4);
+    expect(instructions[0]).toEqual({ role: 'system', content: 'STATIC', providerOptions: cacheControl });
+    expect(instructions[1]).toEqual({ role: 'system', content: 'DYNAMIC', providerOptions: cacheControl });
+    expect(instructions[2]).toEqual({ role: 'system', content: 'OTHER', providerOptions: cacheControl });
+    expect(instructions[3]).toEqual({ role: 'system', content: 'CURRENT' });
   });
 });
 
@@ -493,6 +516,91 @@ describe('coach-context', () => {
       // kept (replayed) half together, not folded away separately.
       const serialized = JSON.stringify(messages);
       expect(serialized).toContain('straddle-1');
+    });
+
+    describe('play mode (architecture §14)', () => {
+      async function seedPlaySession() {
+        const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+        const game = await gamesRepo.insert(db, {
+          userId: user.id,
+          pgn: '1. e4 e5',
+          source: 'coach_play',
+          userColor: 'white',
+          whiteName: null,
+          blackName: null,
+          result: null,
+          timeControl: null,
+          eco: null,
+          playedAt: null
+        });
+        const session = await sessionsRepo.insert(db, { gameId: game.id, userId: user.id, mode: 'play' });
+        return { session, gameId: game.id };
+      }
+
+      test('produces exactly 3 cached breakpoints (static, dynamic, other-moves) — layer 3 (annotatedPgn) is skipped, never analyses-backed', async () => {
+        const { session, gameId } = await seedPlaySession();
+        await gameMoveQualitiesRepo.insert(db, {
+          gameId,
+          ply: 1,
+          moveSan: 'e4',
+          mover: 'white',
+          quality: 'best',
+          cpLoss: 0,
+          bestLineSan: ['e4'],
+          evalAfterCp: 20
+        });
+        await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
+        const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
+
+        const context = await buildEpisodeContext({
+          db,
+          callLightModel: vi.fn(),
+          session,
+          currentPly: 0,
+          historyAfterTurn,
+          staticPart: 'STATIC',
+          dynamicPart: 'DYNAMIC',
+          analyzePosition: vi.fn().mockResolvedValue(fakeAnalysis()),
+          studentColor: 'white'
+        });
+
+        const cachedInstructions = context.instructions.filter(
+          (message) => (message as { providerOptions?: unknown }).providerOptions !== undefined
+        );
+        expect(cachedInstructions).toHaveLength(3);
+      });
+
+      test('the uncached current-move block folds in a "## Game so far" section built live from game_move_qualities', async () => {
+        const { session, gameId } = await seedPlaySession();
+        await gameMoveQualitiesRepo.insert(db, {
+          gameId,
+          ply: 1,
+          moveSan: 'e4',
+          mover: 'white',
+          quality: 'best',
+          cpLoss: 0,
+          bestLineSan: ['e4'],
+          evalAfterCp: 20
+        });
+        await sessionMessagesRepo.insert(db, session.id, 'user', '[session_start]', 0);
+        const historyAfterTurn = await sessionMessagesRepo.listBySession(db, session.id);
+
+        const context = await buildEpisodeContext({
+          db,
+          callLightModel: vi.fn(),
+          session,
+          currentPly: 0,
+          historyAfterTurn,
+          staticPart: 'STATIC',
+          dynamicPart: 'DYNAMIC',
+          analyzePosition: vi.fn().mockResolvedValue(fakeAnalysis()),
+          studentColor: 'white'
+        });
+
+        const serialized = JSON.stringify([...context.instructions, ...context.messages]);
+        expect(serialized).toContain('## Game so far');
+        expect(serialized).toContain('1.e4');
+      });
     });
   });
 });

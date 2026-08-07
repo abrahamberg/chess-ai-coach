@@ -28,6 +28,18 @@ export function upsert(
     .executeTakeFirstOrThrow();
 }
 
+/** Play-mode undo (architecture.md §14): removes the note for a ply whose
+ * move no longer exists in the game, so it can never resurface in the
+ * "other moves discussed" summary. */
+export function deleteByPly(db: Kysely<Database>, sessionId: string, ply: number): Promise<void> {
+  return db
+    .deleteFrom('sessionMoveNotes')
+    .where('sessionId', '=', sessionId)
+    .where('ply', '=', ply)
+    .execute()
+    .then(() => undefined);
+}
+
 export function findByPly(
   db: Kysely<Database>,
   sessionId: string,

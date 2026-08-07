@@ -86,6 +86,18 @@ describe('MessageList', () => {
     expect(screen.queryByText(/position now/i)).not.toBeInTheDocument();
   });
 
+  // architecture §14: the student's play-mode move, sent as
+  // "[player_move] I played <san>." after POST /play-move commits it — same
+  // compact move card as [board_move], just without a fen (play mode's
+  // board is already at the resulting position by the time this arrives).
+  test('design.md §5.3: renders a [player_move] message as a compact move card, not raw plumbing text', () => {
+    render(<MessageList messages={[{ id: '1', role: 'user', text: '[player_move] I played Nf3.' }]} />);
+
+    expect(screen.getByText(/you played/i)).toBeInTheDocument();
+    expect(screen.getByText('Nf3')).toBeInTheDocument();
+    expect(screen.queryByText(/\[player_move\]/)).not.toBeInTheDocument();
+  });
+
   test('design.md §5.3: renders a position-divider sentinel with standard move-pair numbering', () => {
     render(<MessageList messages={[{ id: '1', role: 'assistant', text: '[position_divider]|14|Bg4' }]} />);
 

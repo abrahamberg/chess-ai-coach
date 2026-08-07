@@ -729,4 +729,119 @@ describe('sessions routes', () => {
       expect(debug.json().request.reasoning).toBe('medium');
     }, 15000);
   });
+
+  describe('play mode routes (architecture §14)', () => {
+    test('POST /api/sessions/play creates a coach_play game + play-mode session, with no analysis/credits gate', async () => {
+      const user = await usersRepo.insert(db, { email: 'playstart@example.com', displayName: 'Ann' });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sessions/play',
+        headers: headersFor(user),
+        payload: { studentColor: 'black' }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.mode).toBe('play');
+      expect(body.status).toBe('active');
+      expect(body.currentPly).toBe(0);
+    });
+
+    test('POST /api/sessions/play rejects an invalid studentColor', async () => {
+      const user = await usersRepo.insert(db, { email: 'playbadcolor@example.com', displayName: 'Ann' });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sessions/play',
+        headers: headersFor(user),
+        payload: { studentColor: 'purple' }
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    async function setupPlaySession(email: string) {
+      const user = await usersRepo.insert(db, { email, displayName: 'Ann' });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/sessions/play',
+        headers: headersFor(user),
+        payload: { studentColor: 'white' }
+      });
+      return { user, app, sessionId: created.json().id as string };
+    }
+
+    test('POST /api/sessions/:id/play-move commits a legal move and returns the resulting fen/ply', async () => {
+      const { user, app, sessionId } = await setupPlaySession('playmove@example.com');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/sessions/${sessionId}/play-move`,
+        headers: headersFor(user),
+        payload: { san: 'e4' }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.san).toBe('e4');
+      expect(body.ply).toBe(1);
+
+      const session = await sessionsRepo.findById(db, sessionId);
+      expect(session?.currentPly).toBe(1);
+    });
+
+    test('POST /api/sessions/:id/play-move 422s on an illegal move, without advancing currentPly', async () => {
+      const { user, app, sessionId } = await setupPlaySession('playillegal@example.com');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/sessions/${sessionId}/play-move`,
+        headers: headersFor(user),
+        payload: { san: 'Qh5+++' }
+      });
+
+      expect(response.statusCode).toBe(422);
+      const session = await sessionsRepo.findById(db, sessionId);
+      expect(session?.currentPly).toBe(0);
+    });
+
+    test('POST /api/sessions/:id/play-move 409s on an analyze-mode session', async () => {
+      const { user, game } = await setupReadyGame('playwrongmode@example.com');
+      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/sessions',
+        headers: headersFor(user),
+        payload: { gameId: game.id }
+      });
+      const sessionId = created.json().id;
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/sessions/${sessionId}/play-move`,
+        headers: headersFor(user),
+        payload: { san: 'e4' }
+      });
+
+      expect(response.statusCode).toBe(409);
+    });
+
+    test('POST /api/sessions/:id/play-move 404s for a session owned by a different user', async () => {
+      const { app, sessionId } = await setupPlaySession('playowner@example.com');
+      const other = await usersRepo.insert(db, { email: 'playother@example.com', displayName: 'Bo' });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/sessions/${sessionId}/play-move`,
+        headers: headersFor(other),
+        payload: { san: 'e4' }
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+  });
 });

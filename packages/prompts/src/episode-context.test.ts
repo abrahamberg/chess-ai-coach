@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import type { ClassifiedMove, FeatureDelta } from '@chess-coach/chess-analysis';
 import type { PositionAnalysis, PositionAnalysisLine } from '@chess-coach/shared';
-import { renderAnnotatedPgn, renderCurrentMoveBlock, renderOtherMovesSummary, type CurrentMoveAnalysisContext } from './episode-context.js';
+import {
+  renderAnnotatedPgn,
+  renderCurrentMoveBlock,
+  renderGameSoFarInline,
+  renderOtherMovesSummary,
+  type CurrentMoveAnalysisContext
+} from './episode-context.js';
 
 function move(overrides: Partial<ClassifiedMove> & Pick<ClassifiedMove, 'ply' | 'moveSan' | 'quality'>): ClassifiedMove {
   return {
@@ -33,6 +39,23 @@ describe('renderAnnotatedPgn', () => {
     // prefix — the fixture must use an odd ply for the "9." to appear at all.
     const moves = [move({ ply: 17, moveSan: 'Bg4', quality: 'mistake', cpLoss: 180, bestLineSan: ['h6', 'Bh4'] })];
     expect(renderAnnotatedPgn(moves)).toBe('## This game (annotated)\n\n9.Bg4? (lost ~180cp, best h6)');
+  });
+});
+
+describe('renderGameSoFarInline (architecture §14, play mode\'s live layer-3 replacement)', () => {
+  test('no moves renders a fallback, with no heading of its own (folded into the caller\'s block)', () => {
+    expect(renderGameSoFarInline([])).toBe('(no moves played yet)');
+  });
+
+  test('renders identically to renderAnnotatedPgn\'s move formatting, just without its own heading', () => {
+    const moves = [move({ ply: 1, moveSan: 'e4', quality: 'best' }), move({ ply: 2, moveSan: 'e5', quality: 'good' })];
+    expect(renderGameSoFarInline(moves)).toBe('1.e4★ e5!');
+    expect(renderAnnotatedPgn(moves)).toBe(`## This game (annotated)\n\n${renderGameSoFarInline(moves)}`);
+  });
+
+  test('accepts a game_move_qualities-shaped row too (no mover/isUserMove/hangsPiece fields required)', () => {
+    const row = { ply: 1, moveSan: 'e4', quality: 'best' as const, cpLoss: 0, bestLineSan: [], evalAfterCp: 20 };
+    expect(renderGameSoFarInline([row])).toBe('1.e4★');
   });
 });
 
@@ -70,7 +93,6 @@ describe('renderCurrentMoveBlock', () => {
     const text = renderCurrentMoveBlock(35, 'fen-after-18', 'black', '(empty — no parked topics right now)', 'Nc3');
     expect(text).toContain("You are now discussing White's move 18");
     expect(text).toContain('Your student is playing black in this game.');
-    expect(text).toContain('FEN (always written from White\'s absolute perspective');
     expect(text).toContain(': fen-after-18');
   });
 
@@ -84,6 +106,35 @@ describe('renderCurrentMoveBlock', () => {
     expect(text).toContain('The move actually played here was Bxd5.');
     expect(text).not.toContain('red arrow');
     expect(text).toContain(': current-fen');
+  });
+
+  test('gameSoFar omitted (analyze mode, the default): no "## Game so far" heading appears — output is byte-for-byte what it always was', () => {
+    const withoutArg = renderCurrentMoveBlock(0, 'startpos-fen', 'white', '(empty — no parked topics right now)', null);
+    const explicitUndefined = renderCurrentMoveBlock(
+      0,
+      'startpos-fen',
+      'white',
+      '(empty — no parked topics right now)',
+      null,
+      undefined,
+      undefined
+    );
+    expect(withoutArg).not.toContain('## Game so far');
+    expect(withoutArg).toBe(explicitUndefined);
+  });
+
+  test('gameSoFar present (play mode): prepends a "## Game so far" block ahead of "## Current position"', () => {
+    const text = renderCurrentMoveBlock(
+      2,
+      'fen',
+      'white',
+      '(empty — no parked topics right now)',
+      'e5',
+      undefined,
+      '1.e4★ e5!'
+    );
+    expect(text).toContain('## Game so far\n\n1.e4★ e5!\n\n');
+    expect(text.indexOf('## Game so far')).toBeLessThan(text.indexOf('## Current position'));
   });
 
   test('ply 0 (game start) never has a played-move sentence — nothing was played to reach it', () => {
@@ -122,7 +173,7 @@ describe('renderCurrentMoveBlock', () => {
           line({ moveSan: 'Ba3', pvSan: ['Ba3', 'a6', 'O-O'], cp: 14 })
         ]
       }),
-      classifiedMove: { ply: 16, moveSan: 'd5', mover: 'black', isUserMove: true, cpLoss: 163, quality: 'mistake', bestLineSan: ['d6'], evalAfterCp: 6, hangsPiece: false }
+      classifiedMove: { cpLoss: 163, evalAfterCp: 6 }
     };
     // ply 16 = Black's move 8 (plyToMoveRef: moveNumber = ceil(ply/2)).
     const text = renderCurrentMoveBlock(16, 'pre-move-fen', 'white', '(empty — no parked topics right now)', 'd5', ctx);

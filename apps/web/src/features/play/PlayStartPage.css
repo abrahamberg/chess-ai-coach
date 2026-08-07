@@ -1,0 +1,9 @@
+.play-start-page p {
+  color: var(--text-muted);
+  margin: 0 0 24px;
+}
+
+.play-start-page__error {
+  color: var(--quality-blunder);
+  margin-top: 16px;
+}

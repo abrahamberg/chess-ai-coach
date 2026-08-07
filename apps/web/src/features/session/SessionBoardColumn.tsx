@@ -9,6 +9,8 @@ import { MoveStrip } from '../board/MoveStrip.js';
 import type { ArrowRef } from '../chat/arrowToken.js';
 import { encodeDivergedLine } from '../chat/divergedLine.js';
 import { describePly, sanForPly } from '../chat/positionDivider.js';
+import type { CommittedPlayMove } from './usePlayMoveSubmit.js';
+import { usePlayMoveSubmit } from './usePlayMoveSubmit.js';
 import type { useDivergedLine } from './useDivergedLine.js';
 import type { useSessionBoardState } from './useSessionBoardState.js';
 import type { useWasmEngine } from '../../hooks/useWasmEngine.js';
@@ -35,6 +37,16 @@ export interface SessionBoardColumnProps {
    * §5.3) — drawn on top of the coach's own annotate_board arrows/highlights
    * in a distinct color, cleared on mouse-leave/blur. */
   hoverMove?: HoverMove;
+  /** architecture §14: 'play' routes a board drop through POST
+   * /api/sessions/:id/play-move instead of analyze mode's instant
+   * [board_move] chat message. */
+  sessionMode: 'analyze' | 'play';
+  sessionId: string;
+  /** Applies a just-committed student move's board-side consequences
+   * (append to positions, move the board) — owned by the caller
+   * (useSessionPageData), since positions/boardState live above this
+   * component. Required in play mode. */
+  onPlayMoveCommitted?: (result: CommittedPlayMove, uci: string) => void;
 }
 
 /** Distinct from the coach's own annotate_board arrows (--annotate-1) and
@@ -70,16 +82,24 @@ export function SessionBoardColumn({
   onChangeAutoplayInterval,
   sendMessage,
   onArrowsChange,
-  hoverMove
+  hoverMove,
+  sessionMode,
+  sessionId,
+  onPlayMoveCommitted
 }: SessionBoardColumnProps): ReactNode {
   const [pendingMove, setPendingMove] = useState<{ san: string; fen: string } | null>(null);
   const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playMove = usePlayMoveSubmit(sessionId, sendMessage, onPlayMoveCommitted);
 
   /** design.md-adjacent: expect_move (the coach's "I want exactly one move
    * as the answer" signal) preserves today's instant 2s-undo-then-send
    * path — every other answer-mode drop instead silently appends to the
    * diverged line (no send, no pill) until the student hits Send. */
   function handleUserMove(san: string, fen: string, uci: string): void {
+    if (sessionMode === 'play') {
+      void playMove.submit(san, uci);
+      return;
+    }
     if (divergedLine.expectingMove) {
       setPendingMove({ san, fen });
       pendingTimeoutRef.current = setTimeout(() => {
@@ -123,6 +143,11 @@ export function SessionBoardColumn({
           onArrowsChange={onArrowsChange}
         />
       </div>
+      {playMove.error && (
+        <p className="play-move-error" role="alert">
+          {playMove.error}
+        </p>
+      )}
       {pendingMove && (
         <p className="undo-pill">
           Sending {pendingMove.san}…{' '}

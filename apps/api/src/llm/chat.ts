@@ -1,4 +1,4 @@
-import { stepCountIs, streamText, type TextStreamPart, type ToolSet } from 'ai';
+import { hasToolCall, stepCountIs, streamText, type TextStreamPart, type ToolSet } from 'ai';
 import type { ModelResolution } from './gateway.js';
 import type { ChatMessage, ResponseChatMessage, SystemChatMessage } from './messages.js';
 import type { StreamTimeouts } from './model-options.js';
@@ -27,7 +27,13 @@ const TOOL_ORDER = [
   'update_threads',
   'record_move_note',
   'recall_move',
-  'end_session'
+  'end_session',
+  // Play mode's tools (architecture §14) — fixed at the end, never
+  // interleaved with the analyze-mode 13 above, so an analyze-mode
+  // session's cached tool-definition prefix never shifts.
+  'get_candidate_moves',
+  'play_coach_move',
+  'undo_last_move'
 ];
 
 /** What the caller gets back: the raw part stream plus the tool set it was
@@ -55,6 +61,15 @@ export interface RunCoachTurnArgs {
   messages: ChatMessage[];
   tools: ToolSet;
   timeouts: StreamTimeouts;
+  /** Play mode only (architecture §14): ends the turn the instant one of
+   * these server tools is called, same as stepCountIs but triggered by tool
+   * identity rather than a step count. The move-commit tools must be
+   * server-executed (moves are authoritative, never trusted from a client
+   * round-trip), so they can't rely on the client-tool "no execute() ends the
+   * step loop" mechanism show_position uses — this is the equivalent for a
+   * server tool. Omitted (undefined) for analyze-mode turns, leaving
+   * behavior byte-for-byte unchanged. */
+  stopOnToolNames?: string[];
   /** Runs once the turn is fully generated. Must never throw — by the time it
    * fires the HTTP response is already hijacked and streaming, so nothing
    * downstream can catch a rejection. */
@@ -77,7 +92,10 @@ export function runCoachTurn(args: RunCoachTurnArgs): CoachTurnStream {
     allowSystemInMessages: false,
     tools: args.tools,
     toolOrder: TOOL_ORDER,
-    stopWhen: stepCountIs(MAX_STEPS),
+    stopWhen:
+      args.stopOnToolNames && args.stopOnToolNames.length > 0
+        ? [stepCountIs(MAX_STEPS), ...args.stopOnToolNames.map((name) => hasToolCall(name))]
+        : stepCountIs(MAX_STEPS),
     // Without these a provider that opens a stream and then stalls holds this
     // session's turn lock forever, wedging every later message in the session.
     timeout: { firstChunkMs: args.timeouts.firstChunkMs, chunkMs: args.timeouts.chunkMs },

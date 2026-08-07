@@ -1,5 +1,6 @@
 export * from './analysis-planner.js';
 export * from './calibration.js';
+export * from './candidate-briefing.js';
 export * from './coach-system.js';
 export * from './episode-context.js';
 export * from './episode-fold.js';
@@ -7,3 +8,4 @@ export * from './onboarding-profiler.js';
 export * from './progress-summarizer.js';
 export * from './render.js';
 export * from './tools.js';
+export * from './tools-play.js';

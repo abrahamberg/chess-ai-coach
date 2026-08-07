@@ -9,12 +9,15 @@ import {
 import {
   renderAnnotatedPgn,
   renderCurrentMoveBlock,
+  renderGameSoFarInline,
   renderOtherMovesSummary,
-  renderThreadsBlock
+  renderThreadsBlock,
+  type AnnotatedMoveLike
 } from '@chess-coach/prompts';
 import type { PositionAnalysis } from '@chess-coach/shared';
 import type { Kysely } from 'kysely';
 import * as analysesRepo from '../db/repositories/analyses.js';
+import * as gameMoveQualitiesRepo from '../db/repositories/game-move-qualities.js';
 import type { SessionMessageRow } from '../db/repositories/session-messages.js';
 import * as sessionMoveNotesRepo from '../db/repositories/session-move-notes.js';
 import * as sessionsRepo from '../db/repositories/sessions.js';
@@ -52,7 +55,12 @@ export async function resolvePositionContextJump(
 export interface EpisodeLayers {
   staticPart: string;
   dynamicPart: string;
-  annotatedPgn: string;
+  /** Null in play mode (architecture §14) — skips its own cache breakpoint
+   * entirely rather than caching a placeholder, since a live game's
+   * move-quality annotations aren't known upfront the way an already-
+   * finished imported game's are (play mode folds the "game so far" into
+   * the uncached currentMoveBlock instead — see renderGameSoFarInline). */
+  annotatedPgn: string | null;
   otherMovesSummary: string;
   currentMoveBlock: string;
 }
@@ -72,6 +80,12 @@ export interface EpisodeContext {
  * current-move block, then the episode's own conversation. Two leading
  * cached system messages already worked this way (the old
  * buildCacheableMessages) — this extends the same pattern to five.
+ *
+ * Play mode (architecture §14) uses only three cached breakpoints —
+ * `annotatedPgn` is null, so its cachedSystemMessage is skipped entirely
+ * rather than caching an empty/placeholder block. Analyze mode is
+ * unaffected: `annotatedPgn` is always non-null there, so this branch is
+ * always taken and the output is byte-for-byte what it always was.
  */
 export function buildEpisodeMessages(layers: EpisodeLayers, episodeMessages: ChatMessage[]): EpisodeContext {
   // Four cached blocks below (static/dynamic/annotatedPgn/otherMovesSummary)
@@ -82,7 +96,7 @@ export function buildEpisodeMessages(layers: EpisodeLayers, episodeMessages: Cha
   const cachedLayers = [
     cachedSystemMessage(layers.staticPart),
     cachedSystemMessage(layers.dynamicPart),
-    cachedSystemMessage(layers.annotatedPgn),
+    ...(layers.annotatedPgn !== null ? [cachedSystemMessage(layers.annotatedPgn)] : []),
     cachedSystemMessage(layers.otherMovesSummary)
   ];
 
@@ -130,18 +144,24 @@ export interface BuildEpisodeContextInput extends CoachContextDependencies {
 export async function buildEpisodeContext(input: BuildEpisodeContextInput): Promise<EpisodeContext> {
   const episode = currentEpisode(input.historyAfterTurn, input.currentPly);
   const orphanExtendedMessages = includeOrphanedToolCall(input.historyAfterTurn, episode.messages);
+  const isPlayMode = input.session.mode === 'play';
 
-  const [position, previousMovePosition, classifiedMoves, otherNotes, threads] = await Promise.all([
+  const [position, previousMovePosition, moveQualities, otherNotes, threads] = await Promise.all([
     getPositionAtPly(input.db, input.session.gameId, input.currentPly),
     input.currentPly > 0 ? getPositionAtPly(input.db, input.session.gameId, input.currentPly - 1) : undefined,
-    analysesRepo.findClassifiedMovesByGameId(input.db, input.session.gameId),
+    fetchMoveQualities(input.db, input.session.gameId, isPlayMode),
     sessionMoveNotesRepo.listOtherPlies(input.db, input.session.id, input.currentPly),
     sessionsRepo.getThreads(input.db, input.session.id)
   ]);
   if (!position) throw new NotFoundError('Current position not found for this session');
 
-  const annotatedPgn = renderAnnotatedPgn(classifiedMoves ?? []);
-  const otherMovesSummary = renderOtherMovesSummary(otherNotes, classifiedMoves ?? []);
+  // Play mode (architecture §14): layer 3 is skipped entirely (annotatedPgn:
+  // null) rather than caching a placeholder — a live game's move-quality
+  // annotations aren't known upfront, so they're folded into the uncached
+  // currentMoveBlock instead (gameSoFar, below).
+  const annotatedPgn = isPlayMode ? null : renderAnnotatedPgn(moveQualities);
+  const gameSoFar = isPlayMode ? renderGameSoFarInline(moveQualities) : undefined;
+  const otherMovesSummary = renderOtherMovesSummary(otherNotes, moveQualities);
   // The engine's "top choice here" / "best line" analysis is always about
   // the position BEFORE the move under discussion — analyzePosition is
   // called on the pre-move fen for that reason. ply 0 (game start) has no
@@ -165,7 +185,7 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
   const postMoveAnalysis = playedMove !== null ? await input.analyzePosition(position.fen) : undefined;
   const featureDelta =
     playedMove !== null && !isBestMove ? computeFeatureDelta(analysis, preMoveFen, position.fen) : undefined;
-  const classifiedMove = classifiedMoves?.find((move) => move.ply === input.currentPly);
+  const classifiedMove = moveQualities.find((move) => move.ply === input.currentPly);
   // final review #8: the thread-ledger heading is composed inside
   // renderCurrentMoveBlock (packages/prompts), not here — all prompt text
   // lives in packages/prompts, matching the pattern renderAnnotatedPgn/
@@ -176,7 +196,8 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
     input.studentColor,
     renderThreadsBlock(threads),
     playedMove,
-    { analysis, classifiedMove, postMoveAnalysis, featureDelta }
+    { analysis, classifiedMove, postMoveAnalysis, featureDelta },
+    gameSoFar
   );
 
   const episodeMessages = await resolveEpisodeReplay(input, input.session.id, orphanExtendedMessages, input.currentPly);
@@ -191,6 +212,24 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
     },
     episodeMessages
   );
+}
+
+/** architecture §14: analyze mode reads the batch pipeline's classified
+ * moves (analysesRepo, unchanged); play mode reads the live equivalent
+ * (game_move_qualities) instead and never queries analysesRepo at all — a
+ * play-mode game never gets an `analyses` row in the first place. Both
+ * branches return the same AnnotatedMoveLike[] shape so every caller above
+ * (renderAnnotatedPgn/renderGameSoFarInline/renderOtherMovesSummary/the
+ * classifiedMove lookup) works unmodified regardless of which mode it came
+ * from. */
+async function fetchMoveQualities(
+  db: Kysely<Database>,
+  gameId: string,
+  isPlayMode: boolean
+): Promise<AnnotatedMoveLike[]> {
+  if (isPlayMode) return gameMoveQualitiesRepo.listByGameId(db, gameId);
+  const moves = await analysesRepo.findClassifiedMovesByGameId(db, gameId);
+  return moves ?? [];
 }
 
 /**

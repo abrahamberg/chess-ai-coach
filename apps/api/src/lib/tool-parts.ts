@@ -48,6 +48,47 @@ export function toolResultValue(part: unknown): unknown {
   return record.result;
 }
 
+/**
+ * Play mode (architecture §14): finds the successful result of a tool that
+ * can be called at most once per turn and always ends it (play_coach_move,
+ * undo_last_move) — correlates a tool-call for `toolName` with its
+ * tool-result by toolCallId, same pairing coach-context-episode-close.ts's
+ * hasSuccessfulRecordMoveNoteCall uses, generalized to return the result's
+ * VALUE instead of a boolean (the caller needs the committed ply/fen, not
+ * just whether the call succeeded). A result shaped `{ error: string }`
+ * (an illegal move, "no move to undo") is not success — returns null, same
+ * as no call having happened at all, so the caller never advances the ply
+ * or closes an episode over a move that was never actually committed.
+ */
+export function findSuccessfulToolResult(messages: Array<{ role: string; content: unknown }>, toolName: string): unknown {
+  const callIds = new Set<string>();
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) continue;
+    for (const part of message.content) {
+      if (!isToolCallPart(part, toolName)) continue;
+      const id = toolCallId(part);
+      if (id !== null) callIds.add(id);
+    }
+  }
+  if (callIds.size === 0) return null;
+
+  for (const message of messages) {
+    if (message.role !== 'tool' || !Array.isArray(message.content)) continue;
+    for (const part of message.content) {
+      if (!isToolResultPart(part)) continue;
+      const id = toolCallId(part);
+      if (id === null || !callIds.has(id)) continue;
+      const value = toolResultValue(part);
+      if (isSuccessValue(value)) return value;
+    }
+  }
+  return null;
+}
+
+function isSuccessValue(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && !('error' in value);
+}
+
 /** Rewrites stored parts into the shape the provider accepts today. Parts
  * already in that shape pass through untouched. */
 export function upgradeStoredParts(content: unknown): unknown {

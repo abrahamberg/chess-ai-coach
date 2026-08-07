@@ -64,4 +64,15 @@ describe('session-move-notes repository', () => {
 
     expect(rows.map((r) => r.ply)).toEqual([4, 8]);
   });
+
+  test('deleteByPly removes only the targeted ply', async () => {
+    const session = await seedSession();
+    await sessionMoveNotesRepo.upsert(db, session.id, 4, 'kept');
+    await sessionMoveNotesRepo.upsert(db, session.id, 6, 'removed');
+
+    await sessionMoveNotesRepo.deleteByPly(db, session.id, 6);
+
+    expect(await sessionMoveNotesRepo.findByPly(db, session.id, 6)).toBeUndefined();
+    expect(await sessionMoveNotesRepo.findByPly(db, session.id, 4)).toBeDefined();
+  });
 });

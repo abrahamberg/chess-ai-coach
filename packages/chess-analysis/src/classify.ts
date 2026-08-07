@@ -46,6 +46,33 @@ export function classifyMoves(
   });
 }
 
+/**
+ * Classifies a single live move (the "play with the coach" interactive path,
+ * one move at a time) through the exact same classifyMove logic the batch
+ * classifyMoves path uses, so live and post-hoc batch classification can
+ * never drift apart. Builds the minimal ParsedPosition-shaped object
+ * classifyMove actually reads (ply/moveSan/mover — it never touches
+ * position.fen or position.moveUci) and delegates.
+ */
+export function classifyLiveMove(input: {
+  ply: number;
+  moveSan: string;
+  mover: 'white' | 'black';
+  fenBefore: string;
+  evalBefore: EngineEval | undefined;
+  evalAfter: EngineEval | undefined;
+  userColor: 'white' | 'black';
+}): ClassifiedMove {
+  const position: ParsedGame['positions'][number] = {
+    ply: input.ply,
+    fen: input.fenBefore,
+    moveSan: input.moveSan,
+    moveUci: null,
+    mover: input.mover
+  };
+  return classifyMove(position, input.evalBefore, input.evalAfter, input.userColor, input.fenBefore);
+}
+
 function classifyMove(
   position: ParsedGame['positions'][number],
   evalBefore: EngineEval | undefined,

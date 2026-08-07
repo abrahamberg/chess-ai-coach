@@ -1,25 +1,34 @@
 import type { Kysely } from 'kysely';
+import type { SessionMode } from '@chess-coach/shared';
 import * as gamesRepo from '../db/repositories/games.js';
 import * as sessionMessagesRepo from '../db/repositories/session-messages.js';
 import type { SessionMessageRow } from '../db/repositories/session-messages.js';
 import * as sessionsRepo from '../db/repositories/sessions.js';
-import type { SessionRow } from '../db/repositories/sessions.js';
+import type { NewSession, SessionRow } from '../db/repositories/sessions.js';
 import type { Database } from '../db/schema.js';
 import { ConflictError, NotFoundError } from '../lib/errors.js';
 
 const SESSION_START_CONTENT = '[session_start]';
 
+/** Session insert + `[session_start]` seed message — shared by analyze mode's
+ * createSession (below) and play mode's createPlaySession (play-session.ts),
+ * so the seeding logic exists in exactly one place. */
+export async function createSessionForGame(db: Kysely<Database>, values: NewSession): Promise<SessionRow> {
+  const session = await sessionsRepo.insert(db, values);
+  await sessionMessagesRepo.insert(db, session.id, 'user', SESSION_START_CONTENT, session.currentPly);
+  return session;
+}
+
 export async function createSession(
   db: Kysely<Database>,
   userId: string,
-  gameId: string
+  gameId: string,
+  mode: SessionMode = 'analyze'
 ): Promise<SessionRow> {
   const game = await gamesRepo.findByIdForUser(db, gameId, userId);
   if (!game) throw new NotFoundError('Game not found');
 
-  const session = await sessionsRepo.insert(db, { gameId: game.id, userId });
-  await sessionMessagesRepo.insert(db, session.id, 'user', SESSION_START_CONTENT, session.currentPly);
-  return session;
+  return createSessionForGame(db, { gameId: game.id, userId, mode });
 }
 
 /** The Games page's "start session" action: if the student already has an

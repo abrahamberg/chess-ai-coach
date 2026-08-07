@@ -3,6 +3,7 @@ import { ImportGameRequestSchema } from '@chess-coach/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Kysely } from 'kysely';
 import * as analysesRepo from '../db/repositories/analyses.js';
+import * as gameMoveQualitiesRepo from '../db/repositories/game-move-qualities.js';
 import * as gamesRepo from '../db/repositories/games.js';
 import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
@@ -42,9 +43,19 @@ export function registerGamesRoutes(app: FastifyInstance, db: Kysely<Database>, 
     const game = await gamesRepo.findByIdForUser(db, request.params.id, user.id);
     if (!game) throw new NotFoundError('Game not found');
 
+    // architecture §14: a play-mode game never gets an `analyses` row (no
+    // pre-game batch pipeline), so it skips that lookup entirely and returns
+    // its live move-quality rows instead — a distinctly-named field, not
+    // overloaded onto classifiedMoves, so the frontend can tell the two
+    // data sources apart.
+    if (game.source === 'coach_play') {
+      const liveMoveQualities = await gameMoveQualitiesRepo.listByGameId(db, game.id);
+      return { ...game, analysisStatus: null, classifiedMoves: null, liveMoveQualities };
+    }
+
     const analysis = await analysesRepo.findByGameId(db, game.id);
     const classifiedMoves = await analysesRepo.findClassifiedMovesByGameId(db, game.id);
-    return { ...game, analysisStatus: analysis?.status ?? null, classifiedMoves: classifiedMoves ?? null };
+    return { ...game, analysisStatus: analysis?.status ?? null, classifiedMoves: classifiedMoves ?? null, liveMoveQualities: null };
   });
 }
 

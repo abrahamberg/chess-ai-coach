@@ -2,8 +2,13 @@ import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { buildApp } from '../app.js';
 import * as analysesRepo from '../db/repositories/analyses.js';
+import * as gameMoveQualitiesRepo from '../db/repositories/game-move-qualities.js';
+import * as gamesRepo from '../db/repositories/games.js';
+import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
+import type { CoachAgentDependencies } from '../services/coach-agent.js';
+import { createKeyVault } from '../llm/key-vault.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
 
 const VALID_PGN = `[Event "Test"]
@@ -47,7 +52,21 @@ describe('POST/GET /api/games', () => {
       enqueueAnalyzeGame: vi.fn().mockResolvedValue(undefined),
       enqueueSummarizeSession: vi.fn().mockResolvedValue(undefined)
     };
-    return buildApp({ authMode: 'proxy', db, jobQueue });
+    // Required to register /api/sessions/* (POST /api/sessions/play, used by
+    // the coach_play listing test below) — the LLM-facing fields are never
+    // exercised by these games-route tests, so they're unused stubs.
+    const coachAgentDeps: CoachAgentDependencies = {
+      db,
+      jobQueue,
+      gatewayConfig: {
+        keyVault: createKeyVault(Buffer.alloc(32, 7).toString('base64')),
+        platformKeys: {},
+        modelIds: { standard: { anthropic: '', openai: '' }, light: { anthropic: '', openai: '' } }
+      },
+      analyzePosition: vi.fn(),
+      callLightModel: vi.fn()
+    };
+    return buildApp({ authMode: 'proxy', db, jobQueue, coachAgentDeps });
   }
 
   test('imports a valid PGN, creating a queued analysis and enqueuing the job', async () => {
@@ -210,6 +229,64 @@ describe('POST/GET /api/games', () => {
     expect(detail.statusCode).toBe(200);
     expect(detail.json().classifiedMoves).toEqual([
       expect.objectContaining({ ply: 1, moveSan: 'e4', quality: 'good' })
+    ]);
+  });
+
+  test('GET /api/games/:id returns liveMoveQualities (never classifiedMoves) for a coach_play game, with no analyses lookup', async () => {
+    const app = buildTestApp();
+    const headers = headersFor('playgame@example.com', 'Playgame');
+
+    // coach_play games are only ever created via createPlaySession
+    // (POST /api/sessions/play), never via POST /api/games — seed one
+    // directly at the repo layer, matching how play-session.test.ts does.
+    const owner = await usersRepo.insert(db, { email: 'playgame@example.com', displayName: 'Playgame' });
+    const game = await gamesRepo.insert(db, {
+      userId: owner.id,
+      pgn: '1. e4',
+      source: 'coach_play',
+      userColor: 'white',
+      whiteName: 'You',
+      blackName: 'Coach',
+      result: null,
+      timeControl: null,
+      eco: null,
+      playedAt: null
+    });
+    await gameMoveQualitiesRepo.insert(db, {
+      gameId: game.id,
+      ply: 1,
+      moveSan: 'e4',
+      mover: 'white',
+      quality: 'best',
+      cpLoss: 0,
+      bestLineSan: ['e4'],
+      evalAfterCp: 20
+    });
+
+    const detail = await app.inject({ method: 'GET', url: `/api/games/${game.id}`, headers });
+
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().classifiedMoves).toBeNull();
+    expect(detail.json().liveMoveQualities).toEqual([expect.objectContaining({ ply: 1, moveSan: 'e4', quality: 'best' })]);
+  });
+
+  test('GET /api/games lists a coach_play game with source and its resumable sessionId, not "analyzing"', async () => {
+    const app = buildTestApp();
+    const headers = headersFor('playlister@example.com', 'Playlister');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/sessions/play',
+      headers,
+      payload: { studentColor: 'white' }
+    });
+    expect(response.statusCode).toBe(200);
+    const { id: sessionId, gameId } = response.json();
+
+    const list = await app.inject({ method: 'GET', url: '/api/games', headers });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toEqual([
+      expect.objectContaining({ id: gameId, source: 'coach_play', analysisStatus: null, sessionId })
     ]);
   });
 

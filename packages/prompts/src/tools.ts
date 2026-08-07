@@ -154,7 +154,7 @@ export const COACH_TOOL_SPECS: readonly CoachToolSpec[] = [
   {
     name: 'update_threads',
     description:
-      'Backstage conversation-thread ledger (see Conversation threading below). Call it ONLY when you set a topic aside for later, resume one, or a parked one resolves. Ordinary back-and-forth on the current topic never touches the ledger. Silent; the student never sees it.'
+      'Backstage conversation-thread ledger (see Conversation threading below) — full replace, always pass the complete current list. Call it whenever one of these happens, right when it happens, not in a batch later: (1) you set a topic aside mid-conversation to finish the current one ("good question — hold that, let me finish this line" -> park it); (2) you return to a parked topic ("now, you asked earlier about..." -> mark it active, still in the ledger until you are actually done with it); (3) a parked or active topic gets resolved in conversation -> mark it resolved or drop it; (4) you form a working hypothesis about the student\'s thinking you want to test over the next few moments ("seems to stop calculating after the first capture") -> record it as the hypothesis on the relevant thread; (5) in play mode, you decide on a multi-move plan you\'re testing (e.g. "playing toward a fork on move 14 to see if they notice") -> park it as a thread so you remember to follow up. Ordinary back-and-forth on the CURRENT topic never touches the ledger — this is the single most under-used tool; use it any time one of the five triggers above actually happens, not only when it feels significant. Silent; the student never sees it.'
   },
   {
     name: 'record_move_note',

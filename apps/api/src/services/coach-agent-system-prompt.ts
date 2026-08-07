@@ -9,10 +9,14 @@ import type { Database } from '../db/schema.js';
 import { NotFoundError } from '../lib/errors.js';
 import * as userProfileService from './user-profile.js';
 
+type SystemPromptResult = { staticPart: string; dynamicPart: string; studentColor: 'white' | 'black' };
+
 export async function buildSystemPromptForSession(
   db: Kysely<Database>,
   session: SessionRow
-): Promise<{ staticPart: string; dynamicPart: string; studentColor: 'white' | 'black' }> {
+): Promise<SystemPromptResult> {
+  if (session.mode === 'play') return buildPlayModeSystemPrompt(db, session);
+
   const [user, game, plan, profileSummary, sessionCount] = await Promise.all([
     usersRepo.findById(db, session.userId),
     gamesRepo.findById(db, session.gameId),
@@ -27,6 +31,7 @@ export async function buildSystemPromptForSession(
   const prompt = buildCoachSystemPrompt({
     user: { displayName: user.displayName, selfAssessment: user.selfAssessment, sessionCount },
     band: user.ratingBand,
+    mode: 'analyze',
     game: {
       whiteName: game.whiteName ?? 'White',
       blackName: game.blackName ?? 'Black',
@@ -35,6 +40,38 @@ export async function buildSystemPromptForSession(
       userColor: game.userColor
     },
     plan,
+    focusAreas: profileSummary.focusAreas,
+    recentFindings: profileSummary.recentFindings
+  });
+  return { ...prompt, studentColor: game.userColor };
+}
+
+/** architecture §14: never queries analysesRepo — a play-mode game never
+ * gets an `analyses` row (there's no pre-game batch pipeline to produce
+ * one), so `plan` is always null here rather than a lookup that would
+ * always miss. */
+async function buildPlayModeSystemPrompt(db: Kysely<Database>, session: SessionRow): Promise<SystemPromptResult> {
+  const [user, game, profileSummary, sessionCount] = await Promise.all([
+    usersRepo.findById(db, session.userId),
+    gamesRepo.findById(db, session.gameId),
+    userProfileService.getProfileSummary(db, session.userId),
+    sessionsRepo.countByUser(db, session.userId)
+  ]);
+  if (!user) throw new NotFoundError('User not found');
+  if (!game) throw new NotFoundError('Game not found');
+
+  const prompt = buildCoachSystemPrompt({
+    user: { displayName: user.displayName, selfAssessment: user.selfAssessment, sessionCount },
+    band: user.ratingBand,
+    mode: 'play',
+    game: {
+      whiteName: game.whiteName ?? 'White',
+      blackName: game.blackName ?? 'Black',
+      result: game.result ?? '*',
+      timeControl: game.timeControl ?? 'unknown',
+      userColor: game.userColor
+    },
+    plan: null,
     focusAreas: profileSummary.focusAreas,
     recentFindings: profileSummary.recentFindings
   });

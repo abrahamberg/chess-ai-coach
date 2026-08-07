@@ -1,15 +1,21 @@
 import { z } from 'zod';
 import { AnalysisStatusSchema } from './analysis.js';
 
-export const GameSourceSchema = z.enum(['paste', 'upload', 'lichess']);
+export const GameSourceSchema = z.enum(['paste', 'upload', 'lichess', 'coach_play']);
 export type GameSource = z.infer<typeof GameSourceSchema>;
+
+/** architecture §14: 'coach_play' is set only by createPlaySession
+ * (server-side, POST /api/sessions/play) — never a client-supplied import
+ * source, so ImportGameRequestSchema below deliberately excludes it. */
+export const ImportableGameSourceSchema = z.enum(['paste', 'upload', 'lichess']);
+export type ImportableGameSource = z.infer<typeof ImportableGameSourceSchema>;
 
 export const PlayerColorSchema = z.enum(['white', 'black']);
 export type PlayerColor = z.infer<typeof PlayerColorSchema>;
 
 export const ImportGameRequestSchema = z.object({
   pgn: z.string().min(1),
-  source: GameSourceSchema,
+  source: ImportableGameSourceSchema,
   userColor: PlayerColorSchema.optional()
 });
 export type ImportGameRequest = z.infer<typeof ImportGameRequestSchema>;
@@ -40,6 +46,7 @@ export type LichessRecentGamesResponse = z.infer<typeof LichessRecentGamesRespon
  * chip without a follow-up request per row. */
 export const GameListItemSchema = z.object({
   id: z.string(),
+  source: GameSourceSchema,
   userColor: PlayerColorSchema,
   whiteName: z.string().nullable(),
   blackName: z.string().nullable(),
@@ -47,7 +54,13 @@ export const GameListItemSchema = z.object({
   timeControl: z.string().nullable(),
   playedAt: z.string().nullable(),
   createdAt: z.string(),
-  analysisStatus: AnalysisStatusSchema.nullable()
+  analysisStatus: AnalysisStatusSchema.nullable(),
+  /** architecture §14: only ever set for source === 'coach_play' — the id of
+   * its still-resumable session, so the Games list can link straight back in
+   * without going through analyze mode's POST /api/sessions (which gates on
+   * an `analyses` row a play-mode game never has). Null once that session has
+   * ended (completed/abandoned) or, for analyze-mode games, always. */
+  sessionId: z.string().nullable()
 });
 export type GameListItem = z.infer<typeof GameListItemSchema>;
 

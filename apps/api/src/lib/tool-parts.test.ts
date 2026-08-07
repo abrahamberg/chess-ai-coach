@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import { isToolCallPart, isToolResultPart, toolCallId, toolCallInput, toolResultValue, upgradeStoredParts } from './tool-parts.js';
+import {
+  findSuccessfulToolResult,
+  isToolCallPart,
+  isToolResultPart,
+  toolCallId,
+  toolCallInput,
+  toolResultValue,
+  upgradeStoredParts
+} from './tool-parts.js';
 
 // The shape written by the AI SDK version this project used before the v7
 // upgrade. `session_messages` is append-only, so these rows exist forever.
@@ -55,6 +63,37 @@ describe('reading stored tool parts', () => {
     expect(toolCallInput('a plain string message')).toBeUndefined();
     expect(toolResultValue(null)).toBeUndefined();
     expect(upgradeStoredParts('a plain string message')).toBe('a plain string message');
+  });
+});
+
+describe('findSuccessfulToolResult (architecture §14: play_coach_move / undo_last_move)', () => {
+  test('returns the successful result\'s value, correlated by toolCallId', () => {
+    const messages = [
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'play_coach_move', input: { san: 'e4' } }] },
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c1', toolName: 'play_coach_move', output: { type: 'json', value: { fen: 'f', san: 'e4', ply: 6, quality: 'best' } } }] }
+    ];
+    expect(findSuccessfulToolResult(messages, 'play_coach_move')).toEqual({ fen: 'f', san: 'e4', ply: 6, quality: 'best' });
+  });
+
+  test('returns null when the tool was never called this turn', () => {
+    const messages = [{ role: 'assistant', content: [{ type: 'text', text: 'hi' }] }];
+    expect(findSuccessfulToolResult(messages, 'play_coach_move')).toBeNull();
+  });
+
+  test('returns null for an { error } result — an illegal move must never advance the ply', () => {
+    const messages = [
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'play_coach_move', input: { san: 'Z9' } }] },
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c1', toolName: 'play_coach_move', output: { type: 'json', value: { error: 'Illegal move: Z9' } } }] }
+    ];
+    expect(findSuccessfulToolResult(messages, 'play_coach_move')).toBeNull();
+  });
+
+  test('ignores a same-name tool-result from a different toolCallId', () => {
+    const messages = [
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'play_coach_move', input: { san: 'e4' } }] },
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c2', toolName: 'play_coach_move', output: { type: 'json', value: { fen: 'f', ply: 6 } } }] }
+    ];
+    expect(findSuccessfulToolResult(messages, 'play_coach_move')).toBeNull();
   });
 });
 

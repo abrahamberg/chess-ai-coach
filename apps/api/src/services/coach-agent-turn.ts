@@ -1,12 +1,13 @@
 import * as sessionMessagesRepo from '../db/repositories/session-messages.js';
 import * as sessionsRepo from '../db/repositories/sessions.js';
 import type { SessionRow } from '../db/repositories/sessions.js';
-import { runCoachTurn, MAX_STEPS, type CoachTurnStream } from '../llm/chat.js';
+import { runCoachTurn, MAX_STEPS, type CoachTurnCompletion, type CoachTurnStream } from '../llm/chat.js';
 import { getModelForUser, recordUsage, streamTimeoutsFor } from '../llm/gateway.js';
 import { toBillableTokens } from '../llm/usage.js';
 import { InsufficientCreditsError } from '../lib/errors.js';
 import { createKeyedLock } from '../lib/keyedLock.js';
 import { currentEpisode } from '../lib/episodes.js';
+import { findSuccessfulToolResult } from '../lib/tool-parts.js';
 import { buildCoachTools } from './coach-tools.js';
 import * as coachContext from './coach-context.js';
 import { createCreditsService } from './credits.js';
@@ -101,9 +102,15 @@ export async function startTurn(
         jobQueue: deps.jobQueue,
         analyzePosition: deps.analyzePosition,
         callLightModel: deps.callLightModel
-      }
+      },
+      session.mode
     );
     const requestTools = serializeTools(tools);
+    // architecture §14: play mode ends its turn the instant its own move
+    // (or an undo) is committed, via the SDK's hasToolCall stop condition —
+    // see llm/chat.ts's stopOnToolNames. Undefined for analyze mode, which
+    // keeps stepCountIs(MAX_STEPS) as its only stop condition, unchanged.
+    const stopOnToolNames = session.mode === 'play' ? ['play_coach_move', 'undo_last_move'] : undefined;
 
     return runCoachTurn({
       resolution,
@@ -111,6 +118,7 @@ export async function startTurn(
       messages,
       tools,
       timeouts: streamTimeoutsFor(deps.gatewayConfig),
+      stopOnToolNames,
       onFinish: async (completion) => {
         // The response has already been piped to the client by the time this
         // runs (see routes/sessions.ts's reply.hijack()), so nothing
@@ -142,6 +150,9 @@ export async function startTurn(
 
           for (const message of completion.messages) {
             await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content, currentPly);
+          }
+          if (session.mode === 'play') {
+            await advancePlyForPlayMove(deps, session.id, currentPly, completion.messages);
           }
           await recordUsage(deps.db, {
             userId: session.userId,
@@ -176,5 +187,55 @@ export async function startTurn(
   } catch (error) {
     releaseOnce();
     throw error;
+  }
+}
+
+interface PlayCoachMoveResult {
+  ply: number;
+}
+
+interface UndoLastMoveResult {
+  removedPly: number;
+}
+
+/**
+ * architecture §14: runs after this turn's messages are already persisted at
+ * `closedPly` (the ply that was current for the whole turn), so the episode
+ * being closed/replayed below genuinely includes everything just discussed —
+ * mirroring the closeEpisodeIfNeeded + updateCurrentPly pairing startTurn
+ * already uses for position jumps (above), just deferred to after onFinish
+ * instead of before the turn starts, since play_coach_move/undo_last_move
+ * are server tools whose result only exists once the turn has run.
+ *
+ * play_coach_move folds the coach's own move into the CLOSE of the
+ * student's-move episode rather than opening a new episode of its own —
+ * that's what "episode tied to every user move" means here. undo_last_move
+ * skips closeEpisodeIfNeeded entirely: there is nothing sound to summarize,
+ * since the episode discussed a move that no longer exists — its raw
+ * messages stay in history untouched (append-only), just never folded into
+ * session_move_notes for that ply.
+ *
+ * A failed commit (an illegal move, "no move to undo") returns `{ error }`
+ * from the tool, which findSuccessfulToolResult treats as no call at all —
+ * the ply intentionally does not move in that case.
+ */
+async function advancePlyForPlayMove(
+  deps: CoachAgentDependencies,
+  sessionId: string,
+  closedPly: number,
+  messages: CoachTurnCompletion['messages']
+): Promise<void> {
+  const coachMove = findSuccessfulToolResult(messages, 'play_coach_move') as PlayCoachMoveResult | null;
+  if (coachMove) {
+    const historyAfterTurn = await sessionMessagesRepo.listBySession(deps.db, sessionId);
+    const closedEpisode = currentEpisode(historyAfterTurn, closedPly);
+    await coachContext.closeEpisodeIfNeeded(deps, sessionId, closedEpisode.messages, closedPly);
+    await sessionsRepo.updateCurrentPly(deps.db, sessionId, coachMove.ply);
+    return;
+  }
+
+  const undo = findSuccessfulToolResult(messages, 'undo_last_move') as UndoLastMoveResult | null;
+  if (undo) {
+    await sessionsRepo.updateCurrentPly(deps.db, sessionId, undo.removedPly - 1);
   }
 }

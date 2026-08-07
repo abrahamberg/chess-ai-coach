@@ -36,6 +36,10 @@ export function toolCallFrame(call: { toolCallId: string; toolName: string; inpu
   });
 }
 
+export function toolOutputFrame(toolCallId: string, output: unknown): string {
+  return frame({ type: 'tool-output-available', toolCallId, output });
+}
+
 export function errorFrame(errorText: string): string {
   return frame({ type: 'error', errorText });
 }

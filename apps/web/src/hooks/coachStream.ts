@@ -6,12 +6,23 @@ export interface StreamedToolCall {
   input: unknown;
 }
 
+export interface StreamedToolOutput {
+  toolCallId: string;
+  toolName: string;
+  output: unknown;
+}
+
 export interface CoachStreamHandlers {
   /** An incremental slice of the coach's reply text. */
   onTextDelta: (delta: string) => void;
   /** A tool call with its input fully assembled. Awaited, so a client tool can
    * finish its round-trip before the rest of the stream is drained. */
   onToolCall: (call: StreamedToolCall) => Promise<void>;
+  /** architecture §14: play mode's server-executed tools (play_coach_move,
+   * undo_last_move) carry `execute`, so the AI SDK resolves them mid-stream
+   * with no client round-trip — this is how the frontend hears the result.
+   * Optional: analyze mode never emits this chunk type. */
+  onToolOutput?: (output: StreamedToolOutput) => void;
   onError: (message: string) => void;
 }
 
@@ -22,8 +33,9 @@ export interface CoachStreamHandlers {
  *
  * Only the chunk types this app acts on are handled. Reasoning chunks are
  * deliberately not among them: the coach's thinking belongs in the debug
- * popup, not the student's transcript. Tool *outputs* likewise arrive by
- * their own round-trip rather than off this stream.
+ * popup, not the student's transcript. Client tool outputs likewise arrive by
+ * their own round-trip rather than off this stream — only server-executed
+ * tools' outputs (see onToolOutput) show up here.
  */
 export async function readCoachStream(
   body: ReadableStream<Uint8Array>,
@@ -31,6 +43,10 @@ export async function readCoachStream(
 ): Promise<void> {
   const chunks = parseJsonEventStream({ stream: body, schema: uiMessageChunkSchema });
   const reader = chunks.getReader();
+  // tool-output-available chunks carry no toolName of their own (the AI SDK's
+  // uiMessageChunkSchema only puts it on tool-input-available) — remembered
+  // here per stream so onToolOutput can still report which tool resolved.
+  const toolNamesByCallId = new Map<string, string>();
 
   try {
     for (;;) {
@@ -40,7 +56,7 @@ export async function readCoachStream(
         handlers.onError('An error occurred.');
         continue;
       }
-      await dispatchChunk(value.value, handlers);
+      await dispatchChunk(value.value, handlers, toolNamesByCallId);
     }
   } finally {
     reader.releaseLock();
@@ -49,17 +65,26 @@ export async function readCoachStream(
 
 async function dispatchChunk(
   chunk: { type: string; [key: string]: unknown },
-  handlers: CoachStreamHandlers
+  handlers: CoachStreamHandlers,
+  toolNamesByCallId: Map<string, string>
 ): Promise<void> {
   if (chunk.type === 'text-delta') {
     handlers.onTextDelta(String(chunk.delta ?? ''));
     return;
   }
   if (chunk.type === 'tool-input-available') {
-    await handlers.onToolCall({
-      toolCallId: String(chunk.toolCallId),
-      toolName: String(chunk.toolName),
-      input: chunk.input
+    const toolCallId = String(chunk.toolCallId);
+    const toolName = String(chunk.toolName);
+    toolNamesByCallId.set(toolCallId, toolName);
+    await handlers.onToolCall({ toolCallId, toolName, input: chunk.input });
+    return;
+  }
+  if (chunk.type === 'tool-output-available') {
+    const toolCallId = String(chunk.toolCallId);
+    handlers.onToolOutput?.({
+      toolCallId,
+      toolName: toolNamesByCallId.get(toolCallId) ?? '',
+      output: chunk.output
     });
     return;
   }

@@ -11,6 +11,13 @@
   text-align: center;
 }
 
+.games-page__cta--secondary {
+  margin-top: -8px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid rgb(0 0 0 / 8%);
+}
+
 .games-page__list {
   list-style: none;
   margin: 0;

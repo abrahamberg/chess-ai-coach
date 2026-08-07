@@ -10,17 +10,40 @@ import { describeMoveRef } from './render.js';
  * cache breakpoint. Only unsound moves (mistake/blunder/miss/dubious) get
  * extra detail inline, so an 80-ply game doesn't bloat the block.
  */
-export function renderAnnotatedPgn(moves: ClassifiedMove[]): string {
+/** The fields renderAnnotatedMove actually reads — shared by ClassifiedMove
+ * (analyze mode's batch-computed rows) and play mode's game_move_qualities
+ * rows, so both renderAnnotatedPgn (below) and renderGameSoFarInline can use
+ * the exact same rendering, never two copies that could drift apart. Any
+ * ClassifiedMove[] still satisfies this (pure widening — no behavior change
+ * for analyze mode's existing callers). */
+export type AnnotatedMoveLike = Pick<
+  ClassifiedMove,
+  'ply' | 'moveSan' | 'quality' | 'cpLoss' | 'bestLineSan' | 'evalAfterCp'
+>;
+
+export function renderAnnotatedPgn(moves: AnnotatedMoveLike[]): string {
   const body = moves.length === 0 ? '(no moves)' : moves.map(renderAnnotatedMove).join(' ');
   return `## This game (annotated)\n\n${body}`;
 }
 
-function renderAnnotatedMove(move: ClassifiedMove): string {
+export function renderAnnotatedMove(move: AnnotatedMoveLike): string {
   const symbol = MOVE_QUALITY_SYMBOLS[move.quality];
   const base = `${movePrefix(move.ply)}${move.moveSan}${symbol}`;
   if (isSoundQuality(move.quality)) return base;
   const bestLine = move.bestLineSan[0] ? `, best ${move.bestLineSan[0]}` : '';
   return `${base} (lost ~${move.cpLoss}cp${bestLine})`;
+}
+
+/**
+ * Play mode's live equivalent of renderAnnotatedPgn (architecture §14):
+ * folded into the uncached "## Current position" block (via
+ * renderCurrentMoveBlock's `gameSoFar` param) instead of riding its own
+ * cache breakpoint, since a live game's move-quality annotations can't be
+ * known upfront the way an already-finished imported game's can — they're
+ * only known move by move, as the game_move_qualities table grows.
+ */
+export function renderGameSoFarInline(moves: AnnotatedMoveLike[]): string {
+  return moves.length === 0 ? '(no moves played yet)' : moves.map(renderAnnotatedMove).join(' ');
 }
 
 /** "N." before White's move, nothing before Black's — matches how a human
@@ -68,8 +91,14 @@ function renderOtherMoveLine(entry: MoveNoteEntry, qualityByPly: Map<number, Mov
 export interface CurrentMoveAnalysisContext {
   /** Engine analysis of the pre-move position (`fen` in renderCurrentMoveBlock) — supplies the best line and other engine options. */
   analysis: PositionAnalysis;
-  /** This ply's classified-move entry, if the batch pipeline has reached it yet — supplies the cp-loss headline. Absent for a freshly-imported game the batch job hasn't classified yet. */
-  classifiedMove?: ClassifiedMove;
+  /** This ply's classified-move entry, if the batch pipeline (analyze mode)
+   * or the live classifier (play mode, game_move_qualities) has reached it
+   * yet — supplies the cp-loss headline. Only the two fields actually read
+   * below are required, so a play-mode game_move_qualities row satisfies
+   * this without a fake shim for the ClassifiedMove-only fields it lacks
+   * (isUserMove, hangsPiece). Absent for a freshly-imported game the batch
+   * job hasn't classified yet. */
+  classifiedMove?: Pick<ClassifiedMove, 'cpLoss' | 'evalAfterCp'>;
   /** Engine analysis of the position AFTER the played move — supplies the "Played line" continuation. Omitted when the student played the engine's own best move (nothing to add) or when not fetched. */
   postMoveAnalysis?: PositionAnalysis;
   /** Diff between "after the engine's best move" and "after the move actually played" — omitted when there's no best move to compare against. */
@@ -216,7 +245,11 @@ function renderAnalysisSection(ply: number, playedMove: string | null, ctx: Curr
  * is the curated engine-analysis summary of the pre-move position — always
  * supplied by the real caller (engine visibility is a universal default,
  * no per-student opt-in); optional here only so pure-render unit tests can
- * omit it.
+ * omit it. `gameSoFar` (architecture §14) is play mode's live replacement
+ * for the static layer-3 annotated PGN, rendered via renderGameSoFarInline
+ * — omitted (undefined) for analyze mode, which keeps that block on its own
+ * cache breakpoint instead (renderAnnotatedPgn) and leaves this function's
+ * own output byte-for-byte unchanged for every existing caller.
  */
 export function renderCurrentMoveBlock(
   ply: number,
@@ -224,9 +257,11 @@ export function renderCurrentMoveBlock(
   studentColor: 'white' | 'black',
   threadsBlock: string,
   playedMove: string | null,
-  analysisContext?: CurrentMoveAnalysisContext
+  analysisContext?: CurrentMoveAnalysisContext,
+  gameSoFar?: string
 ): string {
   const playedMoveSentence = playedMove !== null ? ` The move actually played here was ${playedMove}.` : '';
   const analysisBlock = analysisContext ? renderAnalysisSection(ply, playedMove, analysisContext) : '';
-  return `## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board. Your student is playing ${studentColor} in this game.${playedMoveSentence} FEN : ${fen}.${analysisBlock}\n\n## Your thread ledger\n\n${threadsBlock}`;
+  const gameSoFarBlock = gameSoFar !== undefined ? `## Game so far\n\n${gameSoFar}\n\n` : '';
+  return `${gameSoFarBlock}## Current position\n\nYou are now discussing ${describeMoveRef(ply)} — this is what's actively on the board. Your student is playing ${studentColor} in this game.${playedMoveSentence} FEN : ${fen}.${analysisBlock}\n\n## Your thread ledger\n\n${threadsBlock}`;
 }

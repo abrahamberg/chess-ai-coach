@@ -265,6 +265,74 @@ describe('useSessionBoardState', () => {
   });
 });
 
+describe('applyServerMove (architecture §14: play mode)', () => {
+  test('mirrors show_position for board/mode, but reveals immediately (no pre-move anchor) — a move just actually played live has nothing to guess', () => {
+    const { result } = renderHook(() => useSessionBoardState(POSITIONS));
+    act(() => {
+      result.current.setAnnotations({ arrows: [{ from: 'e2', to: 'e4', color: '#c9762a' }], highlights: [] });
+    });
+
+    act(() => {
+      result.current.applyServerMove(4, POSITIONS[1]?.fen ?? '', 'g1f3');
+    });
+
+    expect(result.current.fen).toBe(POSITIONS[1]?.fen);
+    expect(result.current.ply).toBe(4);
+    expect(result.current.mode).toBe('answer');
+    expect(result.current.isAnchoredPreMove).toBe(false);
+    // The old coach-drawn annotate_board arrow is cleared. No pre-move red
+    // arrow (unlike show_position) — just the normal last-move highlights.
+    expect(result.current.arrows).toEqual([]);
+    expect(result.current.highlights).toEqual([
+      { square: 'g1', color: 'var(--last-move)' },
+      { square: 'f3', color: 'var(--last-move)' }
+    ]);
+  });
+
+  // The whole point of applyServerMove: the caller (SessionPage) may not
+  // have re-rendered with the newly-appended position yet — the fen must be
+  // correct on the very next read regardless, not one render later.
+  test('the position at the new ply is available immediately, even before `positions` includes it', () => {
+    const { result } = renderHook(() => useSessionBoardState(POSITIONS));
+
+    act(() => {
+      result.current.applyServerMove(99, 'brand-new-fen', 'e2e4');
+    });
+
+    expect(result.current.fen).toBe('brand-new-fen');
+    expect(result.current.ply).toBe(99);
+  });
+
+  test('once `positions` catches up with the new ply, it takes over as the source of truth', () => {
+    const { result, rerender } = renderHook(({ positions }) => useSessionBoardState(positions), {
+      initialProps: { positions: POSITIONS }
+    });
+
+    act(() => {
+      result.current.applyServerMove(99, 'brand-new-fen', 'e2e4');
+    });
+    expect(result.current.fen).toBe('brand-new-fen');
+
+    const grownPositions = [...POSITIONS, { ply: 99, fen: 'brand-new-fen-from-positions', moveUci: 'e2e4' }];
+    rerender({ positions: grownPositions });
+
+    expect(result.current.fen).toBe('brand-new-fen-from-positions');
+  });
+
+  test('applyServerMove supersedes any pending local preview', () => {
+    const { result } = renderHook(() => useSessionBoardState(POSITIONS));
+
+    act(() => {
+      result.current.previewMove('some-preview-fen');
+    });
+    act(() => {
+      result.current.applyServerMove(4, POSITIONS[1]?.fen ?? '', 'g1f3');
+    });
+
+    expect(result.current.fen).toBe(POSITIONS[1]?.fen);
+  });
+});
+
 describe('pre-move anchor + red arrow (universal default, every student)', () => {
   test('a show_position landing on a real move anchors the board one ply before it, with a red arrow for the move played', () => {
     const { result } = renderHook(() => useSessionBoardState(ANCHOR_POSITIONS));

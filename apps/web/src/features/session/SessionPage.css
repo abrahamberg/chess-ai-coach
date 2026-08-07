@@ -88,6 +88,19 @@
   padding: 0 0 0 6px;
 }
 
+/* architecture §14: belt-and-suspenders 422 surface for a play-mode move
+ * the server rejected — rare, since CoachBoard's chess.js check already
+ * blocks most illegal drops before this ever POSTs. */
+.play-move-error {
+  align-self: center;
+  background: color-mix(in srgb, var(--quality-blunder) 15%, var(--surface-2));
+  color: var(--quality-blunder);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 14px;
+  margin: 0;
+}
+
 .session-paused-card,
 .session-summary-card {
   margin: 16px;

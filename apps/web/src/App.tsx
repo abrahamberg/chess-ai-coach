@@ -5,6 +5,7 @@ import { AppShell } from './components/AppShell.js';
 import { DashboardPage } from './features/dashboard/DashboardPage.js';
 import { GamesPage } from './features/games/GamesPage.js';
 import { ImportPage } from './features/import/ImportPage.js';
+import { PlayStartPage } from './features/play/PlayStartPage.js';
 import { SessionPage } from './features/session/SessionPage.js';
 import { SettingsPage } from './features/settings/SettingsPage.js';
 
@@ -36,6 +37,7 @@ export function AppRoutes(): ReactNode {
       <Routes>
         <Route path="/" element={<Navigate to="/games" replace />} />
         <Route path="/import" element={<ImportPage />} />
+        <Route path="/play/new" element={<PlayStartPage />} />
         <Route path="/games" element={<GamesPage />} />
         <Route path="/session/:id" element={<SessionRoute />} />
         <Route path="/dashboard" element={<DashboardPage />} />
