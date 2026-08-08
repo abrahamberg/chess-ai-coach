@@ -1,10 +1,12 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import fastifyWebsocket from '@fastify/websocket';
 import type { Kysely } from 'kysely';
 import { pingDb } from './db/index.js';
 import type { Database } from './db/schema.js';
 import { registerAnalysesRoutes } from './routes/analyses.js';
 import { registerCreditsRoutes } from './routes/credits.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
+import { registerEngineTunnelRoutes } from './routes/engine-tunnel.js';
 import { registerGamesRoutes } from './routes/games.js';
 import { registerLichessRoutes } from './routes/lichess.js';
 import { registerLlmKeysRoutes } from './routes/llm-keys.js';
@@ -18,6 +20,7 @@ import { noopJobQueue, type JobQueue } from './jobs/queue.js';
 import type { KeyVault } from './llm/key-vault.js';
 import { createLichessClient, type LichessClient } from './services/lichess.js';
 import type { CoachAgentDependencies } from './services/coach-agent.js';
+import type { EngineTunnelRegistry } from './services/engine/engine-tunnel-registry.js';
 import type { StripeClient } from './services/stripe.js';
 
 const DEFAULT_ANALYSES_POLL_INTERVAL_MS = 1000;
@@ -35,6 +38,8 @@ export interface BuildAppOptions {
   lichessClient?: LichessClient;
   /** Required to register /api/credits/checkout and /api/stripe/webhook. */
   stripeClient?: StripeClient;
+  /** Required to register the browser-facing GET /api/engine-tunnel WS route. */
+  engineTunnelRegistry?: EngineTunnelRegistry;
 }
 
 /** Builds the Fastify app: proxy-auth header decoration, problem+json error mapping,
@@ -47,6 +52,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   app.register(errorMapperPlugin);
   app.register(authHeadersPlugin, { authMode });
+  app.register(fastifyWebsocket);
 
   app.get('/healthz', async () => ({ status: 'ok' }));
 
@@ -82,6 +88,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (options.stripeClient) {
       registerCreditsRoutes(app, options.db, options.stripeClient);
       registerStripeWebhookRoutes(app, options.db, options.stripeClient);
+    }
+    if (options.engineTunnelRegistry) {
+      registerEngineTunnelRoutes(app, options.db, options.engineTunnelRegistry);
     }
   }
 
