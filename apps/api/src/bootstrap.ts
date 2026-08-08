@@ -10,6 +10,8 @@ import type { KeyVault } from './llm/key-vault.js';
 import type { CoachAgentDependencies } from './services/coach-agent.js';
 import { getOrComputePositionAnalysis } from './services/position-analysis-cache.js';
 import { createStripeClient, type StripeClient } from './services/stripe.js';
+import type { EngineTunnelTransport } from './services/engine/engine-tunnel-transport.js';
+import type { ResolveEngineBackendOptions } from './services/engine/resolve-engine-backend.js';
 
 export function requireEnv(name: string): string {
   const value = process.env[name];
@@ -133,6 +135,22 @@ export function buildStripeClientFromEnv(): StripeClient | undefined {
     successUrl: requireEnv('STRIPE_CHECKOUT_SUCCESS_URL'),
     cancelUrl: requireEnv('STRIPE_CHECKOUT_CANCEL_URL')
   });
+}
+
+/** Reads ENGINE_TUNNEL_TIMEOUT_MS (design spec §2 self-review fix — every
+ * other numeric config value here is env-configurable, this one was missing
+ * one). Default matches native's rough per-position ceiling. */
+export function buildResolveEngineBackendOptions(
+  db: Kysely<Database>,
+  engineUrl: string,
+  tunnelTransport: EngineTunnelTransport
+): ResolveEngineBackendOptions {
+  return {
+    db,
+    engineUrl,
+    tunnelTransport,
+    tunnelTimeoutMs: parsePositiveInt('ENGINE_TUNNEL_TIMEOUT_MS', 10000)
+  };
 }
 
 /** The light model as a ModelResolution, so it carries the same reasoning and

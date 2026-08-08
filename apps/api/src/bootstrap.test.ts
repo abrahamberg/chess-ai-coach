@@ -4,6 +4,7 @@ import {
   buildCoachAgentDependencies,
   buildGatewayConfigFromEnv,
   buildModelTuningFromEnv,
+  buildResolveEngineBackendOptions,
   buildStripeClientFromEnv,
   requireEnv
 } from './bootstrap.js';
@@ -274,5 +275,20 @@ describe('buildModelTuningFromEnv', () => {
     process.env[name] = value;
 
     expect(() => buildModelTuningFromEnv()).toThrow(name);
+  });
+});
+
+describe('buildResolveEngineBackendOptions', () => {
+  afterEach(() => delete process.env.ENGINE_TUNNEL_TIMEOUT_MS);
+
+  test('defaults tunnelTimeoutMs to 10000', () => {
+    const options = buildResolveEngineBackendOptions({} as never, 'http://engine:4001', { request: vi.fn() });
+    expect(options.tunnelTimeoutMs).toBe(10000);
+  });
+
+  test('reads ENGINE_TUNNEL_TIMEOUT_MS when set', () => {
+    process.env.ENGINE_TUNNEL_TIMEOUT_MS = '5000';
+    const options = buildResolveEngineBackendOptions({} as never, 'http://engine:4001', { request: vi.fn() });
+    expect(options.tunnelTimeoutMs).toBe(5000);
   });
 });
