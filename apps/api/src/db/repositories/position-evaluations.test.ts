@@ -196,4 +196,69 @@ describe('position-evaluations repository', () => {
       .execute();
     expect(remaining.map((row) => row.fen).sort()).toEqual(['prune-c', 'prune-d', 'prune-e']);
   });
+
+  test('pruneOverCap deletes the oldest-by-lastAccessedAt rows past the age floor until the cap is met', async () => {
+    // Table-wide cap check — same full-isolation reasoning as the test above.
+    await db.deleteFrom('positionEvaluations').execute();
+
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    // A 0-day floor makes every row eligible, so only lastAccessedAt order matters.
+    const seedRows = [
+      { fen: 'fen-1', lastAccessedAt: new Date(now - 4 * day) }, // oldest access — evicted first
+      { fen: 'fen-2', lastAccessedAt: new Date(now - 3 * day) }, // evicted second
+      { fen: 'fen-3', lastAccessedAt: new Date(now - 2 * day) }, // survives (cap needs only 2 evictions)
+      { fen: 'fen-4', lastAccessedAt: new Date(now) } // newest access — survives
+    ];
+
+    for (const row of seedRows) {
+      await db
+        .insertInto('positionEvaluations')
+        .values({
+          fen: row.fen,
+          depth: 16,
+          multiPv: 3,
+          analysis: JSON.stringify(makeAnalysis(START_FEN, 0)),
+          isExternalEval: false,
+          createdAt: new Date(now - 10 * day),
+          lastAccessedAt: row.lastAccessedAt
+        })
+        .execute();
+    }
+
+    const deleted = await positionEvaluationsRepo.pruneOverCap(db, { maxRows: 2, minAgeDays: 0 });
+    expect(deleted).toBe(2);
+
+    const remaining = await db
+      .selectFrom('positionEvaluations')
+      .select('fen')
+      .where(
+        'fen',
+        'in',
+        seedRows.map((row) => row.fen)
+      )
+      .execute();
+    expect(remaining.map((row) => row.fen).sort()).toEqual(['fen-3', 'fen-4']);
+  });
+
+  test('pruneOverCap never deletes rows younger than the age floor, even over cap', async () => {
+    await db.deleteFrom('positionEvaluations').execute();
+
+    const freshFens = ['fen-fresh-1', 'fen-fresh-2'];
+    for (const fen of freshFens) {
+      await positionEvaluationsRepo.upsertMany(
+        db,
+        [{ fen, depth: 16, multiPv: 3, analysis: makeAnalysis(START_FEN, 0) }],
+        { isExternalEval: false }
+      );
+    }
+
+    // maxRows: 0 says "evict everything over cap" — but a 3-day floor protects
+    // rows created moments ago, so nothing eligible exists to delete.
+    const deleted = await positionEvaluationsRepo.pruneOverCap(db, { maxRows: 0, minAgeDays: 3 });
+    expect(deleted).toBe(0);
+
+    const remaining = await db.selectFrom('positionEvaluations').select('fen').where('fen', 'in', freshFens).execute();
+    expect(remaining.map((row) => row.fen).sort()).toEqual(freshFens);
+  });
 });

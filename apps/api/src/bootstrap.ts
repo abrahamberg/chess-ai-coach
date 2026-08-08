@@ -77,7 +77,7 @@ function parseEnum<T extends string>(schema: { safeParse: (v: unknown) => { succ
   return parsed.data;
 }
 
-function parsePositiveInt(name: string, fallback: number): number {
+export function parsePositiveInt(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
   const value = Number(raw);
