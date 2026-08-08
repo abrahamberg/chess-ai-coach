@@ -136,6 +136,8 @@ export interface PositionEvaluationsTable {
   depth: number;
   multiPv: number;
   analysis: Jsonb<unknown>;
+  isExternalEval: Generated<boolean>;
+  lastAccessedAt: Generated<Date>;
   createdAt: Generated<Date>;
 }
 

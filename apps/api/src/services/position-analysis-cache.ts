@@ -19,7 +19,10 @@ export async function getOrComputePositionAnalysis(
   engineUrl: string,
   fen: string
 ): Promise<PositionAnalysis> {
-  const cached = await positionEvaluationsRepo.findByFen(db, fen);
+  // This path is server-side (native engine HTTP call) end to end — the
+  // browser-tunnel path isn't wired through here yet (later task), so both
+  // the read and the write below are always native-trust.
+  const cached = await positionEvaluationsRepo.findByFen(db, fen, { allowExternal: false });
   if (cached) {
     console.log(`position-analysis-cache: hit for ${fen}`);
     return cached;
@@ -28,8 +31,10 @@ export async function getOrComputePositionAnalysis(
   const startedAt = Date.now();
   const analysis = await analyzePositionViaEngine(engineUrl, fen);
   console.log(`position-analysis-cache: miss for ${fen} — computed live in ${Date.now() - startedAt}ms`);
-  await positionEvaluationsRepo.upsertMany(db, [
-    { fen, depth: analysis.depth, multiPv: analysis.multiPv, analysis }
-  ]);
+  await positionEvaluationsRepo.upsertMany(
+    db,
+    [{ fen, depth: analysis.depth, multiPv: analysis.multiPv, analysis }],
+    { isExternalEval: false }
+  );
   return analysis;
 }

@@ -10,6 +10,7 @@ import * as positionEvaluations from './migrations/0008_position_evaluations.js'
 import * as removeShowEngineAnalysis from './migrations/0009_remove_show_engine_analysis.js';
 import * as playMode from './migrations/0010_play_mode.js';
 import * as engineMode from './migrations/0011_engine_mode.js';
+import * as positionEvaluationsTrust from './migrations/0012_position_evaluations_trust.js';
 
 const provider: MigrationProvider = {
   getMigrations: () =>
@@ -24,7 +25,8 @@ const provider: MigrationProvider = {
       '0008_position_evaluations': positionEvaluations,
       '0009_remove_show_engine_analysis': removeShowEngineAnalysis,
       '0010_play_mode': playMode,
-      '0011_engine_mode': engineMode
+      '0011_engine_mode': engineMode,
+      '0012_position_evaluations_trust': positionEvaluationsTrust
     })
 };
 

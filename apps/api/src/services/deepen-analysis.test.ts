@@ -82,7 +82,8 @@ describe('runDeepenAnalysisJob', () => {
 
     const cached = await positionEvaluationsRepo.findManyByFens(
       db,
-      analyzePosition.mock.calls.map(([fen]) => fen)
+      analyzePosition.mock.calls.map(([fen]) => fen),
+      { allowExternal: false }
     );
     expect(cached.size).toBe(16);
   });
@@ -113,9 +114,11 @@ describe('runDeepenAnalysisJob', () => {
 
     // Prime the cache with just the shared starting position before the job runs.
     const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-    await positionEvaluationsRepo.upsertMany(db, [
-      { fen: startFen, depth: 16, multiPv: 3, analysis: makePositionAnalysis(startFen) }
-    ]);
+    await positionEvaluationsRepo.upsertMany(
+      db,
+      [{ fen: startFen, depth: 16, multiPv: 3, analysis: makePositionAnalysis(startFen) }],
+      { isExternalEval: false }
+    );
 
     await runDeepenAnalysisJob(db, { analyzePosition }, game.id);
 

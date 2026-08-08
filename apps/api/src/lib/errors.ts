@@ -25,3 +25,10 @@ export class ConflictError extends HttpError {
 export class RateLimitError extends HttpError {
   readonly status = 429;
 }
+
+/** Thrown when the resolved engine backend cannot serve a request right now
+ * (e.g. browser-mode with no connected tunnel) — fail fast, never silently
+ * fall back to a different backend (engine-backend-boundary design). */
+export class EngineUnavailableError extends HttpError {
+  readonly status = 503;
+}

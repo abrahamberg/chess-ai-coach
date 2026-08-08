@@ -41,7 +41,10 @@ export async function runDeepenAnalysisJob(
   if (!game) throw new Error(`Game ${gameId} not found`);
 
   const fens = parsePgn(game.pgn).positions.map((position) => position.fen);
-  const cached = await positionEvaluationsRepo.findManyByFens(db, fens);
+  // This job is always server-side (native engine HTTP call) — the
+  // browser-tunnel path isn't wired through here yet (later task), so both
+  // the read and the write below are always native-trust.
+  const cached = await positionEvaluationsRepo.findManyByFens(db, fens, { allowExternal: false });
   const uncachedFens = fens.filter((fen) => !cached.has(fen));
 
   console.log(
@@ -57,7 +60,7 @@ export async function runDeepenAnalysisJob(
         return { fen, depth: analysis.depth, multiPv: analysis.multiPv, analysis };
       })
     );
-    await positionEvaluationsRepo.upsertMany(db, entries);
+    await positionEvaluationsRepo.upsertMany(db, entries, { isExternalEval: false });
     computed += entries.length;
     console.log(`deepen-analysis: game ${gameId} — ${computed}/${uncachedFens.length} positions cached`);
   }
