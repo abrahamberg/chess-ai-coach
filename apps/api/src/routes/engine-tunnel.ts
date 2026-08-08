@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
+import type { RawData } from 'ws';
 import type { Database } from '../db/schema.js';
 import * as userProfileService from '../services/user-profile.js';
-import { EngineTunnelRegistry, type TunnelConnection } from '../services/engine/engine-tunnel-registry.js';
+import type { EngineTunnelRegistry, TunnelConnection } from '../services/engine/engine-tunnel-registry.js';
 
 /**
  * The browser-facing leg of the tunnel — the api process only, since this is
@@ -34,10 +35,19 @@ export function registerEngineTunnelRoutes(
     };
     registry.registerConnection(user.id, connection);
 
-    socket.on('message', (raw: Buffer) => {
-      connection.onmessage?.({ data: raw.toString() });
+    socket.on('message', (raw: RawData) => {
+      connection.onmessage?.({ data: rawDataToString(raw) });
     });
 
     socket.on('close', () => registry.unregisterConnection(user.id));
   });
+}
+
+/** `ws`'s 'message' event delivers `Buffer | ArrayBuffer | Buffer[]` depending
+ * on fragmentation/binary settings — normalize all three to a string before
+ * handing off to the registry's JSON-parsing onmessage handler. */
+function rawDataToString(data: RawData): string {
+  if (Buffer.isBuffer(data)) return data.toString();
+  if (Array.isArray(data)) return Buffer.concat(data).toString();
+  return Buffer.from(data).toString();
 }
