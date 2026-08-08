@@ -7,11 +7,11 @@ import { sql, type Kysely } from 'kysely';
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`
-    ALTER TABLE users ADD COLUMN engineMode text NOT NULL DEFAULT 'native'
-      CHECK (engineMode IN ('native','browser'))
+    ALTER TABLE users ADD COLUMN engine_mode text NOT NULL DEFAULT 'native'
+      CHECK (engine_mode IN ('native','browser'))
   `.execute(db);
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
-  await sql`ALTER TABLE users DROP COLUMN engineMode`.execute(db);
+  await sql`ALTER TABLE users DROP COLUMN engine_mode`.execute(db);
 }
