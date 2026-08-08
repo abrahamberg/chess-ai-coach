@@ -56,7 +56,26 @@ describe('resolveEngineBackend', () => {
         bestMove: null,
         eval: { cp: null, mateIn: null },
         lines: [],
-        features: {}
+        features: {
+          turn: 'white',
+          boardState: 'none',
+          availableMoves: [],
+          mobility: { white: 0, black: 0 },
+          controlledSquares: [],
+          piecesUnderAttack: [],
+          hangingPieces: [],
+          underDefendedPieces: [],
+          overloadedDefenders: [],
+          centerControlScore: { white: 0, black: 0 },
+          openFiles: [],
+          semiOpenFiles: [],
+          doubledPawns: [],
+          isolatedPawns: [],
+          passedPawns: [],
+          targetsAttacked: [],
+          forks: [],
+          captureOpportunities: []
+        }
       })
     };
 
