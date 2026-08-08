@@ -87,7 +87,11 @@ describe('SharedEngineWorker', () => {
     worker.emit('bestmove e2e4');
     await pending;
 
-    await client.analyze({ fen: START_FEN, depth: 10, multiPv: 1 });
+    const second = client.analyze({ fen: START_FEN, depth: 10, multiPv: 1 });
+    worker.emit('info depth 10 multipv 1 score cp 1 pv e2e4');
+    worker.emit('bestmove e2e4');
+    await second;
+
     expect(createWorker).toHaveBeenCalledOnce();
   });
 });

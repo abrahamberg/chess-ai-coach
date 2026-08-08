@@ -34,7 +34,7 @@ function parseInfoLine(line: string): RawEngineLine | null {
   const mateMatch = /score mate (-?\d+)/.exec(line);
   const pvMatch = /\bpv (.+)$/.exec(line);
   if (!pvMatch) return null;
-  const pvUci = pvMatch[1].trim().split(/\s+/);
+  const pvUci = pvMatch[1]!.trim().split(/\s+/);
   const moveUci = pvUci[0];
   if (!moveUci) return null;
   return {
@@ -46,61 +46,82 @@ function parseInfoLine(line: string): RawEngineLine | null {
   };
 }
 
+interface QueuedAnalysis {
+  request: AnalyzeRequest;
+  resolve: (lines: RawEngineLine[]) => void;
+}
+
 /** Owns the single WASM Stockfish Worker — shared between the Explore panel
  * and browser-mode tunnel fulfillment so only one engine process ever runs
  * client-side (design spec §5). Serializes analyze() calls: a WASM engine
- * can only run one search at a time. */
+ * can only run one search at a time.
+ *
+ * Driven entirely off worker.onmessage callbacks rather than promise chains:
+ * a `.then()` continuation is always deferred to a microtask, which would
+ * make a command sent "in response to" a worker message arrive one tick
+ * late and could drop messages emitted before that tick fires. Queuing and
+ * dispatch below run synchronously — inside the Promise executor in
+ * analyze() and inside the onmessage handlers — so sent commands are
+ * observable immediately after the event that triggers them. */
 export class SharedEngineWorker {
   private worker: EngineWorkerLike | null = null;
   private readonly createWorker: () => EngineWorkerLike;
-  private ready: Promise<void> | null = null;
-  private queue: Promise<unknown> = Promise.resolve();
+  private isReady = false;
+  private active = false;
+  private readonly pending: QueuedAnalysis[] = [];
 
   constructor(options: SharedEngineWorkerOptions = {}) {
     this.createWorker = options.createWorker ?? defaultCreateWorker;
   }
 
   analyze(request: AnalyzeRequest): Promise<RawEngineLine[]> {
-    this.ensureWorker();
-    const task = this.queue.then(() => this.runAnalysis(request));
-    this.queue = task.catch(() => undefined);
-    return task;
-  }
-
-  private ensureWorker(): { worker: EngineWorkerLike; ready: Promise<void> } {
-    if (!this.worker) {
-      const worker = this.createWorker();
-      this.worker = worker;
-      this.ready = new Promise((resolve) => {
-        worker.onmessage = (event) => {
-          if (event.data === 'uciok') worker.postMessage('isready');
-          if (event.data === 'readyok') resolve();
-        };
-        worker.postMessage('uci');
-      });
-    }
-    return { worker: this.worker, ready: this.ready as Promise<void> };
-  }
-
-  private async runAnalysis(request: AnalyzeRequest): Promise<RawEngineLine[]> {
-    const { worker, ready } = this.ensureWorker();
-    await ready;
-
-    return new Promise<RawEngineLine[]>((resolve) => {
-      const lines = new Map<number, RawEngineLine>();
-      worker.onmessage = (event) => {
-        const line = event.data;
-        if (line.startsWith('bestmove')) {
-          worker.onmessage = null;
-          resolve([...lines.values()].sort((a, b) => a.multiPv - b.multiPv));
-          return;
-        }
-        const parsed = parseInfoLine(line);
-        if (parsed) lines.set(parsed.multiPv, parsed);
-      };
-      worker.postMessage(`setoption name MultiPV value ${request.multiPv}`);
-      worker.postMessage(`position fen ${request.fen}`);
-      worker.postMessage(`go depth ${request.depth}`);
+    return new Promise((resolve) => {
+      this.pending.push({ request, resolve });
+      this.ensureWorker();
+      this.pump();
     });
+  }
+
+  private ensureWorker(): void {
+    if (this.worker) return;
+    const worker = this.createWorker();
+    this.worker = worker;
+    worker.onmessage = (event) => {
+      if (event.data === 'uciok') {
+        worker.postMessage('isready');
+        return;
+      }
+      if (event.data === 'readyok') {
+        this.isReady = true;
+        this.pump();
+      }
+    };
+    worker.postMessage('uci');
+  }
+
+  private pump(): void {
+    if (this.active || !this.isReady || this.pending.length === 0) return;
+    const worker = this.worker;
+    if (!worker) return;
+    const next = this.pending.shift();
+    if (!next) return;
+    const { request, resolve } = next;
+    this.active = true;
+
+    const lines = new Map<number, RawEngineLine>();
+    worker.onmessage = (event) => {
+      const line = event.data;
+      if (line.startsWith('bestmove')) {
+        this.active = false;
+        resolve([...lines.values()].sort((a, b) => a.multiPv - b.multiPv));
+        this.pump();
+        return;
+      }
+      const parsed = parseInfoLine(line);
+      if (parsed) lines.set(parsed.multiPv, parsed);
+    };
+    worker.postMessage(`setoption name MultiPV value ${request.multiPv}`);
+    worker.postMessage(`position fen ${request.fen}`);
+    worker.postMessage(`go depth ${request.depth}`);
   }
 }
