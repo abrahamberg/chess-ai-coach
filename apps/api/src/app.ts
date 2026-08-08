@@ -20,8 +20,9 @@ import { registerUsersRoutes } from './routes/users.js';
 import { noopJobQueue, type JobQueue } from './jobs/queue.js';
 import type { KeyVault } from './llm/key-vault.js';
 import { createLichessClient, type LichessClient } from './services/lichess.js';
-import type { CoachAgentDependencies } from './services/coach-agent.js';
+import type { CoachAgentBaseDependencies } from './bootstrap.js';
 import type { EngineTunnelRegistry } from './services/engine/engine-tunnel-registry.js';
+import type { ResolveEngineBackendOptions } from './services/engine/resolve-engine-backend.js';
 import type { StripeClient } from './services/stripe.js';
 
 const DEFAULT_ANALYSES_POLL_INTERVAL_MS = 1000;
@@ -35,7 +36,8 @@ export interface BuildAppOptions {
   /** Poll interval for /api/analyses/:id/status SSE (architecture §9: 1s default). */
   analysesPollIntervalMs?: number;
   /** Required to register /api/sessions/* routes. */
-  coachAgentDeps?: CoachAgentDependencies;
+  coachAgentBaseDeps?: CoachAgentBaseDependencies;
+  engineBackendOptions?: ResolveEngineBackendOptions;
   lichessClient?: LichessClient;
   /** Required to register /api/credits/checkout and /api/stripe/webhook. */
   stripeClient?: StripeClient;
@@ -85,9 +87,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (options.keyVault) {
       registerLlmKeysRoutes(app, options.db, options.keyVault);
     }
-    if (options.coachAgentDeps) {
-      registerSessionsRoutes(app, options.db, options.coachAgentDeps);
-      registerPositionAnalysisRoutes(app, options.coachAgentDeps.analyzePosition);
+    if (options.coachAgentBaseDeps && options.engineBackendOptions) {
+      registerSessionsRoutes(app, options.db, options.coachAgentBaseDeps, options.engineBackendOptions);
+      registerPositionAnalysisRoutes(app, options.db, options.engineBackendOptions);
     }
     if (options.stripeClient) {
       registerCreditsRoutes(app, options.db, options.stripeClient);

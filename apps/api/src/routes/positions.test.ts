@@ -1,12 +1,13 @@
 import type { Kysely } from 'kysely';
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { PositionAnalysis } from '@chess-coach/shared';
 import { buildApp } from '../app.js';
+import { buildResolveEngineBackendOptions, type CoachAgentBaseDependencies } from '../bootstrap.js';
 import type { Database } from '../db/schema.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
-import type { CoachAgentDependencies } from '../services/coach-agent.js';
 
 const ANALYSIS_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const ENGINE_URL = 'http://engine:4001';
 
 function analysisFixture(): PositionAnalysis {
   return {
@@ -52,15 +53,27 @@ describe('POST /api/positions/analyze', () => {
     await testDb.cleanup();
   });
 
+  afterEach(() => vi.unstubAllGlobals());
+
   function headersFor(email: string, displayName: string) {
     return { 'x-auth-request-email': email, 'x-auth-request-user': displayName };
   }
 
-  /** The route only ever touches `db` and `analyzePosition` — the rest of
-   * CoachAgentDependencies is required by the type but never exercised by
-   * this route, so it's stubbed rather than wired up for real. */
-  function buildTestApp(analyzePosition = vi.fn().mockResolvedValue(analysisFixture())) {
-    const coachAgentDeps: CoachAgentDependencies = {
+  /** The route only ever touches `db` and the resolved engine backend — the
+   * rest of CoachAgentBaseDependencies is required by app.ts's shared
+   * registration gate (both sessions and positions routes register
+   * together) but never exercised by this route, so it's stubbed rather
+   * than wired up for real. */
+  function buildTestApp(
+    fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ analysis: analysisFixture() }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    )
+  ) {
+    vi.stubGlobal('fetch', fetchMock);
+    const coachAgentBaseDeps: CoachAgentBaseDependencies = {
       db,
       jobQueue: { enqueueAnalyzeGame: vi.fn(), enqueueSummarizeSession: vi.fn() },
       gatewayConfig: {
@@ -71,15 +84,18 @@ describe('POST /api/positions/analyze', () => {
           light: { anthropic: 'claude-light', openai: 'gpt-light' }
         }
       },
-      analyzePosition,
       callLightModel: vi.fn()
     };
-    return { app: buildApp({ authMode: 'proxy', db, coachAgentDeps }), analyzePosition };
+    const engineBackendOptions = buildResolveEngineBackendOptions(db, ENGINE_URL, { request: vi.fn() });
+    return {
+      app: buildApp({ authMode: 'proxy', db, coachAgentBaseDeps, engineBackendOptions }),
+      fetchMock
+    };
   }
 
   test('returns the full structured analysis for any authenticated user', async () => {
     const headers = headersFor('on@example.com', 'On');
-    const { app, analyzePosition } = buildTestApp();
+    const { app, fetchMock } = buildTestApp();
     await app.inject({ method: 'GET', url: '/api/users/me', headers });
 
     const response = await app.inject({
@@ -91,12 +107,15 @@ describe('POST /api/positions/analyze', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(analysisFixture());
-    expect(analyzePosition).toHaveBeenCalledWith(ANALYSIS_FEN);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${ENGINE_URL}/analyze-position`,
+      expect.objectContaining({ method: 'POST' })
+    );
   });
 
   test('400s on a missing fen, without calling the engine', async () => {
     const headers = headersFor('badbody@example.com', 'Bad');
-    const { app, analyzePosition } = buildTestApp();
+    const { app, fetchMock } = buildTestApp();
     await app.inject({ method: 'GET', url: '/api/users/me', headers });
 
     const response = await app.inject({
@@ -108,7 +127,7 @@ describe('POST /api/positions/analyze', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.headers['content-type']).toContain('application/problem+json');
-    expect(analyzePosition).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('rejects requests with no auth headers as 401', async () => {

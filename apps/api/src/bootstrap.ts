@@ -8,7 +8,6 @@ import { DEFAULT_MODEL_TUNING, type ModelTuning } from './llm/model-options.js';
 import { generateProse } from './llm/text.js';
 import type { KeyVault } from './llm/key-vault.js';
 import type { CoachAgentDependencies } from './services/coach-agent.js';
-import { getOrComputePositionAnalysis } from './services/position-analysis-cache.js';
 import { createStripeClient, type StripeClient } from './services/stripe.js';
 import type { EngineTunnelTransport } from './services/engine/engine-tunnel-transport.js';
 import type { ResolveEngineBackendOptions } from './services/engine/resolve-engine-backend.js';
@@ -87,23 +86,31 @@ export function parsePositiveInt(name: string, fallback: number): number {
   return value;
 }
 
-/** Wires the real (non-test) CoachAgentDependencies: engine HTTP client for
- * analyzePosition, a platform-key light model for callLightModel (mirrors
- * jobs/analyze-game.ts's callPlannerModel, but coach-context's episode-fold
- * calls aren't attributed to a specific user's BYOK — see coach-agent.ts). */
-export function buildCoachAgentDependencies(
+export interface CoachAgentBaseDependencies {
+  db: Kysely<Database>;
+  jobQueue: JobQueue;
+  gatewayConfig: GatewayConfig;
+  callLightModel: CoachAgentDependencies['callLightModel'];
+  /** Optional test-only override, carried through from CoachAgentDependencies
+   * so sessions.test.ts can still inject a MockLanguageModelV4 via the base
+   * deps — production callers never set this. */
+  resolveModel?: CoachAgentDependencies['resolveModel'];
+}
+
+/** Everything CoachAgentDependencies needs except analyzePosition, which
+ * must be resolved per-request against the specific user (design spec §3) —
+ * see routes/sessions.ts's buildRequestScopedAgentDeps. */
+export function buildCoachAgentBaseDependencies(
   db: Kysely<Database>,
   jobQueue: JobQueue,
-  gatewayConfig: GatewayConfig,
-  engineUrl: string
-): CoachAgentDependencies {
+  gatewayConfig: GatewayConfig
+): CoachAgentBaseDependencies {
   const lightResolution = buildLightResolution(gatewayConfig);
 
   return {
     db,
     jobQueue,
     gatewayConfig,
-    analyzePosition: (fen) => getOrComputePositionAnalysis(db, engineUrl, fen),
     callLightModel: async (messages) => {
       const result = await generateProse({
         resolution: lightResolution,

@@ -1,13 +1,13 @@
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { buildApp } from '../app.js';
+import { buildResolveEngineBackendOptions, type CoachAgentBaseDependencies } from '../bootstrap.js';
 import * as analysesRepo from '../db/repositories/analyses.js';
 import * as gameMoveQualitiesRepo from '../db/repositories/game-move-qualities.js';
 import * as gamesRepo from '../db/repositories/games.js';
 import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
-import type { CoachAgentDependencies } from '../services/coach-agent.js';
 import { createKeyVault } from '../llm/key-vault.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
 
@@ -55,7 +55,7 @@ describe('POST/GET /api/games', () => {
     // Required to register /api/sessions/* (POST /api/sessions/play, used by
     // the coach_play listing test below) — the LLM-facing fields are never
     // exercised by these games-route tests, so they're unused stubs.
-    const coachAgentDeps: CoachAgentDependencies = {
+    const coachAgentBaseDeps: CoachAgentBaseDependencies = {
       db,
       jobQueue,
       gatewayConfig: {
@@ -63,10 +63,10 @@ describe('POST/GET /api/games', () => {
         platformKeys: {},
         modelIds: { standard: { anthropic: '', openai: '' }, light: { anthropic: '', openai: '' } }
       },
-      analyzePosition: vi.fn(),
       callLightModel: vi.fn()
     };
-    return buildApp({ authMode: 'proxy', db, jobQueue, coachAgentDeps });
+    const engineBackendOptions = buildResolveEngineBackendOptions(db, 'http://engine:4001', { request: vi.fn() });
+    return buildApp({ authMode: 'proxy', db, jobQueue, coachAgentBaseDeps, engineBackendOptions });
   }
 
   test('imports a valid PGN, creating a queued analysis and enqueuing the job', async () => {

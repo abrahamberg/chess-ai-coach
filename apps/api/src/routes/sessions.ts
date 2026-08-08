@@ -10,6 +10,7 @@ import * as analysesRepo from '../db/repositories/analyses.js';
 import * as gamesRepo from '../db/repositories/games.js';
 import * as sessionsRepo from '../db/repositories/sessions.js';
 import type { Database } from '../db/schema.js';
+import type { CoachAgentBaseDependencies } from '../bootstrap.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import { pipeCoachStreamToResponse } from '../llm/stream-response.js';
 import * as coachAgent from '../services/coach-agent.js';
@@ -17,11 +18,13 @@ import { commitPlayerMoveAndAdvance } from '../services/play-move-commit.js';
 import { createPlaySession } from '../services/play-session.js';
 import * as userProfileService from '../services/user-profile.js';
 import type { CoachAgentDependencies } from '../services/coach-agent.js';
+import { resolveEngineBackend, type ResolveEngineBackendOptions } from '../services/engine/resolve-engine-backend.js';
 
 export function registerSessionsRoutes(
   app: FastifyInstance,
   db: Kysely<Database>,
-  agentDeps: CoachAgentDependencies
+  baseDeps: CoachAgentBaseDependencies,
+  engineBackendOptions: ResolveEngineBackendOptions
 ): void {
   app.post('/api/sessions', async (request) => {
     const parsed = CreateSessionRequestSchema.safeParse(request.body);
@@ -75,6 +78,7 @@ export function registerSessionsRoutes(
       throw new ValidationError(parsed.error.issues.map((issue) => issue.message).join('; '));
     }
 
+    const agentDeps = await buildRequestScopedAgentDeps(baseDeps, engineBackendOptions, user.id);
     const turn = await coachAgent.startTurn(agentDeps, session, parsed.data);
 
     reply.hijack();
@@ -98,6 +102,7 @@ export function registerSessionsRoutes(
       throw new ValidationError(parsed.error.issues.map((issue) => issue.message).join('; '));
     }
 
+    const agentDeps = await buildRequestScopedAgentDeps(baseDeps, engineBackendOptions, user.id);
     const result = await commitPlayerMoveAndAdvance(agentDeps, session, parsed.data.san);
     if ('error' in result) return sendIllegalMoveError(reply, result.error);
     return result;
@@ -112,6 +117,15 @@ export function registerSessionsRoutes(
     if (!snapshot) throw new NotFoundError('No completed turn to debug yet');
     return snapshot;
   });
+}
+
+async function buildRequestScopedAgentDeps(
+  base: CoachAgentBaseDependencies,
+  engineBackendOptions: ResolveEngineBackendOptions,
+  userId: string
+): Promise<CoachAgentDependencies> {
+  const backend = await resolveEngineBackend(engineBackendOptions, userId);
+  return { ...base, analyzePosition: (fen) => backend.analyzePosition(fen) };
 }
 
 /** Same application/problem+json 422 shape games.ts's handleImportError uses

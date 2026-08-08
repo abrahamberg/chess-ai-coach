@@ -1,17 +1,24 @@
-import { AnalyzePositionRequestSchema, type PositionAnalysis } from '@chess-coach/shared';
+import { AnalyzePositionRequestSchema } from '@chess-coach/shared';
 import type { FastifyInstance } from 'fastify';
+import type { Kysely } from 'kysely';
+import type { Database } from '../db/schema.js';
 import { ValidationError } from '../lib/errors.js';
+import { resolveEngineBackend, type ResolveEngineBackendOptions } from '../services/engine/resolve-engine-backend.js';
+import * as userProfileService from '../services/user-profile.js';
 
 /**
- * On-demand rich position analysis for the browser — reuses the same
- * `analyzePosition` dependency the coach agent's get_engine_analysis tool
- * calls (cache-first against position_evaluations, live Stockfish on a
- * miss). Available to any authenticated user — backs the separate
- * move-analysis inspector modal a student opens explicitly.
+ * On-demand rich position analysis for the browser — resolves the requesting
+ * user's own EngineBackend (native or browser-tunnel, per their engineMode),
+ * wrapped in the same CachingEngineBackend the coach agent's
+ * get_engine_analysis tool goes through (cache-first against
+ * position_evaluations, live Stockfish on a miss). Available to any
+ * authenticated user — backs the separate move-analysis inspector modal a
+ * student opens explicitly.
  */
 export function registerPositionAnalysisRoutes(
   app: FastifyInstance,
-  analyzePosition: (fen: string) => Promise<PositionAnalysis>
+  db: Kysely<Database>,
+  engineBackendOptions: ResolveEngineBackendOptions
 ): void {
   app.post('/api/positions/analyze', async (request) => {
     const parsed = AnalyzePositionRequestSchema.safeParse(request.body);
@@ -19,6 +26,8 @@ export function registerPositionAnalysisRoutes(
       throw new ValidationError(parsed.error.issues.map((issue) => issue.message).join('; '));
     }
 
-    return analyzePosition(parsed.data.fen);
+    const user = await userProfileService.getOrCreate(db, request.user);
+    const backend = await resolveEngineBackend(engineBackendOptions, user.id);
+    return backend.analyzePosition(parsed.data.fen);
   });
 }

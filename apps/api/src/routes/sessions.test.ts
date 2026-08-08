@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely';
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
 import { MockLanguageModelV4 } from 'ai/test';
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { CoachingPlan, PositionAnalysis } from '@chess-coach/shared';
 import { buildApp } from '../app.js';
 import * as analysesRepo from '../db/repositories/analyses.js';
@@ -15,7 +15,7 @@ import { createKeyVault } from '../llm/key-vault.js';
 import type { GatewayConfig } from '../llm/gateway.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
 import { mockResolution, mockUsage, stepParts, type MockToolCall } from '../../test/helpers/mock-model.js';
-import type { CoachAgentDependencies } from '../services/coach-agent.js';
+import { buildResolveEngineBackendOptions, type CoachAgentBaseDependencies } from '../bootstrap.js';
 
 const PLAN: CoachingPlan = {
   gameSummary: 'A sharp game.',
@@ -77,6 +77,49 @@ describe('sessions routes', () => {
     await testDb.cleanup();
   });
 
+  const ENGINE_ANALYSIS_FIXTURE: PositionAnalysis = {
+    fen: 'startpos',
+    depth: 10,
+    multiPv: 3,
+    bestMove: 'e4',
+    eval: { cp: 20, mateIn: null },
+    lines: [{ moveUci: 'e2e4', moveSan: 'e4', pvSan: ['e4'], cp: 20, mateIn: null }],
+    features: {
+      turn: 'white',
+      boardState: 'none',
+      availableMoves: ['e4'],
+      mobility: { white: 20, black: 20 },
+      controlledSquares: [],
+      piecesUnderAttack: [],
+      hangingPieces: [],
+      underDefendedPieces: [],
+      overloadedDefenders: [],
+      centerControlScore: { white: 0, black: 0 },
+      openFiles: [],
+      semiOpenFiles: [],
+      doubledPawns: [],
+      isolatedPawns: [],
+      passedPawns: [],
+      targetsAttacked: [],
+      forks: [],
+      captureOpportunities: []
+    }
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ analysis: ENGINE_ANALYSIS_FIXTURE }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+    );
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
   async function setupReadyGame(email: string) {
     const user = await usersRepo.insert(db, { email, displayName: 'Ann' });
     await creditsRepo.insertSignupGrant(db, user.id);
@@ -101,7 +144,7 @@ describe('sessions routes', () => {
     return { 'x-auth-request-email': user.email, 'x-auth-request-user': user.displayName };
   }
 
-  function coachAgentDeps(model: MockLanguageModelV4): CoachAgentDependencies {
+  function coachAgentBaseDeps(model: MockLanguageModelV4): CoachAgentBaseDependencies {
     const gatewayConfig: GatewayConfig = {
       keyVault,
       platformKeys: { anthropic: 'platform-key' },
@@ -114,37 +157,13 @@ describe('sessions routes', () => {
       db,
       jobQueue: { enqueueAnalyzeGame: vi.fn(), enqueueSummarizeSession: vi.fn() },
       gatewayConfig,
-      analyzePosition: vi.fn().mockResolvedValue({
-        fen: 'startpos',
-        depth: 10,
-        multiPv: 1,
-        bestMove: 'e4',
-        eval: { cp: 20, mateIn: null },
-        lines: [{ moveUci: 'e2e4', moveSan: 'e4', pvSan: ['e4'], cp: 20, mateIn: null }],
-        features: {
-          turn: 'white',
-          boardState: 'none',
-          availableMoves: ['e4'],
-          mobility: { white: 20, black: 20 },
-          controlledSquares: [],
-          piecesUnderAttack: [],
-          hangingPieces: [],
-          underDefendedPieces: [],
-          overloadedDefenders: [],
-          centerControlScore: { white: 0, black: 0 },
-          openFiles: [],
-          semiOpenFiles: [],
-          doubledPawns: [],
-          isolatedPawns: [],
-          passedPawns: [],
-          targetsAttacked: [],
-          forks: [],
-          captureOpportunities: []
-        }
-      } satisfies PositionAnalysis),
       callLightModel: vi.fn().mockResolvedValue('engine says the position is roughly equal.'),
       resolveModel: () => Promise.resolve(mockResolution(model))
     };
+  }
+
+  function fakeEngineBackendOptions() {
+    return buildResolveEngineBackendOptions(db, 'http://engine:4001', { request: vi.fn() });
   }
 
   test('POST /api/sessions 409s when the analysis is not ready', async () => {
@@ -162,7 +181,7 @@ describe('sessions routes', () => {
       playedAt: null
     });
     await analysesRepo.insertQueued(db, game.id);
-    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+    const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
 
     const response = await app.inject({
       method: 'POST',
@@ -176,7 +195,7 @@ describe('sessions routes', () => {
 
   test('POST /api/sessions creates a session and synthesizes [session_start]', async () => {
     const { user, game } = await setupReadyGame('start@example.com');
-    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+    const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
 
     const response = await app.inject({
       method: 'POST',
@@ -197,7 +216,7 @@ describe('sessions routes', () => {
 
   test('POST /api/sessions returns the same session on a second call instead of creating another one', async () => {
     const { user, game } = await setupReadyGame('resume@example.com');
-    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+    const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
 
     const first = await app.inject({
       method: 'POST',
@@ -218,7 +237,7 @@ describe('sessions routes', () => {
 
   test('POST /api/sessions/:id/reset abandons the current session and starts a new one for the same game', async () => {
     const { user, game } = await setupReadyGame('reset@example.com');
-    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+    const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
 
     const created = await app.inject({
       method: 'POST',
@@ -258,7 +277,7 @@ describe('sessions routes', () => {
 
   test('POST /api/sessions/:id/reset 409s on an already-completed session', async () => {
     const { user, game } = await setupReadyGame('reset-completed@example.com');
-    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+    const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
     const created = await app.inject({
       method: 'POST',
       url: '/api/sessions',
@@ -279,7 +298,7 @@ describe('sessions routes', () => {
 
   test('GET /api/sessions/:id returns messages and currentPly', async () => {
     const { user, game } = await setupReadyGame('get@example.com');
-    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+    const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
     const created = await app.inject({
       method: 'POST',
       url: '/api/sessions',
@@ -301,7 +320,7 @@ describe('sessions routes', () => {
 
   test('GET /api/sessions/:id filters update_threads tool frames out of the client payload (backstage only)', async () => {
     const { user, game } = await setupReadyGame('threads-backstage@example.com');
-    const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+    const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
     const created = await app.inject({
       method: 'POST',
       url: '/api/sessions',
@@ -337,7 +356,7 @@ describe('sessions routes', () => {
     test('the system prompt sent to the model contains the focus areas and the coaching plan', async () => {
       const { user, game } = await setupReadyGame('prompt@example.com');
       const { model, doStream } = textStreamModel('Hello!');
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -373,7 +392,7 @@ describe('sessions routes', () => {
         toolName: 'show_position',
         input: { moveNumber: 2, color: 'black' }
       });
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -408,7 +427,7 @@ describe('sessions routes', () => {
     test('a metered turn writes an llm_call_log row with the usage', async () => {
       const { user, game } = await setupReadyGame('metered@example.com');
       const { model } = textStreamModel('Hello!');
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -435,7 +454,7 @@ describe('sessions routes', () => {
       // Spend the signup grant down to 0.
       await creditsRepo.insertUsageDebit(db, user.id, null, 100);
       const { model } = textStreamModel('Hello!');
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -463,7 +482,7 @@ describe('sessions routes', () => {
     test('an empty body resumes the pending [session_start] turn — the coach opens on its own, no student input needed', async () => {
       const { user, game } = await setupReadyGame('kickoff@example.com');
       const { model, doStream } = textStreamModel('Hi! Ready to dig into your game?');
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -514,7 +533,7 @@ describe('sessions routes', () => {
     test('messages persist verbatim and replay identically on the next turn (cache invariant)', async () => {
       const { user, game } = await setupReadyGame('replay@example.com');
       const { model } = textStreamModel('First reply.');
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -549,7 +568,7 @@ describe('sessions routes', () => {
   describe('GET /api/sessions/:id/debug/last-turn', () => {
     test('404s before any turn has completed', async () => {
       const { user, game } = await setupReadyGame('debug-404@example.com');
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -570,7 +589,7 @@ describe('sessions routes', () => {
     test('404s for a session that does not belong to the requesting user', async () => {
       const { user, game } = await setupReadyGame('debug-owner@example.com');
       const other = await usersRepo.insert(db, { email: 'debug-other@example.com', displayName: 'Other' });
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -606,7 +625,7 @@ describe('sessions routes', () => {
         })
       );
       const model = new MockLanguageModelV4({ doStream });
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -645,7 +664,7 @@ describe('sessions routes', () => {
 
     test('a second, independent app instance sharing only the database sees the same snapshot — proves this survives a process restart / lands on a different k8s pod than the one that produced it', async () => {
       const { user, game } = await setupReadyGame('debug-cross-instance@example.com');
-      const producerApp = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('From producer pod.').model) });
+      const producerApp = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('From producer pod.').model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await producerApp.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -666,7 +685,7 @@ describe('sessions routes', () => {
       // an in-memory Map keyed inside coach-agent.ts, this would 404 even
       // though a turn genuinely completed, since the Map lives on the process
       // that produced it, not this one.
-      const readerApp = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('unused').model) });
+      const readerApp = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('unused').model), engineBackendOptions: fakeEngineBackendOptions() });
       const response = await readerApp.inject({
         method: 'GET',
         url: `/api/sessions/${sessionId}/debug/last-turn`,
@@ -699,7 +718,7 @@ describe('sessions routes', () => {
             })
           })
       });
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
@@ -733,7 +752,7 @@ describe('sessions routes', () => {
   describe('play mode routes (architecture §14)', () => {
     test('POST /api/sessions/play creates a coach_play game + play-mode session, with no analysis/credits gate', async () => {
       const user = await usersRepo.insert(db, { email: 'playstart@example.com', displayName: 'Ann' });
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
 
       const response = await app.inject({
         method: 'POST',
@@ -751,7 +770,7 @@ describe('sessions routes', () => {
 
     test('POST /api/sessions/play rejects an invalid studentColor', async () => {
       const user = await usersRepo.insert(db, { email: 'playbadcolor@example.com', displayName: 'Ann' });
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
 
       const response = await app.inject({
         method: 'POST',
@@ -765,7 +784,7 @@ describe('sessions routes', () => {
 
     async function setupPlaySession(email: string) {
       const user = await usersRepo.insert(db, { email, displayName: 'Ann' });
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions/play',
@@ -811,7 +830,7 @@ describe('sessions routes', () => {
 
     test('POST /api/sessions/:id/play-move 409s on an analyze-mode session', async () => {
       const { user, game } = await setupReadyGame('playwrongmode@example.com');
-      const app = buildApp({ authMode: 'proxy', db, coachAgentDeps: coachAgentDeps(textStreamModel('x').model) });
+      const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });
       const created = await app.inject({
         method: 'POST',
         url: '/api/sessions',
