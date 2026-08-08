@@ -1,5 +1,5 @@
 import type { Kysely } from 'kysely';
-import type { RatingBand } from '@chess-coach/shared';
+import type { EngineMode, RatingBand } from '@chess-coach/shared';
 import type { Database } from '../schema.js';
 
 export interface UserRow {
@@ -7,6 +7,7 @@ export interface UserRow {
   email: string;
   displayName: string;
   ratingBand: RatingBand;
+  engineMode: EngineMode;
   lichessUsername: string | null;
   chesscomUsername: string | null;
   selfAssessment: string | null;
@@ -20,6 +21,7 @@ export interface NewUser {
 
 export interface UserPatch {
   ratingBand?: RatingBand;
+  engineMode?: EngineMode;
   lichessUsername?: string | null;
   chesscomUsername?: string | null;
   selfAssessment?: string | null;

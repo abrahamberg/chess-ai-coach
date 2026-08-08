@@ -68,6 +68,7 @@ export async function toUserProfile(
     email: user.email,
     displayName: user.displayName,
     ratingBand: user.ratingBand,
+    engineMode: user.engineMode,
     lichessUsername: user.lichessUsername,
     chesscomUsername: user.chesscomUsername,
     selfAssessment: user.selfAssessment,

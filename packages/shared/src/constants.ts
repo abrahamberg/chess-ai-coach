@@ -17,3 +17,6 @@ export type MistakeCategory = (typeof MISTAKE_CATEGORIES)[number];
 
 export const RATING_BANDS = ['novice', 'improving', 'club', 'advanced'] as const;
 export type RatingBand = (typeof RATING_BANDS)[number];
+
+export const ENGINE_MODES = ['native', 'browser'] as const;
+export type EngineMode = (typeof ENGINE_MODES)[number];

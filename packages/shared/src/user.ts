@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { RATING_BANDS } from './constants.js';
+import { ENGINE_MODES, RATING_BANDS } from './constants.js';
 
 export const UserProfileSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
   displayName: z.string(),
   ratingBand: z.enum(RATING_BANDS),
+  engineMode: z.enum(ENGINE_MODES),
   lichessUsername: z.string().nullable(),
   chesscomUsername: z.string().nullable(),
   selfAssessment: z.string().nullable(),
@@ -15,6 +16,7 @@ export type UserProfile = z.infer<typeof UserProfileSchema>;
 
 export const UpdateUserProfileRequestSchema = z.object({
   ratingBand: z.enum(RATING_BANDS).optional(),
+  engineMode: z.enum(ENGINE_MODES).optional(),
   lichessUsername: z.string().nullable().optional(),
   chesscomUsername: z.string().nullable().optional(),
   selfAssessment: z.string().nullable().optional()
