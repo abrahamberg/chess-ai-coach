@@ -7,6 +7,7 @@ import { registerAnalysesRoutes } from './routes/analyses.js';
 import { registerCreditsRoutes } from './routes/credits.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerEngineTunnelRoutes } from './routes/engine-tunnel.js';
+import { registerEngineTunnelInternalRoutes } from './routes/engine-tunnel-internal.js';
 import { registerGamesRoutes } from './routes/games.js';
 import { registerLichessRoutes } from './routes/lichess.js';
 import { registerLlmKeysRoutes } from './routes/llm-keys.js';
@@ -40,6 +41,9 @@ export interface BuildAppOptions {
   stripeClient?: StripeClient;
   /** Required to register the browser-facing GET /api/engine-tunnel WS route. */
   engineTunnelRegistry?: EngineTunnelRegistry;
+  /** Required (alongside engineTunnelRegistry) to register the worker-facing
+   * POST /internal/engine-tunnel/:userId relay route. */
+  internalToken?: string;
 }
 
 /** Builds the Fastify app: proxy-auth header decoration, problem+json error mapping,
@@ -92,6 +96,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (options.engineTunnelRegistry) {
       registerEngineTunnelRoutes(app, options.db, options.engineTunnelRegistry);
     }
+  }
+
+  // Grouped with the other engine-tunnel registration above for readability,
+  // but deliberately kept outside the `if (options.db)` block: the internal
+  // relay route only touches the in-memory registry, not the database, and
+  // the worker process that calls it (Task 12) has no reason to require db
+  // wiring on the api side to do so.
+  if (options.engineTunnelRegistry && options.internalToken) {
+    registerEngineTunnelInternalRoutes(app, { registry: options.engineTunnelRegistry, internalToken: options.internalToken });
   }
 
   return app;

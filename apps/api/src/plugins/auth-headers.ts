@@ -28,6 +28,11 @@ const DEV_STUB_USER: AuthUser = { email: 'dev@local.test', displayName: 'dev@loc
 //   /healthz, /readyz — the k8s kubelet probes these directly, bypassing the proxy,
 //     with no headers of any kind; requiring auth here would keep every pod out of
 //     the Ready state (deploy/helm/chess-ai-coach api Deployment).
+// /internal/* (checked separately below, not added to this set since it's a prefix
+//   match rather than an exact path) — the worker process calls these directly, never
+//   through oauth2-proxy, and is authenticated instead by a shared-secret
+//   x-internal-token header (routes/engine-tunnel-internal.ts), the same pattern as
+//   the Stripe webhook's signature check above.
 const AUTH_EXEMPT_PATHS = new Set(['/api/stripe/webhook', '/healthz', '/readyz']);
 
 /** Decorates `request.user` from oauth2-proxy identity headers. In reverse-proxy
@@ -38,7 +43,7 @@ const AUTH_EXEMPT_PATHS = new Set(['/api/stripe/webhook', '/healthz', '/readyz']
 export const authHeadersPlugin: FastifyPluginAsync<AuthHeadersOptions> = fp(
   (app: FastifyInstance, opts: AuthHeadersOptions) => {
     app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
-      if (AUTH_EXEMPT_PATHS.has(request.url)) return;
+      if (AUTH_EXEMPT_PATHS.has(request.url) || request.url.startsWith('/internal/')) return;
 
       const user = userFromHeaders(request);
       if (user) {
