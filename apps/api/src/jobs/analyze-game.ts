@@ -7,7 +7,7 @@ import type { Database } from '../db/schema.js';
 import { getModelForUser, recordUsage, type GatewayConfig } from '../llm/gateway.js';
 import { generateStructured } from '../llm/text.js';
 import { toBillableTokens } from '../llm/usage.js';
-import { analyzeGameViaEngine } from '../services/engine-client.js';
+import { resolveEngineBackend, type ResolveEngineBackendOptions } from '../services/engine/resolve-engine-backend.js';
 import { runAnalyzeGameJob, type AnalysisJobDependencies, type PlannerMessages } from '../services/analysis.js';
 import type { DeepenAnalysisJobPayload } from './deepen-analysis.js';
 
@@ -17,8 +17,7 @@ export interface AnalyzeGameJobPayload {
 
 export interface AnalyzeGameTaskOptions {
   db: Kysely<Database>;
-  /** services/engine base URL (architecture §4). */
-  engineUrl: string;
+  engineBackendOptions: ResolveEngineBackendOptions;
   gatewayConfig: GatewayConfig;
 }
 
@@ -35,8 +34,9 @@ export function createAnalyzeGameTask(options: AnalyzeGameTaskOptions): Task {
     const game = await gamesRepo.findById(options.db, gameId);
     if (!game) throw new Error(`Game ${gameId} not found`);
 
+    const backend = await resolveEngineBackend(options.engineBackendOptions, game.userId);
     const deps: AnalysisJobDependencies = {
-      analyzeGamePositions: (fens) => analyzeGameViaEngine(options.engineUrl, fens),
+      analyzeGamePositions: (fens) => backend.analyzeGame(fens),
       callPlanner: (messages) => callPlannerModel(options.db, options.gatewayConfig, game.userId, messages)
     };
 

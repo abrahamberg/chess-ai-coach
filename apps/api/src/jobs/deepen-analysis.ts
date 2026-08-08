@@ -1,7 +1,8 @@
 import type { Task } from 'graphile-worker';
 import type { Kysely } from 'kysely';
+import * as gamesRepo from '../db/repositories/games.js';
 import type { Database } from '../db/schema.js';
-import { analyzePositionViaEngine } from '../services/engine-client.js';
+import { resolveEngineBackend, type ResolveEngineBackendOptions } from '../services/engine/resolve-engine-backend.js';
 import { runDeepenAnalysisJob, type DeepenAnalysisJobDependencies } from '../services/deepen-analysis.js';
 
 export interface DeepenAnalysisJobPayload {
@@ -10,8 +11,7 @@ export interface DeepenAnalysisJobPayload {
 
 export interface DeepenAnalysisTaskOptions {
   db: Kysely<Database>;
-  /** services/engine base URL (architecture §4). */
-  engineUrl: string;
+  engineBackendOptions: ResolveEngineBackendOptions;
 }
 
 /** graphile-worker Task wrapper around services/deepen-analysis.ts's pure job
@@ -21,8 +21,12 @@ export interface DeepenAnalysisTaskOptions {
 export function createDeepenAnalysisTask(options: DeepenAnalysisTaskOptions): Task {
   return async (payload) => {
     const { gameId } = payload as DeepenAnalysisJobPayload;
+    const game = await gamesRepo.findById(options.db, gameId);
+    if (!game) throw new Error(`Game ${gameId} not found`);
+
+    const backend = await resolveEngineBackend(options.engineBackendOptions, game.userId);
     const deps: DeepenAnalysisJobDependencies = {
-      analyzePosition: (fen) => analyzePositionViaEngine(options.engineUrl, fen)
+      analyzePosition: (fen) => backend.analyzePosition(fen)
     };
     await runDeepenAnalysisJob(options.db, deps, gameId);
   };
