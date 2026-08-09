@@ -327,6 +327,7 @@ describe('UserProfileSchema', () => {
       lichessUsername: null,
       chesscomUsername: 'daniel_c',
       selfAssessment: null,
+      engineMode: 'native',
       creditBalance: 100
     };
     expect(UserProfileSchema.safeParse(profile).success).toBe(true);
