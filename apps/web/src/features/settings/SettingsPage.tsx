@@ -1,10 +1,11 @@
-import { SavedLlmProvidersResponseSchema, UserProfileSchema, type LlmProvider, type RatingBand } from '@chess-coach/shared';
+import { SavedLlmProvidersResponseSchema, UserProfileSchema, type EngineMode, type LlmProvider, type RatingBand } from '@chess-coach/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPut } from '../../api/client.js';
 import { BandSelect } from './BandSelect.js';
 import { ByokKeyForm } from './ByokKeyForm.js';
 import { CreditBalance } from './CreditBalance.js';
+import { EngineModeSelect } from './EngineModeSelect.js';
 import './SettingsPage.css';
 
 type Theme = 'light' | 'dark';
@@ -45,6 +46,11 @@ export function SettingsPage(): ReactNode {
     onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
   });
 
+  const engineModeMutation = useMutation({
+    mutationFn: (engineMode: EngineMode) => apiPatch('/api/users/me', { engineMode }, UserProfileSchema),
+    onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
+  });
+
   const saveKeyMutation = useMutation({
     mutationFn: ({ provider, apiKey }: { provider: LlmProvider; apiKey: string }) =>
       apiPut(`/api/users/me/llm-keys/${provider}`, { apiKey }),
@@ -70,6 +76,11 @@ export function SettingsPage(): ReactNode {
         <h2>Profile</h2>
         <p>{profile.displayName}</p>
         <BandSelect value={profile.ratingBand} onChange={(band) => bandMutation.mutate(band)} />
+      </section>
+
+      <section aria-label="Engine">
+        <h2>Engine</h2>
+        <EngineModeSelect value={profile.engineMode} onChange={(mode) => engineModeMutation.mutate(mode)} />
       </section>
 
       <section aria-label="API keys">

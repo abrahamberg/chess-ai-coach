@@ -10,6 +10,7 @@ const VALID_PROFILE = {
   lichessUsername: null,
   chesscomUsername: null,
   selfAssessment: null,
+  engineMode: 'native',
   creditBalance: 100
 };
 

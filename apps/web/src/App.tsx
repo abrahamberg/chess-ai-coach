@@ -8,6 +8,7 @@ import { ImportPage } from './features/import/ImportPage.js';
 import { PlayStartPage } from './features/play/PlayStartPage.js';
 import { SessionPage } from './features/session/SessionPage.js';
 import { SettingsPage } from './features/settings/SettingsPage.js';
+import { useEngineTunnelActivation } from './hooks/useEngineTunnelActivation.js';
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,8 @@ export function App(): ReactNode {
 }
 
 export function AppRoutes(): ReactNode {
+  useEngineTunnelActivation();
+
   return (
     <AppShell>
       <Routes>
