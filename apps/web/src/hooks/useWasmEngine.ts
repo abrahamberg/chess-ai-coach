@@ -1,10 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
-
-export interface EngineWorkerLike {
-  postMessage(message: string): void;
-  onmessage: ((event: { data: string }) => void) | null;
-  terminate(): void;
-}
+import { getSharedEngineWorker } from '../engine/shared-engine-worker-instance.js';
+import type { SharedEngineWorkerOptions } from '../engine/shared-engine-worker.js';
 
 export type EngineStatus = 'idle' | 'loading' | 'ready' | 'analyzing';
 
@@ -13,9 +9,7 @@ export interface EngineBestMoveArrow {
   to: string;
 }
 
-export interface UseWasmEngineOptions {
-  createWorker?: () => EngineWorkerLike;
-}
+export type UseWasmEngineOptions = SharedEngineWorkerOptions;
 
 export interface UseWasmEngineResult {
   status: EngineStatus;
@@ -24,13 +18,7 @@ export interface UseWasmEngineResult {
   analyze: (fen: string) => void;
 }
 
-// The `stockfish` npm package's lite-single build is a self-contained UCI
-// engine worker script (GPLv3) — loaded lazily so the ~7 MB asset never
-// touches the main bundle unless a student opens Explore.
-function defaultCreateWorker(): EngineWorkerLike {
-  const workerUrl = new URL('stockfish/bin/stockfish-18-lite-single.js', import.meta.url);
-  return new Worker(workerUrl) as unknown as EngineWorkerLike;
-}
+const EXPLORE_DEPTH = 15;
 
 function cpToWords(cp: number, sideToMove: 'w' | 'b'): string {
   const whiteCp = sideToMove === 'w' ? cp : -cp;
@@ -54,79 +42,29 @@ function parseUciSquares(uciMove: string): EngineBestMoveArrow {
 }
 
 /** design.md §5.6: in-browser Explore engine — word-based evals only, never
- * sent to the server. `createWorker` is injectable so the UCI handshake and
- * eval-wording logic can be unit-tested without a real WASM asset. */
+ * sent to the server. Sits on the app's single SharedEngineWorker so Explore
+ * and browser-mode tunnel fulfillment never run two engine processes at
+ * once (see engine/shared-engine-worker.ts). */
 export function useWasmEngine(options: UseWasmEngineOptions = {}): UseWasmEngineResult {
-  const createWorker = options.createWorker ?? defaultCreateWorker;
-  const workerRef = useRef<EngineWorkerLike | null>(null);
-  const sideToMoveRef = useRef<'w' | 'b'>('w');
-  const pendingScoreRef = useRef<string | null>(null);
-
+  const engineRef = useRef(getSharedEngineWorker(options));
   const [status, setStatus] = useState<EngineStatus>('idle');
   const [evaluation, setEvaluation] = useState<string | null>(null);
   const [bestMoveArrow, setBestMoveArrow] = useState<EngineBestMoveArrow | null>(null);
 
-  const handleMessage = useCallback((line: string) => {
-    if (line === 'uciok') {
-      workerRef.current?.postMessage('isready');
-      return;
-    }
-
-    if (line === 'readyok') {
-      setStatus('analyzing');
-      const worker = workerRef.current;
-      if (worker && pendingScoreRef.current) {
-        worker.postMessage(`position fen ${pendingScoreRef.current}`);
-        worker.postMessage('go depth 15');
+  const analyze = useCallback((fen: string) => {
+    setStatus('analyzing');
+    const sideToMove = fen.split(' ')[1] === 'b' ? 'b' : 'w';
+    void engineRef.current.analyze({ fen, depth: EXPLORE_DEPTH, multiPv: 1 }).then((lines) => {
+      const best = lines[0];
+      if (!best) {
+        setStatus('ready');
+        return;
       }
-      return;
-    }
-
-    if (line.startsWith('info') && line.includes('score')) {
-      const mateMatch = /score mate (-?\d+)/.exec(line);
-      const cpMatch = /score cp (-?\d+)/.exec(line);
-      if (mateMatch) {
-        setEvaluation(mateToWords(Number(mateMatch[1]), sideToMoveRef.current));
-      } else if (cpMatch) {
-        setEvaluation(cpToWords(Number(cpMatch[1]), sideToMoveRef.current));
-      }
-      return;
-    }
-
-    if (line.startsWith('bestmove')) {
-      const [, uciMove] = line.split(' ');
-      if (uciMove) {
-        setBestMoveArrow(parseUciSquares(uciMove));
-      }
+      setEvaluation(best.mateIn !== null ? mateToWords(best.mateIn, sideToMove) : cpToWords(best.cp ?? 0, sideToMove));
+      setBestMoveArrow(parseUciSquares(best.moveUci));
       setStatus('ready');
-    }
+    });
   }, []);
-
-  const analyze = useCallback(
-    (fen: string) => {
-      sideToMoveRef.current = fen.split(' ')[1] === 'b' ? 'b' : 'w';
-
-      if (!workerRef.current) {
-        setStatus('loading');
-        const worker = createWorker();
-        worker.onmessage = (event) => handleMessage(event.data);
-        workerRef.current = worker;
-        pendingScoreRef.current = fen;
-        worker.postMessage('uci');
-        return;
-      }
-
-      const worker = workerRef.current;
-      if (status === 'idle' || status === 'loading') {
-        pendingScoreRef.current = fen;
-        return;
-      }
-      setStatus('analyzing');
-      worker.postMessage(`position fen ${fen}`);
-      worker.postMessage('go depth 15');
-    },
-    [createWorker, handleMessage, status]
-  );
 
   return { status, evaluation, bestMoveArrow, analyze };
 }
