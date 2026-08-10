@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { ENGINE_DEFAULT_DEPTH, ENGINE_TUNNEL_PER_POSITION_MS } from '@chess-coach/shared';
 import type { EngineTunnelTransport } from './engine-tunnel-transport.js';
 import { BrowserTunnelEngineBackend } from './browser-tunnel-engine-backend.js';
 
@@ -44,7 +45,10 @@ describe('BrowserTunnelEngineBackend', () => {
 
     expect(transport.request).toHaveBeenCalledWith(
       'user-1',
-      { kind: 'analyze-position', fen: 'f', depth: undefined, multiPv: 3 },
+      // Explicit depth, not undefined: left blank, the browser client falls
+      // back to its own constant and can search shallower than the native
+      // backend, mixing depths in the fen-keyed eval cache.
+      { kind: 'analyze-position', fen: 'f', depth: ENGINE_DEFAULT_DEPTH, multiPv: 3 },
       8000
     );
     expect(result).toEqual(VALID_ANALYSIS);
@@ -57,7 +61,13 @@ describe('BrowserTunnelEngineBackend', () => {
 
     const result = await backend.analyzeGame(['f']);
 
-    expect(transport.request).toHaveBeenCalledWith('user-1', { kind: 'analyze-game', fens: ['f'], depth: undefined, multiPv: 3 }, 8000);
+    // Batch timeout scales with position count — a whole-game request can't be
+    // held to the single-position budget.
+    expect(transport.request).toHaveBeenCalledWith(
+      'user-1',
+      { kind: 'analyze-game', fens: ['f'], depth: ENGINE_DEFAULT_DEPTH, multiPv: 3 },
+      8000 + ENGINE_TUNNEL_PER_POSITION_MS
+    );
     expect(result).toEqual(evals);
   });
 

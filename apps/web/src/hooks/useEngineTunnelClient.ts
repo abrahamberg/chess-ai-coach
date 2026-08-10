@@ -1,13 +1,17 @@
 import { computePositionFeatures } from '@chess-coach/chess-analysis';
+import { ENGINE_DEFAULT_DEPTH } from '@chess-coach/shared';
 import { Chess } from 'chess.js';
 import { useEffect } from 'react';
 import { getSharedEngineWorker } from '../engine/shared-engine-worker-instance.js';
 import type { RawEngineLine } from '../engine/shared-engine-worker.js';
 
-const DEFAULT_DEPTH = 15;
-// Must match apps/api's ENGINE_MULTI_PV (services/engine-client.ts) — see
-// design spec §2: both backends analyze at the same default depth/multiPv
-// so cached rows stay comparable across sources.
+// Defensive fallbacks only — apps/api always sends an explicit depth/multiPv
+// (services/engine/browser-tunnel-engine-backend.ts). They come from
+// @chess-coach/shared rather than being retyped here because this file used to
+// hardcode depth 15 against the native backend's 16, and every position the
+// browser analyzed went into the fen-keyed cache a ply shallower than the
+// server's own rows. See design spec §2.
+const DEFAULT_DEPTH = ENGINE_DEFAULT_DEPTH;
 const DEFAULT_MULTI_PV = 3;
 
 interface TunnelRequestMessage {

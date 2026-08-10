@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { EngineEvalSchema, PositionAnalysisSchema, type EngineEval, type PositionAnalysis } from '@chess-coach/shared';
+import {
+  ENGINE_DEFAULT_DEPTH,
+  ENGINE_TUNNEL_PER_POSITION_MS,
+  EngineEvalSchema,
+  PositionAnalysisSchema,
+  type EngineEval,
+  type PositionAnalysis
+} from '@chess-coach/shared';
 import { ENGINE_MULTI_PV } from '../engine-client.js';
 import type { EngineBackend, EngineBackendAnalyzeOptions } from './engine-backend.js';
 import type { EngineTunnelTransport } from './engine-tunnel-transport.js';
@@ -23,7 +30,10 @@ export class BrowserTunnelEngineBackend implements EngineBackend {
   async analyzePosition(fen: string, opts?: EngineBackendAnalyzeOptions): Promise<PositionAnalysis> {
     const raw = await this.transport.request(
       this.userId,
-      { kind: 'analyze-position', fen, depth: opts?.depth, multiPv: opts?.multiPv ?? ENGINE_MULTI_PV },
+      // depth is always sent, never left undefined: the browser client has to
+      // fall back to a constant of its own when it isn't, which is how it ended
+      // up searching a ply shallower than the native backend.
+      { kind: 'analyze-position', fen, depth: opts?.depth ?? ENGINE_DEFAULT_DEPTH, multiPv: opts?.multiPv ?? ENGINE_MULTI_PV },
       this.timeoutMs
     );
     return PositionAnalysisSchema.parse(raw);
@@ -32,8 +42,11 @@ export class BrowserTunnelEngineBackend implements EngineBackend {
   async analyzeGame(fens: string[], opts?: EngineBackendAnalyzeOptions): Promise<EngineEval[]> {
     const raw = await this.transport.request(
       this.userId,
-      { kind: 'analyze-game', fens, depth: opts?.depth, multiPv: opts?.multiPv ?? ENGINE_MULTI_PV },
-      this.timeoutMs
+      { kind: 'analyze-game', fens, depth: opts?.depth ?? ENGINE_DEFAULT_DEPTH, multiPv: opts?.multiPv ?? ENGINE_MULTI_PV },
+      // Scaled by batch size — this one request covers every position in the
+      // game, so `timeoutMs` (budgeted for a single position) would abort a
+      // perfectly healthy analysis a few plies in.
+      this.timeoutMs + fens.length * ENGINE_TUNNEL_PER_POSITION_MS
     );
     return EngineEvalArraySchema.parse(raw);
   }

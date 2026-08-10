@@ -23,7 +23,16 @@ export interface SharedEngineWorkerOptions {
 }
 
 function defaultCreateWorker(): EngineWorkerLike {
-  const workerUrl = new URL('stockfish/bin/stockfish-18-lite-single.js', import.meta.url);
+  // The full-net build, NOT `-lite-single`. The lite net is ~7MB against this
+  // one's ~108MB, and that gap changes the engine's actual conclusions rather
+  // than just its precision: on a sharp middlegame it played Qxc6 (+597) where
+  // both this build (+695) and the native backend (+1003) play Qxf6 — at the
+  // same depth 16, so it was never a search-depth difference. Browser-mode
+  // evaluations are persisted and shown next to server-analyzed games, so they
+  // have to come from a comparable engine. `-single` (rather than the threaded
+  // `stockfish-18.js`) keeps this working without serving the app
+  // cross-origin-isolated for SharedArrayBuffer.
+  const workerUrl = new URL('stockfish/bin/stockfish-18-single.js', import.meta.url);
   return new Worker(workerUrl) as unknown as EngineWorkerLike;
 }
 

@@ -2,10 +2,12 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { createInterface } from 'node:readline';
 import { Chess } from 'chess.js';
-import type { EngineLine } from '@chess-coach/shared';
+import { ENGINE_DEFAULT_DEPTH, type EngineLine } from '@chess-coach/shared';
 import { parseBestMove, parseInfoLine } from './uci-info-parser.js';
 
-export const DEFAULT_DEPTH = 16;
+/** Re-exported from @chess-coach/shared so the browser backend searches to the
+ * same depth — see ENGINE_DEFAULT_DEPTH's note on the fen-keyed eval cache. */
+export const DEFAULT_DEPTH = ENGINE_DEFAULT_DEPTH;
 export const DEFAULT_MULTI_PV = 2;
 export const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_STOCKFISH_PATH = '/usr/games/stockfish';
