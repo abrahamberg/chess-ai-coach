@@ -142,7 +142,7 @@ describe('ImportPage', () => {
     );
   });
 
-  test('design.md §4.2: shows the 3-step analysis progress screen (not the form) while waiting', async () => {
+  test('design.md §4.2: shows the analysis progress screen (not the form) while waiting', async () => {
     const fetchMock = vi.fn().mockImplementation((path: string) => {
       if (path === '/api/games') {
         return Promise.resolve(
@@ -162,10 +162,11 @@ describe('ImportPage', () => {
     await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
 
     expect(screen.queryByRole('textbox', { name: /pgn/i })).not.toBeInTheDocument();
-    expect(screen.getByText('Reading game')).toBeInTheDocument();
+    expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/reading your game/i);
 
     MockEventSource.instances[0]?.emit({ status: 'engine_running' });
-    expect(await screen.findByText('Engine review')).toHaveAttribute('aria-current', 'step');
+    expect(await screen.findByRole('status')).toHaveTextContent(/reviewing your game/i);
   });
 
   test('design.md §4.2: switching to the Upload tab and choosing a file imports it as source upload', async () => {

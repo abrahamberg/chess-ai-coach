@@ -2,8 +2,13 @@ import { render, screen } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+let lastSquareStyles: Record<string, unknown> = {};
+
 vi.mock('react-chessboard', () => ({
-  Chessboard: () => <div data-testid="mock-chessboard" />
+  Chessboard: ({ options }: { options: { squareStyles?: Record<string, unknown> } }) => {
+    lastSquareStyles = options.squareStyles ?? {};
+    return <div data-testid="mock-chessboard" />;
+  }
 }));
 
 const { AnalysisProgress } = await import('./AnalysisProgress.js');
@@ -13,6 +18,7 @@ const FINAL_FEN = 'rnb1k1nr/pppp1Qpp/8/2b1p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 
 describe('AnalysisProgress (design.md §4.2)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    lastSquareStyles = {};
   });
 
   afterEach(() => {
@@ -24,19 +30,14 @@ describe('AnalysisProgress (design.md §4.2)', () => {
     expect(screen.getByTestId('mock-chessboard')).toBeInTheDocument();
   });
 
-  test('step 1 (Reading game) is current while queued or status is unknown', () => {
+  test('highlights no squares yet while reading the game', () => {
     render(<AnalysisProgress status={null} finalFen={FINAL_FEN} />);
-    expect(screen.getByText('Reading game')).toHaveAttribute('aria-current', 'step');
+    expect(Object.keys(lastSquareStyles)).toHaveLength(0);
   });
 
-  test('step 2 (Engine review) is current while engine_running', () => {
-    render(<AnalysisProgress status="engine_running" finalFen={FINAL_FEN} />);
-    expect(screen.getByText('Engine review')).toHaveAttribute('aria-current', 'step');
-  });
-
-  test('step 3 (Coach preparing your session) is current while planning', () => {
+  test('reports the phase to screen readers, not just visually', () => {
     render(<AnalysisProgress status="planning" finalFen={FINAL_FEN} />);
-    expect(screen.getByText('Coach preparing your session')).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByRole('status')).toHaveTextContent(/preparing your coaching session/i);
   });
 
   test('shows a calm failure message with a retry action when analysis fails', () => {
@@ -47,28 +48,40 @@ describe('AnalysisProgress (design.md §4.2)', () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
-  test('shows how far the engine step has got, as a percentage of the game', () => {
+  test('lights up a quarter of the engine squares at 25% engine progress', () => {
     render(
       <AnalysisProgress status="engine_running" finalFen={FINAL_FEN} analyzedPositions={6} totalPositions={24} />
     );
 
-    expect(screen.getByTestId('analysis-progress-percent')).toHaveTextContent('25%');
+    // 25% of the 56 engine squares (a1..h7), one of them left pulsing as "active".
+    const lit = Object.entries(lastSquareStyles).filter(([, style]) => !hasAnimation(style));
+    const active = Object.entries(lastSquareStyles).filter(([, style]) => hasAnimation(style));
+    expect(lit).toHaveLength(13);
+    expect(active).toHaveLength(1);
+    expect(screen.getByRole('status')).toHaveTextContent('25%');
   });
 
-  test('shows no percentage before the engine step, where there is nothing to count', () => {
-    render(<AnalysisProgress status="queued" finalFen={FINAL_FEN} analyzedPositions={0} totalPositions={24} />);
-
-    expect(screen.queryByTestId('analysis-progress-percent')).not.toBeInTheDocument();
-  });
-
-  // An unparseable PGN yields a total of 0; deriving a percentage from that
-  // would divide by zero and render NaN%.
-  test('shows no percentage when the total position count is unknown', () => {
+  test('reports the engine phase to screen readers with no percent when the total is unknown', () => {
     render(
       <AnalysisProgress status="engine_running" finalFen={FINAL_FEN} analyzedPositions={3} totalPositions={0} />
     );
 
-    expect(screen.queryByTestId('analysis-progress-percent')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/reviewing your game/i);
+    expect(screen.getByRole('status')).not.toHaveTextContent('%');
+  });
+
+  test('fills all 56 engine squares and animates the last rank once the engine finishes', () => {
+    render(<AnalysisProgress status="planning" finalFen={FINAL_FEN} analyzedPositions={24} totalPositions={24} />);
+
+    const animated = Object.entries(lastSquareStyles).filter(([, style]) => hasAnimation(style));
+    const solid = Object.entries(lastSquareStyles).filter(([, style]) => !hasAnimation(style));
+    expect(solid).toHaveLength(56);
+    expect(animated).toHaveLength(8);
+  });
+
+  test('lights up all 64 squares once ready', () => {
+    render(<AnalysisProgress status="ready" finalFen={FINAL_FEN} />);
+    expect(Object.keys(lastSquareStyles)).toHaveLength(64);
   });
 
   test('rotates through short tips while waiting', () => {
@@ -83,3 +96,7 @@ describe('AnalysisProgress (design.md §4.2)', () => {
     expect(second).not.toBe(first);
   });
 });
+
+function hasAnimation(style: unknown): boolean {
+  return typeof style === 'object' && style !== null && 'animation' in style;
+}

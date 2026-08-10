@@ -11,34 +11,7 @@
   pointer-events: none;
   border-radius: 12px;
   overflow: hidden;
-  margin-bottom: 24px;
-}
-
-.analysis-progress__steps {
-  list-style: none;
-  margin: 0 0 16px;
-  padding: 0;
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--text-muted);
-}
-
-.analysis-progress__steps li {
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--surface-2);
-}
-
-.analysis-progress__steps li[aria-current='step'] {
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-weight: 600;
-}
-
-.analysis-progress__steps li[data-done='true'] {
-  color: var(--accent);
+  margin-bottom: 16px;
 }
 
 .analysis-progress__tip {
@@ -51,9 +24,28 @@
   padding: 24px;
 }
 
-.analysis-progress__percent {
-  margin-left: 8px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  font-size: 14px;
+@keyframes analysis-progress-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes analysis-progress-wave {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analysis-progress__board [style*='animation'] {
+    animation: none !important;
+  }
 }
