@@ -96,7 +96,21 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       registerStripeWebhookRoutes(app, options.db, options.stripeClient);
     }
     if (options.engineTunnelRegistry) {
-      registerEngineTunnelRoutes(app, options.db, options.engineTunnelRegistry);
+      const db = options.db;
+      const registry = options.engineTunnelRegistry;
+      // MUST stay inside app.after(). @fastify/websocket only turns a
+      // `{ websocket: true }` route into a real WebSocket handler via an `onRoute`
+      // hook it installs when the plugin finishes loading — and `app.register()`
+      // above is deferred by avvio until ready(), i.e. long after this synchronous
+      // function body returns. Registering the route directly here adds it to the
+      // router *before* that hook exists, so the upgrade is never intercepted and
+      // the handler is silently invoked as a plain HTTP route: the args arrive as
+      // (request, reply) instead of (socket, request), and reading `request.user`
+      // off what is actually a Reply blows up with a 500 on every connect.
+      // app.after() defers to just after the plugin above has loaded.
+      app.after(() => {
+        registerEngineTunnelRoutes(app, db, registry);
+      });
     }
   }
 
