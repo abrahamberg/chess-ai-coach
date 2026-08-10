@@ -12,7 +12,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': { target: apiProxyTarget, changeOrigin: true }
+      '/api': { target: apiProxyTarget, changeOrigin: true, ws: true }
     }
   },
   test: {
