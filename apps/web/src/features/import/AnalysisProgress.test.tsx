@@ -3,10 +3,12 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let lastSquareStyles: Record<string, unknown> = {};
+let lastPosition: string | undefined;
 
 vi.mock('react-chessboard', () => ({
-  Chessboard: ({ options }: { options: { squareStyles?: Record<string, unknown> } }) => {
+  Chessboard: ({ options }: { options: { position?: string; squareStyles?: Record<string, unknown> } }) => {
     lastSquareStyles = options.squareStyles ?? {};
+    lastPosition = options.position;
     return <div data-testid="mock-chessboard" />;
   }
 }));
@@ -14,6 +16,13 @@ vi.mock('react-chessboard', () => ({
 const { AnalysisProgress } = await import('./AnalysisProgress.js');
 
 const FINAL_FEN = 'rnb1k1nr/pppp1Qpp/8/2b1p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4';
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const POSITIONS = [
+  START_FEN,
+  'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2',
+  'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2',
+  FINAL_FEN
+];
 
 describe('AnalysisProgress (design.md §4.2)', () => {
   beforeEach(() => {
@@ -82,6 +91,55 @@ describe('AnalysisProgress (design.md §4.2)', () => {
   test('lights up all 64 squares once ready', () => {
     render(<AnalysisProgress status="ready" finalFen={FINAL_FEN} />);
     expect(Object.keys(lastSquareStyles)).toHaveLength(64);
+  });
+
+  // Regression: the board used to always show the game's final position, with
+  // only the square-lighting animating -- so a long analysis looked static
+  // and stalled even though positions were streaming in. Showing the actual
+  // position currently being analyzed makes the wait visibly progress.
+  test('shows the position currently being analyzed, not just the final one, while the engine runs', () => {
+    render(
+      <AnalysisProgress
+        status="engine_running"
+        finalFen={FINAL_FEN}
+        positions={POSITIONS}
+        analyzedPositions={2}
+        totalPositions={POSITIONS.length}
+      />
+    );
+
+    expect(lastPosition).toBe(POSITIONS[2]);
+  });
+
+  test('falls back to the final position when no positions array is given', () => {
+    render(<AnalysisProgress status="engine_running" finalFen={FINAL_FEN} analyzedPositions={1} totalPositions={4} />);
+    expect(lastPosition).toBe(FINAL_FEN);
+  });
+
+  test('shows the final position once analysis leaves the engine step, even with a positions array', () => {
+    render(
+      <AnalysisProgress
+        status="planning"
+        finalFen={FINAL_FEN}
+        positions={POSITIONS}
+        analyzedPositions={POSITIONS.length}
+        totalPositions={POSITIONS.length}
+      />
+    );
+    expect(lastPosition).toBe(FINAL_FEN);
+  });
+
+  test('mentions the wait can take a few minutes, not "under a minute"', () => {
+    render(<AnalysisProgress status="queued" finalFen={FINAL_FEN} />);
+
+    const seen = new Set<string | null>();
+    for (let i = 0; i < 3; i++) {
+      seen.add(screen.getByTestId('analysis-progress-tip').textContent);
+      act(() => vi.advanceTimersByTime(4000));
+    }
+
+    expect([...seen].some((tip) => /a few minutes/i.test(tip ?? ''))).toBe(true);
+    expect([...seen].some((tip) => /under a minute/i.test(tip ?? ''))).toBe(false);
   });
 
   test('rotates through short tips while waiting', () => {

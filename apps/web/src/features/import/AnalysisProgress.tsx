@@ -12,6 +12,12 @@ export interface AnalysisProgressProps {
   /** The game's ply count, which the caller already knows from its own PGN.
    * Omit (or pass 0) and the engine step just shows no measurable progress. */
   totalPositions?: number;
+  /** Every position of the game, index-aligned with ply (positions[0] is the
+   * start, positions.at(-1) is finalFen). While the engine step is running,
+   * the board shows the position currently being analyzed instead of sitting
+   * on the final position the whole time -- omit and it just falls back to
+   * finalFen throughout, as before. */
+  positions?: string[];
 }
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
@@ -30,7 +36,7 @@ const TOTAL_SQUARES = 64;
 const TIPS = [
   "The coach reviews every move, but you'll only talk about what matters.",
   'No engine numbers here — just the moments worth understanding.',
-  'This usually takes under a minute.'
+  'This can take a few minutes, especially for longer games.'
 ];
 
 const TIP_ROTATE_MS = 4000;
@@ -87,6 +93,21 @@ function buildSquareStyles(states: CellState[]): Record<string, CSSProperties> {
   return styles;
 }
 
+/** While the engine is running, shows the position it's currently analyzing
+ * (so the board visibly moves through the game, not just the squares
+ * lighting up); every other phase — and the fallback with no `positions`
+ * array — shows the final position, as before. */
+function boardFen(
+  status: AnalysisProgressProps['status'],
+  positions: string[] | undefined,
+  analyzedPositions: number,
+  finalFen: string
+): string {
+  if (status !== 'engine_running' || !positions || positions.length === 0) return finalFen;
+  const index = Math.min(analyzedPositions, positions.length - 1);
+  return positions[index] ?? finalFen;
+}
+
 /** For screen readers — the squares filling in is a purely visual cue. */
 function describeProgress(status: AnalysisProgressProps['status'], enginePercent: number | null): string {
   if (status === 'engine_running') {
@@ -97,16 +118,19 @@ function describeProgress(status: AnalysisProgressProps['status'], enginePercent
   return 'Reading your game';
 }
 
-/** design.md §4.2: shown between import submit and session ready. The final
- * position's squares fill in bottom-left to top-right as analysis progresses
- * (engine review counted exactly, coach prep as an indeterminate wave), with
- * rotating tips so the 30-90s wait feels attended, not stalled. */
+/** design.md §4.2: shown between import submit and session ready. The board
+ * shows whichever position the engine is currently analyzing (falling back
+ * to the final position outside that step), and its squares fill in
+ * bottom-left to top-right as analysis progresses (engine review counted
+ * exactly, coach prep as an indeterminate wave), with rotating tips so the
+ * multi-minute wait feels attended, not stalled. */
 export function AnalysisProgress({
   status,
   finalFen,
   onRetry,
   analyzedPositions = 0,
-  totalPositions = 0
+  totalPositions = 0,
+  positions
 }: AnalysisProgressProps): ReactNode {
   const [tipIndex, setTipIndex] = useState(0);
 
@@ -132,7 +156,7 @@ export function AnalysisProgress({
   const enginePercent =
     totalPositions > 0 ? Math.min(100, Math.round((analyzedPositions / totalPositions) * 100)) : null;
   const options: ChessboardOptions = {
-    position: finalFen,
+    position: boardFen(status, positions, analyzedPositions, finalFen),
     allowDragging: false,
     squareStyles: buildSquareStyles(cellStates(status, enginePercent))
   };

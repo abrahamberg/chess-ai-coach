@@ -23,22 +23,23 @@ import './ImportPage.css';
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 function finalFenOf(pgn: string): string {
-  try {
-    const { positions } = parsePgn(pgn);
-    return positions.at(-1)?.fen ?? START_FEN;
-  } catch {
-    return START_FEN;
-  }
+  return fensOf(pgn).at(-1) ?? START_FEN;
 }
 
 /** The denominator for the engine step's percentage. The API reports how many
  * positions it has analyzed, not how many there are, because the client
  * already holds the PGN — so the total is derived here rather than shipped. */
 function positionCountOf(pgn: string): number {
+  return fensOf(pgn).length;
+}
+
+/** Every position's FEN, index-aligned with ply — lets AnalysisProgress show
+ * the position currently being analyzed instead of just the final one. */
+function fensOf(pgn: string): string[] {
   try {
-    return parsePgn(pgn).positions.length;
+    return parsePgn(pgn).positions.map((position) => position.fen);
   } catch {
-    return 0;
+    return [];
   }
 }
 
@@ -117,6 +118,7 @@ export function ImportPage(): ReactNode {
           onRetry={retry}
           analyzedPositions={analyzedPositions}
           totalPositions={positionCountOf(pendingPgn ?? '')}
+          positions={fensOf(pendingPgn ?? '')}
         />
       </div>
     );
