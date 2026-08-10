@@ -40,7 +40,10 @@ describe('GET /api/engine-tunnel', () => {
     await vi.waitFor(() => expect(registerSpy).toHaveBeenCalledWith(user.id, expect.anything()));
 
     socket.close();
-    await vi.waitFor(() => expect(unregisterSpy).toHaveBeenCalledWith(user.id));
+    // The route passes the connection it registered as the second argument so a
+    // replaced tab's late close can't evict a newer tab's live connection —
+    // see EngineTunnelRegistry.unregisterConnection().
+    await vi.waitFor(() => expect(unregisterSpy).toHaveBeenCalledWith(user.id, expect.anything()));
 
     await app.close();
   });

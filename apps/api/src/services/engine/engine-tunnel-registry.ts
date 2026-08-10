@@ -110,10 +110,22 @@ export class EngineTunnelRegistry implements EngineTunnelTransport {
    * All pending requests will be rejected with EngineUnavailableError.
    *
    * @param userId - The user ID to unregister
+   * @param connection - The connection being closed. Pass it whenever you have
+   *   it: registerConnection() is last-tab-wins, and a replaced tab's socket
+   *   routinely emits its 'close' *after* the replacing tab has registered
+   *   (any reload, route change that remounts, or second tab does this). Without
+   *   this identity check that late close evicts the *live* connection, leaving
+   *   a user with a connected tab but no tunnel — every subsequent job then
+   *   fails with "No tunnel connection for user …". Omitting it keeps the old
+   *   unconditional behaviour for callers that genuinely want to drop whatever
+   *   is registered.
    */
-  unregisterConnection(userId: string): void {
+  unregisterConnection(userId: string, connection?: TunnelConnection): void {
     const state = this.connections.get(userId);
     if (!state) {
+      return;
+    }
+    if (connection && state.connection !== connection) {
       return;
     }
 

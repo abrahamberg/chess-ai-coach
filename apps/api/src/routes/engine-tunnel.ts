@@ -39,7 +39,9 @@ export function registerEngineTunnelRoutes(
       connection.onmessage?.({ data: rawDataToString(raw) });
     });
 
-    socket.on('close', () => registry.unregisterConnection(user.id));
+    // Pass `connection` so a late 'close' from a tab this one already replaced
+    // can't evict the live connection (see EngineTunnelRegistry.unregisterConnection).
+    socket.on('close', () => registry.unregisterConnection(user.id, connection));
   });
 }
 

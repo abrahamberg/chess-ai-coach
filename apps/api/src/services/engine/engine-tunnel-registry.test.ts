@@ -192,4 +192,32 @@ describe('EngineTunnelRegistry', () => {
 
     vi.useRealTimers();
   });
+
+  // Regression: a reload/second tab registers its socket before the old one's
+  // 'close' lands. The late close must not evict the tab that replaced it, or
+  // the user sits there connected while every job fails "No tunnel connection".
+  it('unregisterConnection() ignores a stale connection that has already been replaced', async () => {
+    const oldConnection: FakeTunnelConnection = { send: vi.fn(), onmessage: null };
+    const newConnection: FakeTunnelConnection = { send: vi.fn(), onmessage: null };
+
+    registry.registerConnection('user123', oldConnection);
+    registry.registerConnection('user123', newConnection);
+
+    // The replaced tab's socket closes *after* the new one registered.
+    registry.unregisterConnection('user123', oldConnection);
+
+    // The live connection must still be the one that receives requests.
+    void registry.request('user123', { fen: 'test' }, 5000);
+    expect(newConnection.send).toHaveBeenCalled();
+    expect(oldConnection.send).not.toHaveBeenCalled();
+  });
+
+  it('unregisterConnection() still removes the connection when it is the current one', async () => {
+    const connection: FakeTunnelConnection = { send: vi.fn(), onmessage: null };
+
+    registry.registerConnection('user123', connection);
+    registry.unregisterConnection('user123', connection);
+
+    await expect(registry.request('user123', { fen: 'test' }, 5000)).rejects.toThrow(EngineUnavailableError);
+  });
 });
