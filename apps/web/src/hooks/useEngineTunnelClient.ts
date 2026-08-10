@@ -41,9 +41,29 @@ function pvUciToSan(fen: string, pvUci: string[]): string[] {
   return sanMoves;
 }
 
+// RawEngineLine.cp/mateIn are relative to whichever side is to move in `fen`
+// (raw UCI semantics -- see shared-engine-worker.ts and useWasmEngine.ts's
+// own sideToMove conversion). Every other EngineEval/PositionAnalysis in the
+// system is white-perspective (services/engine/src/uci.ts's recordInfoLine
+// does this same conversion for the native backend), so this has to happen
+// before a browser-tunnel result is packaged up -- otherwise every
+// black-to-move position's cp sign is inverted relative to what
+// classify.ts's cpLoss math expects.
+function toWhitePerspective(fen: string, value: number | null): number | null {
+  if (value === null) return null;
+  const sideToMove = fen.split(' ')[1];
+  return sideToMove === 'b' ? -value : value;
+}
+
 function toPositionAnalysisLine(fen: string, line: RawEngineLine) {
   const pvSan = pvUciToSan(fen, line.pvUci);
-  return { moveUci: line.moveUci, moveSan: pvSan[0] ?? line.moveUci, pvSan, cp: line.cp, mateIn: line.mateIn };
+  return {
+    moveUci: line.moveUci,
+    moveSan: pvSan[0] ?? line.moveUci,
+    pvSan,
+    cp: toWhitePerspective(fen, line.cp),
+    mateIn: toWhitePerspective(fen, line.mateIn)
+  };
 }
 
 async function analyzePositionForTunnel(fen: string, depth: number, multiPv: number) {
@@ -61,17 +81,22 @@ async function analyzePositionForTunnel(fen: string, depth: number, multiPv: num
   };
 }
 
-async function analyzeGameForTunnel(fens: string[], depth: number) {
+async function analyzeGameForTunnel(fens: string[], depth: number, multiPv: number) {
   const results = [];
   for (const [ply, fen] of fens.entries()) {
-    const lines = await getSharedEngineWorker().analyze({ fen, depth, multiPv: 1 });
+    const lines = await getSharedEngineWorker().analyze({ fen, depth, multiPv });
     results.push({
       ply,
       fen,
       depth,
       lines: lines.map((line) => {
         const [moveSan] = pvUciToSan(fen, [line.moveUci]);
-        return { moveUci: line.moveUci, moveSan: moveSan ?? line.moveUci, cp: line.cp, mateIn: line.mateIn };
+        return {
+          moveUci: line.moveUci,
+          moveSan: moveSan ?? line.moveUci,
+          cp: toWhitePerspective(fen, line.cp),
+          mateIn: toWhitePerspective(fen, line.mateIn)
+        };
       })
     });
   }
@@ -84,7 +109,7 @@ async function handleTunnelRequest(socket: WebSocket, raw: string): Promise<void
     const result =
       message.kind === 'analyze-position'
         ? await analyzePositionForTunnel(message.fen ?? '', message.depth ?? DEFAULT_DEPTH, message.multiPv ?? DEFAULT_MULTI_PV)
-        : await analyzeGameForTunnel(message.fens ?? [], message.depth ?? DEFAULT_DEPTH);
+        : await analyzeGameForTunnel(message.fens ?? [], message.depth ?? DEFAULT_DEPTH, message.multiPv ?? DEFAULT_MULTI_PV);
     send(socket, { requestId: message.requestId, ok: true, result });
   } catch (error) {
     send(socket, { requestId: message.requestId, ok: false, error: error instanceof Error ? error.message : String(error) });
