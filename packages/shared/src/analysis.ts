@@ -21,7 +21,14 @@ export const EngineEvalSchema = z.object({
   ply: z.number().int().nonnegative(),
   fen: z.string(),
   depth: z.number().int().positive(),
-  lines: z.array(EngineLineSchema).min(1)
+  // Deliberately NOT .min(1): a terminal position (checkmate or stalemate) has
+  // no legal moves, so the engine returns zero lines for it — every game that
+  // ends in mate has exactly this shape at its final ply. The native backend
+  // returns its evals unvalidated and has always stored `lines: []` there
+  // happily, so requiring a line only ever broke the browser backend, which is
+  // the one path that parses through this schema
+  // (services/engine/browser-tunnel-engine-backend.ts).
+  lines: z.array(EngineLineSchema)
 });
 export type EngineEval = z.infer<typeof EngineEvalSchema>;
 

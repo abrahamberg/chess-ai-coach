@@ -61,6 +61,12 @@ describe('EngineEvalSchema', () => {
     };
     expect(EngineEvalSchema.safeParse(mate).success).toBe(true);
   });
+  // Regression: browser-mode analysis of any game ending in mate used to fail
+  // here, since the tunnel backend is the only path that parses this schema.
+  test('accepts zero lines for a terminal position (checkmate/stalemate has no legal moves)', () => {
+    const terminal = { ...validEngineEval, lines: [] };
+    expect(EngineEvalSchema.safeParse(terminal).success).toBe(true);
+  });
   test('rejects a line missing moveSan', () => {
     const bad = { ...validEngineEval, lines: [{ moveUci: 'e2e4', cp: 10, mateIn: null }] };
     expect(EngineEvalSchema.safeParse(bad).success).toBe(false);
