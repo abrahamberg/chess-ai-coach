@@ -71,7 +71,7 @@ describe('runDeepenAnalysisJob', () => {
       inFlight -= 1;
       return makePositionAnalysis(fen);
     });
-    const deps: DeepenAnalysisJobDependencies = { analyzePosition };
+    const deps: DeepenAnalysisJobDependencies = { analyzePosition, isExternalSource: false };
 
     await runDeepenAnalysisJob(db, deps, gameId);
 
@@ -120,10 +120,86 @@ describe('runDeepenAnalysisJob', () => {
       { isExternalEval: false }
     );
 
-    await runDeepenAnalysisJob(db, { analyzePosition }, game.id);
+    await runDeepenAnalysisJob(db, { analyzePosition, isExternalSource: false }, game.id);
 
     expect(analyzePosition).not.toHaveBeenCalledWith(startFen);
     // 4 plies played + the (already-cached) start position = 5 total positions.
     expect(analyzePosition).toHaveBeenCalledTimes(4);
+  });
+
+  // Regression: this job used to hardcode isExternalEval:false/allowExternal:false
+  // no matter which backend actually computed the values, so a browser-tunnel
+  // deepen pass silently mislabeled its own untrusted results as native-quality
+  // in the shared (fen-keyed, cross-user) cache. Uses an opening no other test
+  // in this file plays, so nothing here rides on cache state left by them.
+  test('a browser-sourced deepen pass writes rows marked external, not native-trust', async () => {
+    const PGN = `[Event "Test"]
+[White "Ann"]
+[Black "Bob"]
+[Result "*"]
+
+1. b3 e5 2. Bb2 Nc6 3. e3 Nf6 *`;
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '*',
+      timeControl: null,
+      eco: null,
+      playedAt: null
+    });
+    const analyzePosition = vi.fn(async (fen: string) => makePositionAnalysis(fen));
+
+    await runDeepenAnalysisJob(db, { analyzePosition, isExternalSource: true }, game.id);
+
+    const fens = analyzePosition.mock.calls.map(([fen]) => fen);
+    expect(fens.length).toBeGreaterThan(0);
+    const nativeOnly = await positionEvaluationsRepo.findManyByFens(db, fens, { allowExternal: false });
+    expect(nativeOnly.size).toBe(0);
+    const anyTrust = await positionEvaluationsRepo.findManyByFens(db, fens, { allowExternal: true });
+    expect(anyTrust.size).toBe(fens.length);
+  });
+
+  test('a browser-sourced deepen pass never overwrites an existing native-trust row', async () => {
+    const PGN = `[Event "Test"]
+[White "Ann"]
+[Black "Bob"]
+[Result "*"]
+
+1. Nf3 Nf6 2. c4 e6 3. g3 *`;
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
+    const game = await gamesRepo.insert(db, {
+      userId: user.id,
+      pgn: PGN,
+      source: 'paste',
+      userColor: 'white',
+      whiteName: 'Ann',
+      blackName: 'Bob',
+      result: '*',
+      timeControl: null,
+      eco: null,
+      playedAt: null
+    });
+
+    const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    await positionEvaluationsRepo.upsertMany(
+      db,
+      [{ fen: startFen, depth: 16, multiPv: 3, analysis: makePositionAnalysis(startFen) }],
+      { isExternalEval: false }
+    );
+
+    const analyzePosition = vi.fn(async (fen: string) => makePositionAnalysis(fen));
+    await runDeepenAnalysisJob(db, { analyzePosition, isExternalSource: true }, game.id);
+
+    // Read trust for a browser-sourced pass allows external rows, so the
+    // already-cached (native-trust) start position should be skipped, not
+    // recomputed and re-written as external.
+    expect(analyzePosition).not.toHaveBeenCalledWith(startFen);
+    const stillNative = await positionEvaluationsRepo.findManyByFens(db, [startFen], { allowExternal: false });
+    expect(stillNative.size).toBe(1);
   });
 });

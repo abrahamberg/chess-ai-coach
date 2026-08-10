@@ -8,6 +8,11 @@ import type { Database } from '../db/schema.js';
 export interface DeepenAnalysisJobDependencies {
   /** Wraps `POST engine/analyze-position` (architecture §4). */
   analyzePosition: (fen: string) => Promise<PositionAnalysis>;
+  /** Whether `analyzePosition` is backed by the browser-tunnel engine
+   * (`true`) or the native engine (`false`) — mirrors
+   * `CachingEngineBackendOptions.isExternalSource`, since this job's own
+   * cache read/write must apply the same trust as the backend it wraps. */
+  isExternalSource: boolean;
 }
 
 /** How many newly-computed positions accumulate before a batch DB write —
@@ -41,10 +46,10 @@ export async function runDeepenAnalysisJob(
   if (!game) throw new Error(`Game ${gameId} not found`);
 
   const fens = parsePgn(game.pgn).positions.map((position) => position.fen);
-  // This job is always server-side (native engine HTTP call) — the
-  // browser-tunnel path isn't wired through here yet (later task), so both
-  // the read and the write below are always native-trust.
-  const cached = await positionEvaluationsRepo.findManyByFens(db, fens, { allowExternal: false });
+  // Read/write trust follows deps.isExternalSource, mirroring whichever
+  // backend actually computed analyzePosition's results (native or
+  // browser-tunnel) — see the field's doc comment.
+  const cached = await positionEvaluationsRepo.findManyByFens(db, fens, { allowExternal: deps.isExternalSource });
   const uncachedFens = fens.filter((fen) => !cached.has(fen));
 
   console.log(
@@ -60,7 +65,7 @@ export async function runDeepenAnalysisJob(
         return { fen, depth: analysis.depth, multiPv: analysis.multiPv, analysis };
       })
     );
-    await positionEvaluationsRepo.upsertMany(db, entries, { isExternalEval: false });
+    await positionEvaluationsRepo.upsertMany(db, entries, { isExternalEval: deps.isExternalSource });
     computed += entries.length;
     console.log(`deepen-analysis: game ${gameId} — ${computed}/${uncachedFens.length} positions cached`);
   }
