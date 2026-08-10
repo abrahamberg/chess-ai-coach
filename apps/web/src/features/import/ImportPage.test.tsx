@@ -75,6 +75,35 @@ describe('ImportPage', () => {
     expect(await screen.findByRole('button', { name: /white/i })).toBeInTheDocument();
   });
 
+  // Regression: a 429 used to render nothing at all, so the Import button just
+  // looked dead — no message, no state change, no way to tell what happened.
+  test('a rate-limited import surfaces the problem+json title instead of failing silently', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ type: 'about:blank', title: 'Import limit reached (10 games/day)', status: 429 }),
+        { status: 429, headers: { 'content-type': 'application/problem+json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    renderImportPage();
+    await submitPgn(user);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Import limit reached (10 games/day)');
+  });
+
+  test('an import failure with no problem+json title still surfaces a generic message', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    renderImportPage();
+    await submitPgn(user);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn’t be imported/i);
+  });
+
   test('once the analysis status SSE reports ready, a session is created and the app navigates to it', async () => {
     const fetchMock = vi.fn().mockImplementation((path: string) => {
       if (path === '/api/games') {

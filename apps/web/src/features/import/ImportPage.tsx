@@ -14,6 +14,7 @@ import { apiGet, apiPost, ApiError } from '../../api/client.js';
 import { useAnalysisStatus } from '../../hooks/useAnalysisStatus.js';
 import { AnalysisProgress } from './AnalysisProgress.js';
 import { ColorConfirm } from './ColorConfirm.js';
+import { ImportErrorNotice } from './ImportErrorNotice.js';
 import { LichessGamePicker } from './LichessGamePicker.js';
 import { PgnPasteForm } from './PgnPasteForm.js';
 import { PgnUploadForm } from './PgnUploadForm.js';
@@ -76,6 +77,13 @@ export function ImportPage(): ReactNode {
     importMutation.error.status === 422 &&
     (importMutation.error.body as { missing?: string } | undefined)?.missing === 'userColor';
 
+  // Every import failure that ISN'T the 422 "which colour were you?" prompt
+  // (ColorConfirm handles that one below). Without this the mutation's error
+  // state rendered nothing at all, so a rate-limited import — 429 "Import limit
+  // reached (10 games/day)" — looked exactly like a dead button: press it, and
+  // the page just sits there.
+  const importError = missingColor ? null : importMutation.error;
+
   function importPgn(pgn: string, source: ImportGameRequest['source'] = 'paste', userColor?: PlayerColor): void {
     const body = ImportGameRequestSchema.parse({ pgn, source, userColor });
     setPendingPgn(pgn);
@@ -104,6 +112,7 @@ export function ImportPage(): ReactNode {
         <ColorConfirm onConfirm={(color) => importPgn(pendingPgn, 'paste', color)} />
       ) : (
         <>
+          {importError && <ImportErrorNotice error={importError} />}
           <div role="tablist">
             <button type="button" aria-pressed={tab === 'paste'} onClick={() => setTab('paste')}>
               Paste

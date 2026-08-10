@@ -1,0 +1,55 @@
+/* A card, not a line of red text: the old bare <p> was easy to miss directly
+ * above a form the reader was already looking at. Sits on --surface so it
+ * separates from the page, with a weighted left rule carrying the severity. */
+
+.import-error {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 14px 18px;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-left: 4px solid var(--import-error-rule);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.import-error--limit {
+  --import-error-rule: var(--warn);
+}
+
+.import-error--failure {
+  --import-error-rule: var(--quality-blunder);
+}
+
+.import-error__title {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.import-error__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* One short cue so the notice registers as *new* when it replaces an
+ * unchanged-looking form — the whole reason this bug was confusing. */
+@media (prefers-reduced-motion: no-preference) {
+  .import-error {
+    animation: import-error-in 180ms ease-out;
+  }
+}
+
+@keyframes import-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
