@@ -47,6 +47,30 @@ describe('AnalysisProgress (design.md §4.2)', () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
+  test('shows how far the engine step has got, as a percentage of the game', () => {
+    render(
+      <AnalysisProgress status="engine_running" finalFen={FINAL_FEN} analyzedPositions={6} totalPositions={24} />
+    );
+
+    expect(screen.getByTestId('analysis-progress-percent')).toHaveTextContent('25%');
+  });
+
+  test('shows no percentage before the engine step, where there is nothing to count', () => {
+    render(<AnalysisProgress status="queued" finalFen={FINAL_FEN} analyzedPositions={0} totalPositions={24} />);
+
+    expect(screen.queryByTestId('analysis-progress-percent')).not.toBeInTheDocument();
+  });
+
+  // An unparseable PGN yields a total of 0; deriving a percentage from that
+  // would divide by zero and render NaN%.
+  test('shows no percentage when the total position count is unknown', () => {
+    render(
+      <AnalysisProgress status="engine_running" finalFen={FINAL_FEN} analyzedPositions={3} totalPositions={0} />
+    );
+
+    expect(screen.queryByTestId('analysis-progress-percent')).not.toBeInTheDocument();
+  });
+
   test('rotates through short tips while waiting', () => {
     render(<AnalysisProgress status="queued" finalFen={FINAL_FEN} />);
     const first = screen.getByTestId('analysis-progress-tip').textContent;

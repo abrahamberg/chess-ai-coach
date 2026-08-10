@@ -118,6 +118,45 @@ describe('runAnalyzeGameJob', () => {
     expect(callPlanner).toHaveBeenCalledTimes(1);
   });
 
+  // The percentage on the import screen is derived from how many evals are
+  // stored, so partial results have to land while the engine step is still
+  // running rather than all at once when it finishes.
+  test('analyzes in chunks, persisting evals as it goes so progress is observable mid-run', async () => {
+    const { gameId, analysisId } = await setupGame();
+    const callPlanner = vi.fn().mockResolvedValue(VALID_PLAN);
+
+    const storedBeforeEachCall: number[] = [];
+    const chunkSizes: number[] = [];
+    const analyzeGamePositions = vi.fn(async (fens: string[]) => {
+      const row = await db
+        .selectFrom('analyses')
+        .select('engineEvals')
+        .where('id', '=', analysisId)
+        .executeTakeFirstOrThrow();
+      storedBeforeEachCall.push(((row.engineEvals as EngineEval[] | null) ?? []).length);
+      chunkSizes.push(fens.length);
+      return Promise.all(fens.map((fen) => makeEval(fen)));
+    });
+
+    await runAnalyzeGameJob(db, { analyzeGamePositions, callPlanner }, gameId);
+
+    // This PGN is 8 positions against a chunk size of 6.
+    expect(chunkSizes.length).toBeGreaterThan(1);
+    expect(Math.max(...chunkSizes)).toBeLessThanOrEqual(6);
+    // The second call saw the first chunk's evals already committed.
+    expect(storedBeforeEachCall[0]).toBe(0);
+    expect(storedBeforeEachCall[1]).toBe(chunkSizes[0]);
+
+    const row = await db
+      .selectFrom('analyses')
+      .select(['status', 'engineEvals'])
+      .where('id', '=', analysisId)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('ready');
+    // Every position still gets analyzed exactly once.
+    expect((row.engineEvals as EngineEval[]).length).toBe(chunkSizes.reduce((a, b) => a + b, 0));
+  });
+
   test('engine failure -> failed with an error message, planner never called', async () => {
     const { gameId, analysisId } = await setupGame();
     const callPlanner = vi.fn();

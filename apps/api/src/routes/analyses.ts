@@ -36,14 +36,23 @@ function streamStatusUntilTerminal(
 ): Promise<void> {
   return new Promise((resolve) => {
     let lastStatus: string | null = null;
+    let lastAnalyzedPositions = -1;
 
     const tick = async () => {
-      const analysis = await analysesRepo.findById(db, analysisId);
+      const analysis = await analysesRepo.findProgress(db, analysisId);
       const status = analysis?.status ?? null;
+      // services/analysis.ts persists engine evals a chunk at a time, so their
+      // stored count is how far the engine step has actually got. The client
+      // already knows the game's ply count (it holds the PGN) and turns the
+      // two into a percentage — no schema change needed to carry progress.
+      const analyzedPositions = analysis?.progress ?? 0;
 
-      if (status !== lastStatus && status !== null) {
+      // Emitted on progress as well as status: `engine_running` covers the
+      // whole engine pass, so without this the longest step reports nothing.
+      if (status !== null && (status !== lastStatus || analyzedPositions !== lastAnalyzedPositions)) {
         lastStatus = status;
-        raw.write(`data: ${JSON.stringify({ status })}\n\n`);
+        lastAnalyzedPositions = analyzedPositions;
+        raw.write(`data: ${JSON.stringify({ status, analyzedPositions })}\n\n`);
       }
 
       if (status === null || TERMINAL_STATUSES.has(status)) {

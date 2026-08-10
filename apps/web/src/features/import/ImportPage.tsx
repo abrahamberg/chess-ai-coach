@@ -31,6 +31,17 @@ function finalFenOf(pgn: string): string {
   }
 }
 
+/** The denominator for the engine step's percentage. The API reports how many
+ * positions it has analyzed, not how many there are, because the client
+ * already holds the PGN — so the total is derived here rather than shipped. */
+function positionCountOf(pgn: string): number {
+  try {
+    return parsePgn(pgn).positions.length;
+  } catch {
+    return 0;
+  }
+}
+
 const SessionSummarySchema = z.object({ id: z.string() });
 type ImportTab = 'paste' | 'upload' | 'lichess';
 
@@ -57,7 +68,7 @@ export function ImportPage(): ReactNode {
     onSuccess: (session) => navigate(`/session/${session.id}`)
   });
 
-  const { status } = useAnalysisStatus(analysisId);
+  const { status, analyzedPositions } = useAnalysisStatus(analysisId);
 
   const lichessQuery = useQuery({
     queryKey: ['lichess-recent-games'],
@@ -100,7 +111,13 @@ export function ImportPage(): ReactNode {
     return (
       <div className="page import-page">
         <h1>Import a game</h1>
-        <AnalysisProgress status={status} finalFen={finalFenOf(pendingPgn ?? '')} onRetry={retry} />
+        <AnalysisProgress
+          status={status}
+          finalFen={finalFenOf(pendingPgn ?? '')}
+          onRetry={retry}
+          analyzedPositions={analyzedPositions}
+          totalPositions={positionCountOf(pendingPgn ?? '')}
+        />
       </div>
     );
   }

@@ -7,6 +7,11 @@ import * as gamesRepo from '../db/repositories/games.js';
 import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 
+/** Positions per engine call. Small enough that the progress percentage moves
+ * often, large enough not to pay per-request overhead on every ply — and it
+ * keeps each browser-mode tunnel request comfortably inside its timeout. */
+const ENGINE_CHUNK_POSITIONS = 6;
+
 export interface PlannerMessages {
   system: string;
   user: string;
@@ -48,8 +53,7 @@ export async function runAnalyzeGameJob(
 
     const parsedGame = parsePgn(game.pgn);
     const fens = parsedGame.positions.map((position) => position.fen);
-    const evals = await deps.analyzeGamePositions(fens);
-    await analysesRepo.storeEngineEvals(db, analysis.id, evals);
+    const evals = await analyzeInChunks(db, deps, analysis.id, fens);
 
     const classifiedMoves = classifyMoves(parsedGame, evals, game.userColor);
     await analysesRepo.storeClassifiedMoves(db, analysis.id, classifiedMoves);
@@ -72,6 +76,39 @@ export async function runAnalyzeGameJob(
   } catch (error) {
     await analysesRepo.markFailed(db, analysis.id, describeError(error));
   }
+}
+
+/**
+ * Analyzes the game a chunk at a time, persisting what's done after each one.
+ *
+ * The evals are identical either way — this exists so the wait is legible.
+ * `engine_running` is by far the longest step (tens of seconds; longer still
+ * in browser mode, where a real game measured ~42s), and analyzing in one
+ * call meant nothing observable happened until all of it finished. Writing
+ * each chunk lets GET /api/analyses/:id/status report how many positions are
+ * done, which is what drives the percentage on the progress screen.
+ *
+ * Deliberately at this layer rather than in either EngineBackend, so native
+ * and browser mode report progress the same way.
+ */
+async function analyzeInChunks(
+  db: Kysely<Database>,
+  deps: AnalysisJobDependencies,
+  analysisId: string,
+  fens: string[]
+): Promise<EngineEval[]> {
+  const evals: EngineEval[] = [];
+
+  for (let start = 0; start < fens.length; start += ENGINE_CHUNK_POSITIONS) {
+    const chunk = fens.slice(start, start + ENGINE_CHUNK_POSITIONS);
+    evals.push(...(await deps.analyzeGamePositions(chunk)));
+    await analysesRepo.storeEngineEvals(db, analysisId, evals);
+  }
+
+  // An empty game would otherwise never write the (empty) evals at all.
+  if (fens.length === 0) await analysesRepo.storeEngineEvals(db, analysisId, evals);
+
+  return evals;
 }
 
 async function generatePlan(deps: AnalysisJobDependencies, input: PlannerPromptInput): Promise<CoachingPlan> {

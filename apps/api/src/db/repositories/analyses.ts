@@ -1,5 +1,5 @@
 import type { ClassifiedMove } from '@chess-coach/chess-analysis';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import type { AnalysisStatus, CoachingPlan, EngineEval } from '@chess-coach/shared';
 import type { Database } from '../schema.js';
 
@@ -35,6 +35,30 @@ export function findByGameId(
 
 export function findById(db: Kysely<Database>, id: string): Promise<AnalysisRow | undefined> {
   return db.selectFrom('analyses').select(BASE_COLUMNS).where('id', '=', id).executeTakeFirst();
+}
+
+export interface AnalysisProgressRow {
+  status: AnalysisStatus;
+  /** Engine evals persisted so far. services/analysis.ts stores them a chunk
+   * at a time, so this climbs through the `engine_running` step. */
+  progress: number;
+}
+
+/** For the status SSE, which re-reads this row every second while a game
+ * analyzes: counts the stored evals in Postgres instead of shipping the whole
+ * `engine_evals` document back on each poll just to measure its length.
+ * Raw SQL because `engine_evals` isn't on AnalysisRow, and the column is
+ * spelled snake_case here since CamelCasePlugin doesn't rewrite sql``. */
+export async function findProgress(
+  db: Kysely<Database>,
+  id: string
+): Promise<AnalysisProgressRow | undefined> {
+  const result = await sql<AnalysisProgressRow>`
+    select status, coalesce(jsonb_array_length(engine_evals), 0)::int as progress
+    from analyses
+    where id = ${id}
+  `.execute(db);
+  return result.rows[0];
 }
 
 /** Scoped by game ownership — for the status route, which runs in a request context. */
