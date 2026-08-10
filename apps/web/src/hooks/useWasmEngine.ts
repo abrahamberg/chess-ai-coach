@@ -54,16 +54,24 @@ export function useWasmEngine(options: UseWasmEngineOptions = {}): UseWasmEngine
   const analyze = useCallback((fen: string) => {
     setStatus('analyzing');
     const sideToMove = fen.split(' ')[1] === 'b' ? 'b' : 'w';
-    void engineRef.current.analyze({ fen, depth: EXPLORE_DEPTH, multiPv: 1 }).then((lines) => {
-      const best = lines[0];
-      if (!best) {
+    void engineRef.current
+      .analyze({ fen, depth: EXPLORE_DEPTH, multiPv: 1 })
+      .then((lines) => {
+        const best = lines[0];
+        if (!best) {
+          setStatus('ready');
+          return;
+        }
+        setEvaluation(
+          best.mateIn !== null ? mateToWords(best.mateIn, sideToMove) : cpToWords(best.cp ?? 0, sideToMove)
+        );
+        setBestMoveArrow(parseUciSquares(best.moveUci));
         setStatus('ready');
-        return;
-      }
-      setEvaluation(best.mateIn !== null ? mateToWords(best.mateIn, sideToMove) : cpToWords(best.cp ?? 0, sideToMove));
-      setBestMoveArrow(parseUciSquares(best.moveUci));
-      setStatus('ready');
-    });
+      })
+      // analyze() rejects when the engine can't be created at all. Without
+      // this the panel sits on 'analyzing' forever and the rejection surfaces
+      // as an unhandled promise error.
+      .catch(() => setStatus('idle'));
   }, []);
 
   return { status, evaluation, bestMoveArrow, analyze };

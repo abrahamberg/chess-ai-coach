@@ -94,4 +94,39 @@ describe('SharedEngineWorker', () => {
 
     expect(createWorker).toHaveBeenCalledOnce();
   });
+
+  test('reports install status across the handshake', () => {
+    const worker = fakeWorker();
+    const client = new SharedEngineWorker({ createWorker: () => worker });
+    const seen: string[] = [];
+    client.subscribe((status) => seen.push(status));
+
+    expect(seen).toEqual(['absent']);
+
+    client.preload();
+    expect(client.status).toBe('installing');
+
+    worker.emit('uciok');
+    worker.emit('readyok');
+
+    expect(client.status).toBe('ready');
+    expect(seen).toEqual(['absent', 'installing', 'ready']);
+  });
+
+  // preload() runs from a React effect, so a throw here would surface during
+  // commit and take the page down over an engine that merely isn't available.
+  test('an engine that cannot be created fails softly rather than throwing', async () => {
+    const client = new SharedEngineWorker({
+      createWorker: () => {
+        throw new ReferenceError('Worker is not defined');
+      }
+    });
+
+    expect(() => client.preload()).not.toThrow();
+    expect(client.status).toBe('absent');
+
+    await expect(client.analyze({ fen: START_FEN, depth: 10, multiPv: 1 })).rejects.toThrow(
+      /Worker is not defined/
+    );
+  });
 });

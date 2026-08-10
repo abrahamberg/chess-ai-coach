@@ -1,0 +1,41 @@
+.engine-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.engine-status--ready {
+  color: var(--accent);
+}
+
+.engine-status__spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--surface-2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .engine-status__spinner {
+    animation: engine-status-spin 700ms linear infinite;
+  }
+}
+
+/* Without motion the ring alone reads as a stray dot, so give the static
+   case a solid marker instead of a half-drawn circle. */
+@media (prefers-reduced-motion: reduce) {
+  .engine-status__spinner {
+    border-color: var(--accent);
+  }
+}
+
+@keyframes engine-status-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}

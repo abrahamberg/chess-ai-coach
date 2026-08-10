@@ -22,6 +22,16 @@ export interface SharedEngineWorkerOptions {
   createWorker?: () => EngineWorkerLike;
 }
 
+/**
+ * Whether the WASM engine is usable yet.
+ *
+ * `installing` is not instant and not cosmetic: the full-net build is a ~108MB
+ * download on first use, and until it lands browser-mode analysis cannot start
+ * at all. Without something to render for this state the app looks idle while
+ * it is in fact working.
+ */
+export type EngineInstallStatus = 'absent' | 'installing' | 'ready';
+
 function defaultCreateWorker(): EngineWorkerLike {
   // The full-net build, NOT `-lite-single`. The lite net is ~7MB against this
   // one's ~108MB, and that gap changes the engine's actual conclusions rather
@@ -58,6 +68,7 @@ function parseInfoLine(line: string): RawEngineLine | null {
 interface QueuedAnalysis {
   request: AnalyzeRequest;
   resolve: (lines: RawEngineLine[]) => void;
+  reject: (error: Error) => void;
 }
 
 /** Owns the single WASM Stockfish Worker — shared between the Explore panel
@@ -78,14 +89,48 @@ export class SharedEngineWorker {
   private isReady = false;
   private active = false;
   private readonly pending: QueuedAnalysis[] = [];
+  private engineInstallStatus: EngineInstallStatus = 'absent';
+  private readonly listeners = new Set<(status: EngineInstallStatus) => void>();
 
   constructor(options: SharedEngineWorkerOptions = {}) {
     this.createWorker = options.createWorker ?? defaultCreateWorker;
   }
 
+  get status(): EngineInstallStatus {
+    return this.engineInstallStatus;
+  }
+
+  /** Notifies on every status change and immediately with the current value,
+   * so a component mounting mid-download still renders the right thing.
+   * Returns an unsubscribe. */
+  subscribe(listener: (status: EngineInstallStatus) => void): () => void {
+    this.listeners.add(listener);
+    listener(this.engineInstallStatus);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** Starts the engine without queueing work, so the UI can report on (and
+   * begin) the download before the first analysis actually needs it. */
+  preload(): void {
+    this.ensureWorker();
+  }
+
+  /** Settles anything queued when the engine turns out to be unusable —
+   * otherwise those callers await a search that can never start. */
+  private rejectPending(error: unknown): void {
+    const reason = error instanceof Error ? error : new Error(String(error));
+    while (this.pending.length > 0) this.pending.shift()?.reject(reason);
+  }
+
+  private setStatus(status: EngineInstallStatus): void {
+    if (this.engineInstallStatus === status) return;
+    this.engineInstallStatus = status;
+    for (const listener of this.listeners) listener(status);
+  }
+
   analyze(request: AnalyzeRequest): Promise<RawEngineLine[]> {
-    return new Promise((resolve) => {
-      this.pending.push({ request, resolve });
+    return new Promise((resolve, reject) => {
+      this.pending.push({ request, resolve, reject });
       this.ensureWorker();
       this.pump();
     });
@@ -93,7 +138,23 @@ export class SharedEngineWorker {
 
   private ensureWorker(): void {
     if (this.worker) return;
-    const worker = this.createWorker();
+    this.setStatus('installing');
+
+    let worker: EngineWorkerLike;
+    try {
+      worker = this.createWorker();
+    } catch (error) {
+      // Constructing the Worker can fail outright: no Worker global (tests,
+      // SSR), or a blocked/failed engine fetch. This runs from preload(),
+      // which useEngineStatus calls in an effect, so throwing here would
+      // surface inside React's commit phase and take the page down over an
+      // engine that merely isn't available. Report it as absent instead and
+      // let the next attempt retry.
+      this.setStatus('absent');
+      this.rejectPending(error);
+      return;
+    }
+
     this.worker = worker;
     worker.onmessage = (event) => {
       if (event.data === 'uciok') {
@@ -102,6 +163,7 @@ export class SharedEngineWorker {
       }
       if (event.data === 'readyok') {
         this.isReady = true;
+        this.setStatus('ready');
         this.pump();
       }
     };
