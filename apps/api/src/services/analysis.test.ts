@@ -157,6 +157,37 @@ describe('runAnalyzeGameJob', () => {
     expect((row.engineEvals as EngineEval[]).length).toBe(chunkSizes.reduce((a, b) => a + b, 0));
   });
 
+  // Regression: the real EngineBackend numbers each EngineEval's `ply`
+  // relative to the chunk it was asked to analyze (0..chunkLength-1), since
+  // that's all it's given — `analyzeInChunks` is what's responsible for
+  // turning per-chunk-relative plies into the game's real, globally
+  // sequential ply. It used to just concatenate the chunks verbatim, so
+  // `engine_evals[i].ply` cycled 0..5,0..5,... instead of counting up.
+  test('renumbers each chunk\'s ply to the position\'s real index in the game', async () => {
+    const { gameId, analysisId } = await setupGame();
+    const callPlanner = vi.fn().mockResolvedValue(VALID_PLAN);
+    const analyzeGamePositions = vi.fn(async (fens: string[]) =>
+      fens.map((fen, chunkRelativePly): EngineEval => ({
+        ply: chunkRelativePly,
+        fen,
+        depth: 10,
+        lines: [{ moveUci: 'e2e4', moveSan: 'e4', cp: 20, mateIn: null }]
+      }))
+    );
+
+    await runAnalyzeGameJob(db, { analyzeGamePositions, callPlanner }, gameId);
+
+    const row = await db
+      .selectFrom('analyses')
+      .select('engineEvals')
+      .where('id', '=', analysisId)
+      .executeTakeFirstOrThrow();
+    const evals = row.engineEvals as EngineEval[];
+    // This PGN is 8 positions against a chunk size of 6, so a naive
+    // concatenation would show 0,1,2,3,4,5,0,1 instead of 0..7.
+    expect(evals.map((e) => e.ply)).toEqual(evals.map((_, i) => i));
+  });
+
   test('engine failure -> failed with an error message, planner never called', async () => {
     const { gameId, analysisId } = await setupGame();
     const callPlanner = vi.fn();

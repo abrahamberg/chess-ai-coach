@@ -101,7 +101,11 @@ async function analyzeInChunks(
 
   for (let start = 0; start < fens.length; start += ENGINE_CHUNK_POSITIONS) {
     const chunk = fens.slice(start, start + ENGINE_CHUNK_POSITIONS);
-    evals.push(...(await deps.analyzeGamePositions(chunk)));
+    const chunkEvals = await deps.analyzeGamePositions(chunk);
+    // Each EngineEval's `ply` is chunk-relative (0..chunk.length-1) — the
+    // backend only ever sees this one chunk — so it has to be shifted by
+    // `start` to become the position's real index in the game.
+    evals.push(...chunkEvals.map((evalResult, i) => ({ ...evalResult, ply: start + i })));
     await analysesRepo.storeEngineEvals(db, analysisId, evals);
   }
 
