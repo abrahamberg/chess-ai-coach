@@ -166,6 +166,39 @@ describe('sessions routes', () => {
     return buildResolveEngineBackendOptions(db, 'http://engine:4001', { request: vi.fn() });
   }
 
+  /** Minimal well-formed engine response for the stubbed native engine HTTP call
+   * — enough for play-move quality classification to run. */
+  function enginePositionFixture(fen: string): PositionAnalysis {
+    return {
+      fen,
+      depth: 12,
+      multiPv: 1,
+      bestMove: 'e4',
+      eval: { cp: 20, mateIn: null },
+      lines: [{ moveUci: 'e2e4', moveSan: 'e4', pvSan: ['e4'], cp: 20, mateIn: null }],
+      features: {
+        turn: 'white',
+        boardState: 'none',
+        availableMoves: [],
+        mobility: { white: 20, black: 20 },
+        controlledSquares: [],
+        piecesUnderAttack: [],
+        hangingPieces: [],
+        underDefendedPieces: [],
+        overloadedDefenders: [],
+        centerControlScore: { white: 2, black: 2 },
+        openFiles: [],
+        semiOpenFiles: [],
+        doubledPawns: [],
+        isolatedPawns: [],
+        passedPawns: [],
+        targetsAttacked: [],
+        forks: [],
+        captureOpportunities: []
+      }
+    };
+  }
+
   test('POST /api/sessions 409s when the analysis is not ready', async () => {
     const user = await usersRepo.insert(db, { email: 'notready@example.com', displayName: 'NR' });
     const game = await gamesRepo.insert(db, {
@@ -750,6 +783,27 @@ describe('sessions routes', () => {
   });
 
   describe('play mode routes (architecture §14)', () => {
+    // play-move resolves the engine backend per request (routes/sessions.ts
+    // buildRequestScopedAgentDeps), so with the default 'native' engineMode it
+    // reaches for the real engine over HTTP. fakeEngineBackendOptions() only
+    // supplies the *tunnel* transport — the native side still needs the fetch
+    // itself stubbed, or every play-move here 500s on a connection error.
+    beforeEach(() => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation((url: string | URL) =>
+          Promise.resolve(
+            new Response(JSON.stringify({ analysis: enginePositionFixture(String(url)) }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' }
+            })
+          )
+        )
+      );
+    });
+
+    afterEach(() => vi.unstubAllGlobals());
+
     test('POST /api/sessions/play creates a coach_play game + play-mode session, with no analysis/credits gate', async () => {
       const user = await usersRepo.insert(db, { email: 'playstart@example.com', displayName: 'Ann' });
       const app = buildApp({ authMode: 'proxy', db, coachAgentBaseDeps: coachAgentBaseDeps(textStreamModel('x').model), engineBackendOptions: fakeEngineBackendOptions() });

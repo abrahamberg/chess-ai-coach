@@ -25,10 +25,18 @@ describe('resolveEngineBackend', () => {
     return { db, engineUrl: 'http://engine:4001', tunnelTransport, tunnelTimeoutMs: 8000 };
   }
 
+  // Each test analyzes its own unique FEN: position_evaluations is keyed by fen
+  // alone (shared across users), and resolveEngineBackend wraps every backend in
+  // CachingEngineBackend — so reusing one FEN here would let whichever test ran
+  // first serve the other from cache, and the raw backend under test would never
+  // be called at all.
+  const NATIVE_FEN = `native-${crypto.randomUUID()}`;
+  const BROWSER_FEN = `browser-${crypto.randomUUID()}`;
+
   test('engineMode "native" resolves to a backend that calls the engine HTTP API, not the tunnel', async () => {
     const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Ann' });
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ analysis: { fen: 'f', depth: 1, multiPv: 1, bestMove: null, eval: { cp: null, mateIn: null }, lines: [], features: {} } }), {
+      new Response(JSON.stringify({ analysis: { fen: NATIVE_FEN, depth: 1, multiPv: 1, bestMove: null, eval: { cp: null, mateIn: null }, lines: [], features: {} } }), {
         status: 200,
         headers: { 'content-type': 'application/json' }
       })
@@ -37,7 +45,7 @@ describe('resolveEngineBackend', () => {
     const tunnelTransport: EngineTunnelTransport = { request: vi.fn() };
 
     const backend = await resolveEngineBackend(options(tunnelTransport), user.id);
-    await backend.analyzePosition('f');
+    await backend.analyzePosition(NATIVE_FEN);
 
     expect(fetchMock).toHaveBeenCalled();
     expect(tunnelTransport.request).not.toHaveBeenCalled();
@@ -50,7 +58,7 @@ describe('resolveEngineBackend', () => {
     vi.stubGlobal('fetch', fetchMock);
     const tunnelTransport: EngineTunnelTransport = {
       request: vi.fn().mockResolvedValue({
-        fen: 'f',
+        fen: BROWSER_FEN,
         depth: 1,
         multiPv: 1,
         bestMove: null,
@@ -80,7 +88,7 @@ describe('resolveEngineBackend', () => {
     };
 
     const backend = await resolveEngineBackend(options(tunnelTransport), user.id);
-    await backend.analyzePosition('f');
+    await backend.analyzePosition(BROWSER_FEN);
 
     expect(tunnelTransport.request).toHaveBeenCalledWith(user.id, expect.objectContaining({ kind: 'analyze-position' }), 8000);
     expect(fetchMock).not.toHaveBeenCalled();
