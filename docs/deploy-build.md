@@ -19,6 +19,18 @@ every flag; the ones that matter are `--registry`, `--tag`, `--platform`
 `linux/amd64,linux/arm64`), `--push`, and `--restore-dev-deps` (re-runs a full
 `npm ci` at the end, which you want on a workstation and not on a CI runner).
 
+`--tag` is repeatable, and every value is passed as its own `-t` to a *single*
+`docker buildx build` per component:
+
+```bash
+npm run build:images -- --registry <registry> --tag latest --tag v0.3.8 --push
+# -> <registry>/chess-ai-coach:api-latest and :api-v0.3.8, one digest, one push
+```
+
+Build twice instead and you get two digests that can drift apart the moment one
+of the two runs fails. This is how the publishing workflow puts `latest` and a
+version tag on the same image.
+
 Without `--push` the images are `--load`ed into the local Docker daemon
 instead. One of the two always happens: **`docker buildx build` with neither
 `--push` nor `--load` discards its output**, leaving a build that looks
@@ -164,3 +176,44 @@ npm run build:images -- --registry <registry> --tag <tag> --push
 
 Do not re-implement the steps inline, and never use plain `docker build` — it
 cannot cross-build and cannot push.
+
+## Versioning: what `.github/workflows/build-images.yml` publishes
+
+Every run of the publishing workflow tags the three images twice — `latest` and
+`v<major>.<minor>.<patch>` — and pushes a matching git tag.
+
+**Git tags are the version of record.** Nothing in the working tree records the
+version, so publishing never writes a commit, and a version tag pointing at a
+commit is exactly the statement "this commit's images exist". `scripts/next-version.sh`
+reads that state and prints it as `key=value` lines for `$GITHUB_OUTPUT`:
+
+```
+current=v0.3.7      highest existing version tag ("" when there are none)
+next=v0.3.8         current with the patch level bumped
+published=v0.3.7    version tag pointing at HEAD, "" when there is none
+skip=true|false     true when published is set
+```
+
+The workflow's shape follows from those four values:
+
+- **`skip=true` → the run does nothing.** No `npm ci`, no artifact build, no
+  buildx, no bump, no tag push; the job logs the existing version and ends
+  green. Re-running the workflow on an unchanged commit is free and idempotent.
+- **Otherwise** the images are built once with `--tag latest --tag $next`, and
+  *only after that push succeeds* does the workflow run `git tag $next && git
+  push`. A failed build must not burn a version number, and the tag must not
+  claim images that were never published.
+- Only the patch level bumps automatically. A minor or major release is a human
+  `git tag v0.4.0 && git push origin v0.4.0`; the next run reads it as its base
+  and continues from `v0.4.1`.
+- The workflow's `tag` input is an escape hatch: give it a value and that single
+  tag is published with no version resolution, no skip check, and no git tag —
+  for one-off builds like `pr-42` that must not consume a version.
+
+Two details that are easy to get wrong and silent when wrong:
+
+- `actions/checkout` fetches **no tags** by default, which would make every run
+  look like the repo's first. The workflow sets `fetch-tags: true`.
+- Version tags must be sorted with `git tag --sort=-v:refname`, not
+  lexically — `v0.3.10` sorts *below* `v0.3.9` as a string, so the series would
+  quietly walk backwards the first time a patch level reached double digits.

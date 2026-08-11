@@ -13,7 +13,9 @@
 #
 #   --registry <host/org>   registry prefix for the image tags (e.g. ghcr.io/acme).
 #                           Must be set when pushing. Default: none (local tags).
-#   --tag <tag>             image tag. Default: the short git SHA, else "dev".
+#   --tag <tag>             image tag. Repeatable: every value becomes another tag
+#                           on the same build, so all of them share one digest.
+#                           Default: the short git SHA, else "dev".
 #   --platform <p>          target platform. Default: linux/arm64 (the cluster's
 #                           node architecture). Pass "" to build for the host.
 #   --push                  push to the registry instead of loading locally.
@@ -27,14 +29,14 @@
 #                           usually what you want on a workstation.
 #
 # Examples:
-#   scripts/build-images.sh --registry ghcr.io/acme --tag v1.2.3 --push
+#   scripts/build-images.sh --registry ghcr.io/acme --tag latest --tag v1.2.3 --push
 #   scripts/build-images.sh --platform "" --restore-dev-deps      # local smoke build
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 REGISTRY=""
-TAG=""
+TAGS=()
 PLATFORM="linux/arm64"
 PUSH=0
 SKIP_ARTIFACTS=0
@@ -43,11 +45,13 @@ RESTORE_DEV_DEPS=0
 
 log() { echo "[build-images] $*"; }
 die() { echo "[build-images] ERROR: $*" >&2; exit 1; }
+# The tag list rendered as "a,b", for the log lines.
+joined_tags() { local IFS=,; echo "${TAGS[*]}"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --registry) REGISTRY="${2:-}"; shift 2 ;;
-    --tag) TAG="${2:-}"; shift 2 ;;
+    --tag) TAGS+=("${2:-}"); shift 2 ;;
     --platform) PLATFORM="${2:-}"; shift 2 ;;
     --push) PUSH=1; shift ;;
     --skip-artifacts) SKIP_ARTIFACTS=1; shift ;;
@@ -58,8 +62,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$TAG" ]]; then
-  TAG="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+if [[ "${#TAGS[@]}" -eq 0 ]]; then
+  TAGS=("$(git rev-parse --short HEAD 2>/dev/null || echo dev)")
 fi
 [[ "$PUSH" -eq 1 && -z "$REGISTRY" ]] && die "--push needs --registry (nothing to push to)"
 
@@ -121,13 +125,18 @@ else
 fi
 
 for COMPONENT in api web engine; do
-  IMAGE="${PREFIX}chess-ai-coach:${COMPONENT}-${TAG}"
-  log "4/4 building $IMAGE${PLATFORM:+ ($PLATFORM)}"
+  # Every tag is passed to the same build, so they all name one digest — the
+  # only way "latest" and the version tag cannot drift apart.
+  TAG_ARGS=()
+  for TAG in "${TAGS[@]}"; do
+    TAG_ARGS+=(-t "${PREFIX}chess-ai-coach:${COMPONENT}-${TAG}")
+  done
+  log "4/4 building ${PREFIX}chess-ai-coach:${COMPONENT}-{$(joined_tags)}${PLATFORM:+ ($PLATFORM)}"
   docker buildx build "${BUILD_ARGS[@]}" \
     -f "docker/Dockerfile.${COMPONENT}" \
-    -t "$IMAGE" \
+    "${TAG_ARGS[@]}" \
     .
 done
 
-log "done: ${PREFIX}chess-ai-coach:{api,web,engine}-${TAG}"
+log "done: ${PREFIX}chess-ai-coach:{api,web,engine}-{$(joined_tags)}"
 restore_dev_deps

@@ -4,7 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Image tag to publish (defaults to latest for Argo CD)
+        description: >-
+          Publish exactly this one image tag and touch nothing else (no version
+          bump, no git tag). Leave empty for the normal flow: latest plus an
+          auto-bumped patch version.
         required: false
         type: string
 
@@ -15,36 +18,78 @@ permissions:
   contents: write
   packages: write
 
+# Two runs at once would resolve the same `next` version and race on the tag
+# push; the loser fails after having already pushed images.
+concurrency:
+  group: build-images
+  cancel-in-progress: false
+
 jobs:
   images:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Git tags are the version of record and checkout fetches none by
+          # default — without this every run would look like the first one.
+          fetch-tags: true
+
+      - name: Resolve version
+        id: version
+        if: inputs.tag == ''
+        run: scripts/next-version.sh >> "$GITHUB_OUTPUT"
+
+      - name: Note that this commit is already published
+        if: steps.version.outputs.skip == 'true'
+        run: |
+          echo "::notice::HEAD is already published as ${{ steps.version.outputs.published }}; skipping the build."
 
       - name: Log in to GitHub Container Registry
+        if: steps.version.outputs.skip != 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/setup-qemu-action@v3
+      - if: steps.version.outputs.skip != 'true'
+        uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
-      - uses: docker/setup-buildx-action@v3
+      - if: steps.version.outputs.skip != 'true'
+        uses: docker/setup-buildx-action@v3
 
-      - uses: actions/setup-node@v4
+      - if: steps.version.outputs.skip != 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
 
       - name: Build and publish api, web, and engine images
+        if: steps.version.outputs.skip != 'true'
+        env:
+          # Via env, not ${{ }} interpolation: the input is user-supplied text.
+          INPUT_TAG: ${{ inputs.tag }}
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
         run: |
-          image_tag='${{ inputs.tag }}'
-          if [ -z "$image_tag" ]; then image_tag="latest"; fi
+          if [ -n "$INPUT_TAG" ]; then
+            tags=(--tag "$INPUT_TAG")
+          else
+            tags=(--tag latest --tag "$NEXT_VERSION")
+          fi
           scripts/build-images.sh \
             --registry "$REGISTRY" \
-            --tag "$image_tag" \
+            "${tags[@]}" \
             --platform linux/amd64,linux/arm64 \
             --push
+
+      # After the push: a build that fails must not burn a version number, and
+      # the tag is what tells the next run this commit is done.
+      - name: Tag the published commit
+        if: inputs.tag == '' && steps.version.outputs.skip != 'true'
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
+        run: |
+          git tag "$NEXT_VERSION"
+          git push origin "$NEXT_VERSION"
