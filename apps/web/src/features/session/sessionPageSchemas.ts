@@ -14,6 +14,10 @@ export const SessionDetailSchema = z.object({
   gameId: z.string(),
   status: z.enum(['active', 'completed', 'paused_no_credits', 'abandoned']),
   mode: z.enum(['analyze', 'play']).default('analyze'),
+  /** What the conversation is actually about — used to seed initialPly on
+   * reopen (useSessionPageData.ts), instead of scanning the transcript for
+   * the last show_position (which could be a trailing flashback). */
+  subjectPly: z.number(),
   summary: z.string().nullable(),
   homework: z.string().nullable(),
   messages: z.array(SessionMessageSchema)

@@ -13,6 +13,7 @@ import {
   recordMoveNoteParameters,
   renderFocusAreasBlock,
   renderRecentFindingsBlock,
+  revealMoveParameters,
   showPositionParameters,
   updateThreadsParameters
 } from '@chess-coach/prompts';
@@ -125,7 +126,17 @@ export function buildCoachTools(ctx: CoachToolsContext, deps: CoachToolsDependen
     })
   };
 
-  if (mode !== 'play') return analyzeTools;
+  if (mode !== 'play') {
+    // Analyze mode only — a live move just played (play mode) has nothing
+    // to preview or reveal, so this tool isn't registered there at all.
+    return {
+      ...analyzeTools,
+      reveal_move: tool({
+        description: coachToolDescription('reveal_move'),
+        inputSchema: revealMoveParameters
+      })
+    };
+  }
   return { ...analyzeTools, ...buildPlayCoachTools(ctx, deps, guardState) };
 }
 
@@ -168,7 +179,7 @@ async function recallMoveTool(
   args: MoveAddress
 ): Promise<{ text: string } | { error: string }> {
   const session = await sessionsRepo.findById(deps.db, ctx.sessionId);
-  return recallMove(deps, { sessionId: ctx.sessionId, gameId: ctx.gameId, currentPly: session?.currentPly ?? 0 }, args);
+  return recallMove(deps, { sessionId: ctx.sessionId, gameId: ctx.gameId, subjectPly: session?.subjectPly ?? 0 }, args);
 }
 
 async function getUserProfileText(db: Kysely<Database>, userId: string): Promise<string> {

@@ -75,30 +75,30 @@ describe('move-notes service', () => {
       // moveRefToPly(2, 'black') === 4.
       const result = await recallMove(
         deps(callLightModel),
-        { sessionId, gameId, currentPly: 4 },
+        { sessionId, gameId, subjectPly: 4 },
         { moveNumber: 2, color: 'black' }
       );
-      expect(result).toEqual({ text: "that's the position you're already discussing — it's already in view." });
+      expect(result).toEqual({ text: "that's the move you're already discussing — it's already in view." });
       expect(callLightModel).not.toHaveBeenCalled();
     });
 
     test('an address outside the game is rejected', async () => {
       const { sessionId, gameId } = await seedSession();
       // moveRefToPly(500, 'white') === 999, far beyond this short game.
-      const result = await recallMove(deps(), { sessionId, gameId, currentPly: 0 }, { moveNumber: 500, color: 'white' });
+      const result = await recallMove(deps(), { sessionId, gameId, subjectPly: 0 }, { moveNumber: 500, color: 'white' });
       expect(result).toEqual({ error: 'that move does not exist in this game' });
     });
 
     test('an address with no messages and no note returns the explicit "nothing recorded" case', async () => {
       const { sessionId, gameId } = await seedSession();
-      const result = await recallMove(deps(), { sessionId, gameId, currentPly: 0 }, { moveNumber: 2, color: 'black' });
+      const result = await recallMove(deps(), { sessionId, gameId, subjectPly: 0 }, { moveNumber: 2, color: 'black' });
       expect(result).toEqual({ text: 'nothing recorded for that move yet' });
     });
 
     test('an address with a note but no raw messages (already folded) falls back to the note verbatim', async () => {
       const { sessionId, gameId } = await seedSession();
       await sessionMoveNotesRepo.upsert(db, sessionId, 4, 'discussed the knight retreat');
-      const result = await recallMove(deps(), { sessionId, gameId, currentPly: 0 }, { moveNumber: 2, color: 'black' });
+      const result = await recallMove(deps(), { sessionId, gameId, subjectPly: 0 }, { moveNumber: 2, color: 'black' });
       expect(result).toEqual({ text: 'discussed the knight retreat' });
     });
 
@@ -110,7 +110,7 @@ describe('move-notes service', () => {
 
       const result = await recallMove(
         deps(callLightModel),
-        { sessionId, gameId, currentPly: 0 },
+        { sessionId, gameId, subjectPly: 0 },
         { moveNumber: 2, color: 'black' }
       );
 

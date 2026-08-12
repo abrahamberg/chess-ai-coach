@@ -118,12 +118,18 @@ export function buildEpisodeMessages(layers: EpisodeLayers, episodeMessages: Cha
 }
 
 export interface BuildEpisodeContextInput extends CoachContextDependencies {
-  /** Only `.gameId`/`.id` are read — `.currentPly` is deliberately ignored in
-   * favor of the `currentPly` field below, which reflects any jump/
-   * show_position update already applied earlier in this same turn (the
-   * `session` object itself is whatever was fetched before that happened). */
+  /** Only `.gameId`/`.id` are read — `.currentPly`/`.subjectPly` are
+   * deliberately ignored in favor of the same-named fields below, which
+   * reflect any jump/show_position update already applied earlier in this
+   * same turn (the `session` object itself is whatever was fetched before
+   * that happened). */
   session: SessionRow;
   currentPly: number;
+  /** What the conversation is actually about — scopes the episode scan and
+   * the episode-level compaction note-keying (resolveEpisodeReplay). Stays
+   * behind `currentPly` mid-flashback; see schema.ts's SessionsTable doc
+   * comment. */
+  subjectPly: number;
   historyAfterTurn: SessionMessageRow[];
   staticPart: string;
   dynamicPart: string;
@@ -142,7 +148,7 @@ export interface BuildEpisodeContextInput extends CoachContextDependencies {
  * so a session resumed on a different pod after a restart reconstructs the
  * same layering with no in-memory state. */
 export async function buildEpisodeContext(input: BuildEpisodeContextInput): Promise<EpisodeContext> {
-  const episode = currentEpisode(input.historyAfterTurn, input.currentPly);
+  const episode = currentEpisode(input.historyAfterTurn, input.subjectPly);
   const orphanExtendedMessages = includeOrphanedToolCall(input.historyAfterTurn, episode.messages);
   const isPlayMode = input.session.mode === 'play';
 
@@ -150,7 +156,7 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
     getPositionAtPly(input.db, input.session.gameId, input.currentPly),
     input.currentPly > 0 ? getPositionAtPly(input.db, input.session.gameId, input.currentPly - 1) : undefined,
     fetchMoveQualities(input.db, input.session.gameId, isPlayMode),
-    sessionMoveNotesRepo.listOtherPlies(input.db, input.session.id, input.currentPly),
+    sessionMoveNotesRepo.listOtherPlies(input.db, input.session.id, [input.currentPly, input.subjectPly]),
     sessionsRepo.getThreads(input.db, input.session.id)
   ]);
   if (!position) throw new NotFoundError('Current position not found for this session');
@@ -200,7 +206,7 @@ export async function buildEpisodeContext(input: BuildEpisodeContextInput): Prom
     gameSoFar
   );
 
-  const episodeMessages = await resolveEpisodeReplay(input, input.session.id, orphanExtendedMessages, input.currentPly);
+  const episodeMessages = await resolveEpisodeReplay(input, input.session.id, orphanExtendedMessages, input.subjectPly);
 
   return buildEpisodeMessages(
     {

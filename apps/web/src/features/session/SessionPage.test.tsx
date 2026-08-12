@@ -46,6 +46,11 @@ interface SessionFixture {
   homework?: string | null;
   messages?: Array<{ id: string; role: 'user' | 'assistant' | 'tool'; content: unknown }>;
   classifiedMoves?: unknown[] | null;
+  /** What the conversation is actually about — seeds initialPly on reopen
+   * (useSessionPageData.ts). Defaults to 0 (game start); set explicitly
+   * whenever a fixture's messages include a show_position elsewhere and the
+   * test expects the board to reopen there. */
+  subjectPly?: number;
 }
 
 // Most tests aren't about the fresh-session kickoff behavior — default to a
@@ -68,6 +73,7 @@ function mockFetch(session: SessionFixture = {}, extra: (path: string) => Respon
             gameId: 'game-1',
             status: session.status ?? 'active',
             currentPly: 0,
+            subjectPly: session.subjectPly ?? 0,
             summary: session.summary ?? null,
             homework: session.homework ?? null,
             messages: session.messages ?? ALREADY_STARTED_MESSAGES
@@ -294,6 +300,7 @@ describe('SessionPage', () => {
     vi.stubGlobal(
       'fetch',
       mockFetch({
+        subjectPly: 2,
         messages: [
           { id: 'm1', role: 'user', content: '[session_start]' },
           {
@@ -318,18 +325,19 @@ describe('SessionPage', () => {
     const divider = within(screen.getByTestId('message-list')).getByText(/move 1 \(black\)/i).closest('.position-divider');
     expect(divider).toHaveTextContent('e5');
 
-    // The board anchors one ply BEFORE the move being discussed (universal
-    // default — a red arrow marks the played move instead), so this reopens
-    // showing the position after 1.e4, not after 1...e5.
+    // The board anchors one ply BEFORE the move being discussed, so this
+    // reopens showing the position after 1.e4, not after 1...e5. No arrow —
+    // the red arrow is opt-in via the coach's reveal_move tool, not automatic.
     const options = capturedOptions.at(-1);
     expect(options?.position).toBe('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
-    expect(options?.arrows).toEqual([{ startSquare: 'e7', endSquare: 'e5', color: 'var(--played-move)' }]);
+    expect(options?.arrows).toEqual([]);
   });
 
   test('the played-move reveal pill shows the real outcome on click', async () => {
     vi.stubGlobal(
       'fetch',
       mockFetch({
+        subjectPly: 2,
         messages: [
           { id: 'm1', role: 'user', content: '[session_start]' },
           {
@@ -364,6 +372,7 @@ describe('SessionPage', () => {
     vi.stubGlobal(
       'fetch',
       mockFetch({
+        subjectPly: 2,
         messages: [
           { id: 'm1', role: 'user', content: '[session_start]' },
           {
@@ -383,12 +392,12 @@ describe('SessionPage', () => {
     const divider = within(screen.getByTestId('message-list')).getByText(/move 1 \(black\)/i).closest('.position-divider');
     expect(divider).toHaveTextContent('e5');
 
-    // The board anchors one ply BEFORE the move being discussed (universal
-    // default — a red arrow marks the played move instead), so this reopens
-    // showing the position after 1.e4, not after 1...e5.
+    // The board anchors one ply BEFORE the move being discussed, so this
+    // reopens showing the position after 1.e4, not after 1...e5. No arrow —
+    // the red arrow is opt-in via the coach's reveal_move tool, not automatic.
     const options = capturedOptions.at(-1);
     expect(options?.position).toBe('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1');
-    expect(options?.arrows).toEqual([{ startSquare: 'e7', endSquare: 'e5', color: 'var(--played-move)' }]);
+    expect(options?.arrows).toEqual([]);
   });
 
   test('a fresh session (only the internal [session_start] marker, no assistant reply yet) auto-kicks off the coach opening turn', async () => {
@@ -522,6 +531,7 @@ describe('SessionPage', () => {
             gameId: 'game-1',
             status: 'active',
             currentPly: 0,
+            subjectPly: 0,
             summary: null,
             homework: null,
             messages: ALREADY_STARTED_MESSAGES

@@ -124,7 +124,7 @@ describe('coach-agent startTurn concurrency', () => {
     const { model, finish } = controllableStreamModel('Let me show you.', {
       toolCallId: 'call-race-1',
       toolName: 'show_position',
-      input: { moveNumber: 2, color: 'black' }
+      input: { moveNumber: 2, color: 'black', intent: 'subject' }
     });
 
     // Gate turn 1's onFinish persistence of its own assistant/tool-call
@@ -324,7 +324,7 @@ describe('coach-agent startTurn concurrency', () => {
     const { model: showModel, finish: showFinish } = controllableStreamModel('Let me show you.', {
       toolCallId: 'call-show-1',
       toolName: 'show_position',
-      input: { moveNumber: 2, color: 'black' }
+      input: { moveNumber: 2, color: 'black', intent: 'subject' }
     });
     const turn1 = await coachAgent.startTurn(deps(showModel), session, { content: 'hi coach' });
     const drain1 = drain(turn1);
@@ -417,7 +417,7 @@ describe('coach-agent startTurn concurrency', () => {
                 type: 'tool-call',
                 toolCallId: 'call-show-2',
                 toolName: 'show_position',
-                input: JSON.stringify({ moveNumber: 2, color: 'black' })
+                input: JSON.stringify({ moveNumber: 2, color: 'black', intent: 'subject' })
               });
               controller.enqueue({
                 type: 'finish',

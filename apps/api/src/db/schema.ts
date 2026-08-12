@@ -58,6 +58,11 @@ export interface SessionsTable {
   status: 'active' | 'completed' | 'paused_no_credits' | 'abandoned';
   mode: Generated<SessionMode>;
   currentPly: Generated<number>;
+  /** What the conversation is actually about — episode boundaries
+   * (lib/episodes.ts) and session_messages.ply tagging key off this, not
+   * currentPly. A flashback show_position moves currentPly (the board)
+   * without moving this; a subject-change show_position moves both. */
+  subjectPly: Generated<number>;
   threads: ColumnType<unknown, string | undefined, string>;
   debugSnapshot: ColumnType<unknown, string | null | undefined, string | null>;
   summary: string | null;

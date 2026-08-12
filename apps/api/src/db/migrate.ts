@@ -11,6 +11,7 @@ import * as removeShowEngineAnalysis from './migrations/0009_remove_show_engine_
 import * as playMode from './migrations/0010_play_mode.js';
 import * as engineMode from './migrations/0011_engine_mode.js';
 import * as positionEvaluationsTrust from './migrations/0012_position_evaluations_trust.js';
+import * as subjectPly from './migrations/0013_subject_ply.js';
 
 const provider: MigrationProvider = {
   getMigrations: () =>
@@ -26,7 +27,8 @@ const provider: MigrationProvider = {
       '0009_remove_show_engine_analysis': removeShowEngineAnalysis,
       '0010_play_mode': playMode,
       '0011_engine_mode': engineMode,
-      '0012_position_evaluations_trust': positionEvaluationsTrust
+      '0012_position_evaluations_trust': positionEvaluationsTrust,
+      '0013_subject_ply': subjectPly
     })
 };
 

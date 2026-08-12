@@ -22,7 +22,7 @@ export interface CommittedPlayerMove {
 
 /**
  * The student's move (architecture §14) — validated and persisted, with
- * sessions.currentPly updated immediately, before any chat turn exists to
+ * sessions.currentPly/subjectPly updated immediately, before any chat turn exists to
  * race it (unlike the coach's own move, which is committed mid-turn and has
  * to defer its ply update past onFinish — see coach-agent-turn.ts's
  * advancePlyForPlayMove). Closes the episode for the PRIOR ply first,
@@ -39,9 +39,11 @@ export async function commitPlayerMoveAndAdvance(
   if ('error' in result) return result;
 
   const historyBeforeClose = await sessionMessagesRepo.listBySession(deps.db, session.id);
-  const closedEpisode = currentEpisode(historyBeforeClose, session.currentPly);
-  await closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, session.currentPly);
-  await sessionsRepo.updateCurrentPly(deps.db, session.id, result.ply);
+  const closedEpisode = currentEpisode(historyBeforeClose, session.subjectPly);
+  await closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, session.subjectPly);
+  // A newly-played move is always a subject change — see the matching
+  // comment in coach-agent-turn.ts's advancePlyForPlayMove.
+  await sessionsRepo.updateSubjectAndCurrentPly(deps.db, session.id, result.ply);
 
   return result;
 }

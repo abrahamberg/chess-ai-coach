@@ -89,7 +89,7 @@ describe('buildCoachTools', () => {
     };
   }
 
-  test('exposes all 13 architecture §7.1 tools', async () => {
+  test('exposes all 14 architecture §7.1 tools', async () => {
     const ctx = await setupCtx();
     const tools = buildCoachTools(ctx, makeDeps());
 
@@ -106,6 +106,7 @@ describe('buildCoachTools', () => {
         'recall_move',
         'record_finding',
         'record_move_note',
+        'reveal_move',
         'show_position',
         'update_threads'
       ].sort()
@@ -121,17 +122,18 @@ describe('buildCoachTools', () => {
     expect(tools.undo_last_move).toBeUndefined();
   });
 
-  test('mode: "play" adds get_candidate_moves, play_coach_move, and undo_last_move alongside the 13 analyze-mode tools, without removing any of them', async () => {
+  test('mode: "play" adds get_candidate_moves, play_coach_move, and undo_last_move alongside the 13 analyze-mode tools, without removing any of them — and excludes reveal_move, which is analyze-mode only', async () => {
     const ctx = await setupCtx();
     const tools = buildCoachTools(ctx, makeDeps(), 'play');
 
     expect(tools.get_candidate_moves).toBeDefined();
     expect(tools.play_coach_move).toBeDefined();
     expect(tools.undo_last_move).toBeDefined();
+    expect(tools.reveal_move).toBeUndefined();
     expect(Object.keys(tools)).toHaveLength(16);
   });
 
-  test('show_position, annotate_board, expect_move, and hypothetical_line have no execute (client tools)', async () => {
+  test('show_position, annotate_board, expect_move, hypothetical_line, and reveal_move have no execute (client tools)', async () => {
     const ctx = await setupCtx();
     const tools = buildCoachTools(ctx, makeDeps());
 
@@ -139,6 +141,7 @@ describe('buildCoachTools', () => {
     expect(tools.annotate_board?.execute).toBeUndefined();
     expect(tools.expect_move?.execute).toBeUndefined();
     expect(tools.hypothetical_line?.execute).toBeUndefined();
+    expect(tools.reveal_move?.execute).toBeUndefined();
   });
 
   describe('get_engine_analysis', () => {

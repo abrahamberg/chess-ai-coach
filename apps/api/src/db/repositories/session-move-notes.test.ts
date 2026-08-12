@@ -43,7 +43,7 @@ describe('session-move-notes repository', () => {
     const updated = await sessionMoveNotesRepo.upsert(db, session.id, 4, 'final note');
 
     expect(updated.note).toBe('final note');
-    const rows = await sessionMoveNotesRepo.listOtherPlies(db, session.id, -1);
+    const rows = await sessionMoveNotesRepo.listOtherPlies(db, session.id, [-1]);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.note).toBe('final note');
   });
@@ -60,7 +60,19 @@ describe('session-move-notes repository', () => {
     await sessionMoveNotesRepo.upsert(db, session.id, 4, 'earlier note');
     await sessionMoveNotesRepo.upsert(db, session.id, 12, 'current — excluded');
 
-    const rows = await sessionMoveNotesRepo.listOtherPlies(db, session.id, 12);
+    const rows = await sessionMoveNotesRepo.listOtherPlies(db, session.id, [12]);
+
+    expect(rows.map((r) => r.ply)).toEqual([4, 8]);
+  });
+
+  test('listOtherPlies excludes every ply in the array (e.g. board ply and subject ply mid-flashback)', async () => {
+    const session = await seedSession();
+    await sessionMoveNotesRepo.upsert(db, session.id, 8, 'later note');
+    await sessionMoveNotesRepo.upsert(db, session.id, 4, 'earlier note');
+    await sessionMoveNotesRepo.upsert(db, session.id, 12, 'subject — excluded');
+    await sessionMoveNotesRepo.upsert(db, session.id, 20, 'board ply — excluded');
+
+    const rows = await sessionMoveNotesRepo.listOtherPlies(db, session.id, [12, 20]);
 
     expect(rows.map((r) => r.ply)).toEqual([4, 8]);
   });

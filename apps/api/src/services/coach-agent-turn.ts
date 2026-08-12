@@ -60,25 +60,33 @@ export async function startTurn(
       }
     }
 
-    // Tracks the ply this turn's messages get tagged with — starts at
-    // whatever was current before this turn, and only ever moves forward
-    // via a resolved jump or a show_position client-tool-result, both
-    // below. Read by the onFinish closure further down.
+    // currentPly: what the board/analysis shows. subjectPly: what the
+    // conversation is actually about, and what this turn's messages get
+    // tagged with (read by the onFinish closure further down) — the two
+    // only diverge mid-flashback (applyClientToolResult). Both start at
+    // whatever was current before this turn.
     let currentPly = session.currentPly;
+    let subjectPly = session.subjectPly;
 
     if (input.content !== undefined) {
+      // A student clicking a position-divider is always a deliberate
+      // subject change, never a flashback — there's no "intent" concept in
+      // this jump path.
       const jump = await coachContext.resolvePositionContextJump(deps.db, session.gameId, input.content);
-      if (jump && jump.ply !== currentPly) {
+      if (jump && jump.ply !== subjectPly) {
         const historyBeforeTurn = await sessionMessagesRepo.listBySession(deps.db, session.id);
-        const closedEpisode = currentEpisode(historyBeforeTurn, currentPly);
-        await coachContext.closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, currentPly);
+        const closedEpisode = currentEpisode(historyBeforeTurn, subjectPly);
+        await coachContext.closeEpisodeIfNeeded(deps, session.id, closedEpisode.messages, subjectPly);
         currentPly = jump.ply;
-        await sessionsRepo.updateCurrentPly(deps.db, session.id, currentPly);
+        subjectPly = jump.ply;
+        await sessionsRepo.updateSubjectAndCurrentPly(deps.db, session.id, currentPly);
       }
-      await sessionMessagesRepo.insert(deps.db, session.id, 'user', input.content, currentPly);
+      await sessionMessagesRepo.insert(deps.db, session.id, 'user', input.content, subjectPly);
     }
     if (input.clientToolResult) {
-      currentPly = await applyClientToolResult(deps, session, input.clientToolResult, currentPly);
+      const applied = await applyClientToolResult(deps, session, input.clientToolResult, currentPly, subjectPly);
+      currentPly = applied.ply;
+      subjectPly = applied.subjectPly;
     }
 
     const { staticPart, dynamicPart, studentColor } = await buildSystemPromptForSession(deps.db, session);
@@ -88,6 +96,7 @@ export async function startTurn(
       callLightModel: deps.callLightModel,
       session,
       currentPly,
+      subjectPly,
       historyAfterTurn,
       staticPart,
       dynamicPart,
@@ -149,10 +158,10 @@ export async function startTurn(
           } satisfies TurnDebugSnapshot);
 
           for (const message of completion.messages) {
-            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content, currentPly);
+            await sessionMessagesRepo.insert(deps.db, session.id, message.role, message.content, subjectPly);
           }
           if (session.mode === 'play') {
-            await advancePlyForPlayMove(deps, session.id, currentPly, completion.messages);
+            await advancePlyForPlayMove(deps, session.id, subjectPly, completion.messages);
           }
           await recordUsage(deps.db, {
             userId: session.userId,
@@ -230,12 +239,17 @@ async function advancePlyForPlayMove(
     const historyAfterTurn = await sessionMessagesRepo.listBySession(deps.db, sessionId);
     const closedEpisode = currentEpisode(historyAfterTurn, closedPly);
     await coachContext.closeEpisodeIfNeeded(deps, sessionId, closedEpisode.messages, closedPly);
-    await sessionsRepo.updateCurrentPly(deps.db, sessionId, coachMove.ply);
+    // A newly-played move is always a subject change — play mode has no
+    // flashback concept (see reveal_move's same analyze-mode-only scoping).
+    await sessionsRepo.updateSubjectAndCurrentPly(deps.db, sessionId, coachMove.ply);
     return;
   }
 
   const undo = findSuccessfulToolResult(messages, 'undo_last_move') as UndoLastMoveResult | null;
   if (undo) {
-    await sessionsRepo.updateCurrentPly(deps.db, sessionId, undo.removedPly - 1);
+    // The undone move's subject no longer exists — revert both together,
+    // same as a subject change, even though no episode closes (nothing
+    // sound to summarize, per this function's doc comment above).
+    await sessionsRepo.updateSubjectAndCurrentPly(deps.db, sessionId, undo.removedPly - 1);
   }
 }

@@ -41,7 +41,14 @@ export const PLAY_TOOL_SPECS: readonly CoachToolSpec[] = [
   }
 ];
 
-export const PLAY_COACH_TOOL_SPECS: readonly CoachToolSpec[] = [...COACH_TOOL_SPECS, ...PLAY_TOOL_SPECS];
+/** reveal_move is analyze-mode only (tools.ts) — a live move just played has
+ * nothing to preview or reveal — so it's filtered out of the play-mode
+ * prompt and, correspondingly, never registered as a play-mode tool
+ * (apps/api/src/services/coach-tools.ts). */
+export const PLAY_COACH_TOOL_SPECS: readonly CoachToolSpec[] = [
+  ...COACH_TOOL_SPECS.filter((spec) => spec.name !== 'reveal_move'),
+  ...PLAY_TOOL_SPECS
+];
 
 export function playCoachToolDescription(name: string): string {
   const spec = PLAY_COACH_TOOL_SPECS.find((s) => s.name === name);

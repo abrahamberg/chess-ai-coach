@@ -7,7 +7,7 @@ import { DEFAULT_AUTOPLAY_INTERVAL_MS } from '../board/useLineAutoplay.js';
 import { useCoachChat, type CoachToolCall } from '../../hooks/useCoachChat.js';
 import { useWasmEngine } from '../../hooks/useWasmEngine.js';
 import { toClassifiedMoves } from './liveMoveQualities.js';
-import { lastShowPositionPly, toCoachMessages } from './sessionMessages.js';
+import { toCoachMessages } from './sessionMessages.js';
 import { GameDetailSchema, ResetSessionResponseSchema, SessionDetailSchema } from './sessionPageSchemas.js';
 import { useDivergedLine } from './useDivergedLine.js';
 import { useLivePositions } from './useLivePositions.js';
@@ -104,7 +104,9 @@ export function useSessionPageData(sessionId: string) {
     : (gameQuery.data?.classifiedMoves ?? null);
   const sanMoves = positions.filter((position) => position.moveSan !== null).map((position) => position.moveSan as string);
 
-  const initialPly = sessionQuery.data ? lastShowPositionPly(sessionQuery.data.messages) : undefined;
+  // subjectPly (not a scan for the last show_position, which could be a
+  // trailing flashback) — see sessionPageSchemas.ts's SessionDetailSchema.
+  const initialPly = sessionQuery.data?.subjectPly;
   const boardState = useSessionBoardState(positions, initialPly);
   const divergedLine = useDivergedLine();
   const [autoplayIntervalMs, setAutoplayIntervalMs] = useState(DEFAULT_AUTOPLAY_INTERVAL_MS);

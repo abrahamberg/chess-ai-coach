@@ -51,12 +51,12 @@ export async function recordMoveNote(
  * a richer on-demand digest than the one-sentence auto-fold note. */
 export async function recallMove(
   deps: MoveNotesDependencies,
-  ctx: MoveNotesContext & { currentPly: number },
+  ctx: MoveNotesContext & { subjectPly: number },
   requested: MoveAddress
 ): Promise<{ text: string } | { error: string }> {
   const requestedPly = moveRefToPly(requested.moveNumber, requested.color);
-  if (requestedPly === ctx.currentPly) {
-    return { text: "that's the position you're already discussing — it's already in view." };
+  if (requestedPly === ctx.subjectPly) {
+    return { text: "that's the move you're already discussing — it's already in view." };
   }
 
   const position = await getPositionAtPly(deps.db, ctx.gameId, requestedPly);

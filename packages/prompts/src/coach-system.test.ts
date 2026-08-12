@@ -183,6 +183,35 @@ describe('buildCoachSystemPrompt', () => {
     expect(staticPart).toContain('recall_move');
   });
 
+  test('staticPart pushes record_move_note as the reliable default, not an occasional extra', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('treat calling this yourself');
+    expect(staticPart).not.toContain('not mechanically every single time');
+  });
+
+  test('staticPart tells the coach the thread ledger is not durable memory, and to bridge an anchored thread to record_move_note before it leaves the ledger', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain("THE LEDGER ISN'T DURABLE MEMORY");
+    expect(staticPart).toContain('anchorPly/anchorFen');
+  });
+
+  test('staticPart tells the coach to call show_position/check_position before discussing ANY position, not only prepared moments', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('GET THE BOARD THERE FIRST');
+  });
+
+  test('staticPart tells the coach to put any move more than one ply from the current position on the board, not in prose', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('more than one ply from the current position');
+  });
+
+  test('analyze-mode staticPart tells the coach about reveal_move\'s preview/full modes', () => {
+    const { staticPart } = buildCoachSystemPrompt(baseInput());
+    expect(staticPart).toContain('reveal_move');
+    expect(staticPart).toContain('"preview"');
+    expect(staticPart).toContain('"full"');
+  });
+
   describe('engine visibility (always on, no per-user toggle)', () => {
     test('staticPart tells the coach it may cite raw evaluations and lines, for every student', () => {
       const { staticPart } = buildCoachSystemPrompt(baseInput());
@@ -223,6 +252,22 @@ describe('buildCoachSystemPrompt', () => {
       const { staticPart } = buildCoachSystemPrompt(basePlayInput());
       expect(staticPart).toContain('show_position');
       expect(staticPart).toContain('record_move_note');
+    });
+
+    // reveal_move is analyze-mode only (a live move just played has nothing
+    // to preview or reveal) — it must never appear in the play-mode prompt,
+    // in either the tool list or howYouRunTheSession's mode-conditional text.
+    test('mode: "play" staticPart never mentions reveal_move', () => {
+      const { staticPart } = buildCoachSystemPrompt(basePlayInput());
+      expect(staticPart).not.toContain('reveal_move');
+    });
+
+    // Item 3: "get the board there first" used to live only in analyze
+    // mode's SESSION_FLOW; promoting it into the shared howYouRunTheSession
+    // means play mode now gets it too.
+    test('mode: "play" staticPart also contains "let the result come back before you discuss it", now that the rule is shared across both modes', () => {
+      const { staticPart } = buildCoachSystemPrompt(basePlayInput());
+      expect(staticPart).toContain('let the result come back before you discuss it');
     });
 
     test('mode: "play" dynamicPart states the student\'s and coach\'s colors and never claims a preparation plan exists', () => {

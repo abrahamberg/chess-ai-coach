@@ -11,6 +11,9 @@ export interface SessionRow {
   status: SessionStatus;
   mode: SessionMode;
   currentPly: number;
+  /** What the conversation is actually about — see schema.ts's SessionsTable
+   * doc comment. Equal to currentPly except mid-flashback. */
+  subjectPly: number;
   summary: string | null;
   homework: string | null;
   startedAt: Date;
@@ -24,6 +27,7 @@ const BASE_COLUMNS = [
   'status',
   'mode',
   'currentPly',
+  'subjectPly',
   'summary',
   'homework',
   'startedAt',
@@ -110,10 +114,26 @@ export function markPausedNoCredits(db: Kysely<Database>, id: string): Promise<v
     .then(() => undefined);
 }
 
+/** Moves only the board/analysis position — used for a flashback
+ * show_position, which must NOT move subjectPly (that would incorrectly
+ * shift the episode boundary — see coach-agent-client-tool-result.ts). */
 export function updateCurrentPly(db: Kysely<Database>, id: string, ply: number): Promise<void> {
   return db
     .updateTable('sessions')
     .set({ currentPly: ply })
+    .where('id', '=', id)
+    .execute()
+    .then(() => undefined);
+}
+
+/** A genuine subject change — a subject-intent show_position, a student
+ * clicking a position divider, a play-mode move committing, or an undo —
+ * moves the board and the conversation's subject together, same as the
+ * single currentPly did before subjectPly existed. */
+export function updateSubjectAndCurrentPly(db: Kysely<Database>, id: string, ply: number): Promise<void> {
+  return db
+    .updateTable('sessions')
+    .set({ currentPly: ply, subjectPly: ply })
     .where('id', '=', id)
     .execute()
     .then(() => undefined);

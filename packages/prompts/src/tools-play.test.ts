@@ -27,9 +27,16 @@ describe('play mode tool parameter schemas (architecture §14)', () => {
 });
 
 describe('PLAY_COACH_TOOL_SPECS', () => {
-  test('is every analyze-mode spec followed by the 3 play-mode specs, in order', () => {
-    expect(PLAY_COACH_TOOL_SPECS.slice(0, COACH_TOOL_SPECS.length)).toEqual(COACH_TOOL_SPECS);
-    expect(PLAY_COACH_TOOL_SPECS.slice(COACH_TOOL_SPECS.length)).toEqual(PLAY_TOOL_SPECS);
+  test('is every analyze-mode spec except reveal_move, followed by the 3 play-mode specs, in order', () => {
+    const analyzeModeSpecsExcludingRevealMove = COACH_TOOL_SPECS.filter((spec) => spec.name !== 'reveal_move');
+    expect(PLAY_COACH_TOOL_SPECS.slice(0, analyzeModeSpecsExcludingRevealMove.length)).toEqual(
+      analyzeModeSpecsExcludingRevealMove
+    );
+    expect(PLAY_COACH_TOOL_SPECS.slice(analyzeModeSpecsExcludingRevealMove.length)).toEqual(PLAY_TOOL_SPECS);
+  });
+
+  test('excludes reveal_move — a live move just played has nothing to preview or reveal', () => {
+    expect(PLAY_COACH_TOOL_SPECS.some((spec) => spec.name === 'reveal_move')).toBe(false);
   });
 
   test('each play tool has a registered, non-empty description', () => {

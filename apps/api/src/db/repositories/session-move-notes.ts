@@ -54,17 +54,21 @@ export function findByPly(
 }
 
 /** Other-moves-summary layer (design doc §5): every discussed ply except
- * the one currently open, oldest first. */
+ * the ones already covered elsewhere this turn, oldest first. Normally
+ * that's just the subject ply (in the episode's own conversation already);
+ * mid-flashback it's the subject AND the board ply (the board ply's own
+ * fresh analysis is already in "## Current position", so repeating its
+ * note here would just be redundant). */
 export function listOtherPlies(
   db: Kysely<Database>,
   sessionId: string,
-  currentPly: number
+  excludePlies: number[]
 ): Promise<SessionMoveNoteRow[]> {
   return db
     .selectFrom('sessionMoveNotes')
     .selectAll()
     .where('sessionId', '=', sessionId)
-    .where('ply', '!=', currentPly)
+    .where('ply', 'not in', excludePlies)
     .orderBy('ply', 'asc')
     .execute();
 }

@@ -60,13 +60,6 @@ export function showPositionPlies(content: unknown): number[] {
     .map((part) => plyFromShowPositionArgs(toolCallInput(part)));
 }
 
-/** Reopening a session should show the board where the coach last left it,
- * not the game's start — find the most recent show_position across the
- * whole transcript. */
-export function lastShowPositionPly(messages: z.infer<typeof SessionMessageSchema>[]): number | undefined {
-  return messages.flatMap((message) => showPositionPlies(message.content)).at(-1);
-}
-
 export function toCoachMessages(
   messages: z.infer<typeof SessionMessageSchema>[],
   sanMoves: string[]

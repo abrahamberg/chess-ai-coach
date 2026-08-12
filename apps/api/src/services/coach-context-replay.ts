@@ -31,10 +31,10 @@ export async function resolveEpisodeReplay(
   deps: CoachContextDependencies,
   sessionId: string,
   episodeMessages: SessionMessageRow[],
-  currentPly: number
+  subjectPly: number
 ): Promise<ChatMessage[]> {
   const stored = toStoredMessages(episodeMessages);
-  const existingNote = await sessionMoveNotesRepo.findByPly(deps.db, sessionId, currentPly);
+  const existingNote = await sessionMoveNotesRepo.findByPly(deps.db, sessionId, subjectPly);
   const initialDigest = existingNote?.note ?? null;
   const prepared = prepareContext(stored, initialDigest, EPISODE_BUDGET_TOKENS);
 
@@ -68,7 +68,7 @@ export async function resolveEpisodeReplay(
     EPISODE_FOLD_SYSTEM_PROMPT,
     { appendOpenThreads: false }
   );
-  await sessionMoveNotesRepo.upsert(deps.db, sessionId, currentPly, newDigest);
+  await sessionMoveNotesRepo.upsert(deps.db, sessionId, subjectPly, newDigest);
 
   const kept = stored.slice(keptStart);
   return withEpisodeDigest(newDigest, kept).map(toChatMessage);

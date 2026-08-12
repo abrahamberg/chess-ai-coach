@@ -15,7 +15,7 @@ const SESSION_START_CONTENT = '[session_start]';
  * so the seeding logic exists in exactly one place. */
 export async function createSessionForGame(db: Kysely<Database>, values: NewSession): Promise<SessionRow> {
   const session = await sessionsRepo.insert(db, values);
-  await sessionMessagesRepo.insert(db, session.id, 'user', SESSION_START_CONTENT, session.currentPly);
+  await sessionMessagesRepo.insert(db, session.id, 'user', SESSION_START_CONTENT, session.subjectPly);
   return session;
 }
 
