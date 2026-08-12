@@ -75,7 +75,7 @@ function matchesAnyUsername(headerValue: string | undefined, candidates: string[
 
 /** Loads the first game of a (possibly multi-game) PGN string into a Chess instance. */
 function loadFirstGame(pgn: string): Chess {
-  const firstGamePgn = extractFirstGame(pgn);
+  const firstGamePgn = stripMoveAnnotations(stripAnnotations(extractFirstGame(pgn)));
   const chess = new Chess();
   try {
     chess.loadPgn(firstGamePgn);
@@ -83,6 +83,67 @@ function loadFirstGame(pgn: string): Chess {
     throw new InvalidPgnError(`Invalid PGN: ${describeError(error)}`, { cause: error });
   }
   return chess;
+}
+
+/**
+ * Lichess exports may contain several comments after one move and nested RAVs.
+ * chess.js accepts a narrower annotation grammar, so keep only the mainline
+ * that this package models and let it parse the resulting legal move text.
+ */
+function stripAnnotations(pgn: string): string {
+  let result = '';
+  let commentDepth = 0;
+  let variationDepth = 0;
+  let lineComment = false;
+
+  for (const character of pgn) {
+    if (lineComment) {
+      if (character === '\n') {
+        lineComment = false;
+        result += character;
+      }
+      continue;
+    }
+
+    if (commentDepth > 0) {
+      if (character === '{') commentDepth += 1;
+      if (character === '}') commentDepth -= 1;
+      continue;
+    }
+
+    if (variationDepth > 0) {
+      if (character === '(') variationDepth += 1;
+      if (character === ')') variationDepth -= 1;
+      continue;
+    }
+
+    if (character === '{') {
+      commentDepth = 1;
+      result += ' ';
+      continue;
+    }
+    if (character === '(') {
+      variationDepth = 1;
+      result += ' ';
+      continue;
+    }
+    if (character === ';') {
+      lineComment = true;
+      result += ' ';
+      continue;
+    }
+
+    result += character;
+  }
+
+  if (commentDepth > 0) throw new Error('Unterminated PGN comment');
+  if (variationDepth > 0) throw new Error('Unterminated PGN variation');
+  return result;
+}
+
+/** chess.js does not accept the common SAN suffixes `?!`, `!!`, or `??`. */
+function stripMoveAnnotations(pgn: string): string {
+  return pgn.replace(/([A-Za-z0-9+#=]+)[!?]+(?=\s|$)/g, '$1');
 }
 
 /**

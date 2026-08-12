@@ -62,6 +62,21 @@ const ILLEGAL_FEN_HEADER_PGN = `[Event "Test"]
 
 *`;
 
+const LICHESS_ANNOTATED_PGN = `[Event "rated rapid game"]
+[Site "https://lichess.org/zFCbLgLe"]
+[Date "2026.08.12"]
+[White "Badrkhan0007"]
+[Black "skyraider82"]
+[Result "1-0"]
+[Variant "Standard"]
+
+1. Nc3 { [%eval -0.04] [%clk 0:10:00] } 1... e5 { [%eval 0.2] [%clk 0:10:00] }
+2. e4 { [%eval 0.08] [%clk 0:09:59] } 2... Nf6 { [%eval 0.03] [%clk 0:09:57] }
+3. Bc4 { [%eval 0.0] [%clk 0:09:57] } { C26 Vienna Game: Stanley Variation } 3... d6 { [%eval 0.22] [%clk 0:09:38] }
+4. a3?! { (0.22 → -0.39) Inaccuracy. Nf3 was best. } { [%eval -0.39] [%clk 0:09:56] }
+(4. Nf3 Be7 5. d4 exd4 6. Nxd4 O-O 7. O-O c6 8. a4 d5)
+4... Bg4?! { (-0.39 → 0.26) Inaccuracy. Nxe4 was best. } { [%eval 0.26] [%clk 0:09:34] } *`;
+
 describe('parsePgn', () => {
   test('parses scholars mate into a position for every ply, ending in checkmate', () => {
     const game = parsePgn(SCHOLARS_MATE_PGN);
@@ -184,6 +199,13 @@ describe('parsePgn', () => {
 1. e4 e4 *`;
 
     expect(() => parsePgn(illegalMovePgn)).toThrow(InvalidPgnError);
+  });
+
+  test('parses Lichess annotated PGN with eval comments and variations', () => {
+    const game = parsePgn(LICHESS_ANNOTATED_PGN);
+
+    expect(game.positions).toHaveLength(9);
+    expect(game.positions.at(-1)?.moveSan).toBe('Bg4');
   });
 });
 
