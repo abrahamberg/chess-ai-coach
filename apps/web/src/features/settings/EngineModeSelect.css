@@ -39,3 +39,29 @@
     transform: rotate(1turn);
   }
 }
+
+.engine-status__bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-top: 4px;
+  border: none;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.engine-status__bar::-webkit-progress-bar {
+  background: var(--surface-2);
+  border-radius: 3px;
+}
+
+.engine-status__bar::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 200ms ease-out;
+}
+
+.engine-status__bar::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 3px;
+}

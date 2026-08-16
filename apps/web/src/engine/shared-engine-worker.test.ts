@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { SharedEngineWorker, type EngineWorkerLike } from './shared-engine-worker.js';
+import { SharedEngineWorker, type EngineDownloadProgress, type EngineWorkerLike } from './shared-engine-worker.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -111,6 +111,38 @@ describe('SharedEngineWorker', () => {
 
     expect(client.status).toBe('ready');
     expect(seen).toEqual(['absent', 'installing', 'ready']);
+  });
+
+  test('reports download progress while installing, then clears it once ready', async () => {
+    const worker = fakeWorker();
+    let progressPort: MessagePort | undefined;
+    (worker as EngineWorkerLike).setProgressPort = (port) => {
+      progressPort = port;
+    };
+    const client = new SharedEngineWorker({ createWorker: () => worker });
+    const seen: (EngineDownloadProgress | null)[] = [];
+    client.subscribeProgress((progress) => seen.push(progress));
+
+    client.preload();
+    expect(seen).toEqual([null]);
+
+    // MessageChannel delivery is asynchronous even between two ports in the
+    // same realm, unlike the synchronous fakeWorker.emit() used elsewhere in
+    // this file — so this needs an actual tick before onmessage fires.
+    progressPort?.postMessage({ percent: 0.5, loaded: 50, total: 100, speedText: '1 MB/s', etaText: '1 sec' });
+    await vi.waitFor(() =>
+      expect(client.progress).toEqual({
+        percent: 0.5,
+        loaded: 50,
+        total: 100,
+        speedText: '1 MB/s',
+        etaText: '1 sec'
+      })
+    );
+
+    worker.emit('uciok');
+    worker.emit('readyok');
+    expect(client.progress).toBeNull();
   });
 
   // preload() runs from a React effect, so a throw here would surface during

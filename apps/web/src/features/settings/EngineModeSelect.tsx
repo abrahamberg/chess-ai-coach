@@ -29,7 +29,8 @@ const ENGINE_STATUS_TEXT = {
  * choosing it is the point at which the user expects the engine to arrive. */
 export function EngineModeSelect({ value, onChange }: EngineModeSelectProps): ReactNode {
   const isBrowserMode = value === 'browser';
-  const engineStatus = useEngineStatus({ preload: isBrowserMode });
+  const { status: engineStatus, progress } = useEngineStatus({ preload: isBrowserMode });
+  const percent = progress ? Math.round(progress.percent * 100) : null;
 
   return (
     <div role="radiogroup" aria-label="Engine mode">
@@ -43,7 +44,13 @@ export function EngineModeSelect({ value, onChange }: EngineModeSelectProps): Re
         <p className={`engine-status engine-status--${engineStatus}`} role="status">
           {engineStatus === 'installing' && <span className="engine-status__spinner" aria-hidden="true" />}
           {ENGINE_STATUS_TEXT[engineStatus]}
+          {engineStatus === 'installing' && percent !== null && ` ${percent}%`}
+          {engineStatus === 'installing' && progress?.speedText && ` · ${progress.speedText}`}
+          {engineStatus === 'installing' && progress?.etaText && ` · ${progress.etaText} left`}
         </p>
+      )}
+      {engineStatus === 'installing' && percent !== null && (
+        <progress className="engine-status__bar" value={percent} max={100} aria-label="Engine download progress" />
       )}
     </div>
   );
