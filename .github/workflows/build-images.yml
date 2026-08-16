@@ -1,13 +1,16 @@
 name: Build and publish images
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
         description: >-
           Publish exactly this one image tag and touch nothing else (no version
-          bump, no git tag). Leave empty for the normal flow: latest plus an
-          auto-bumped patch version.
+          bump, no git tag). Leave empty for the normal flow: latest plus a
+          version auto-bumped from HEAD's commit message (patch by default,
+          minor for `feat:`, major for `feat!:`/`BREAKING CHANGE:`).
         required: false
         type: string
 
@@ -31,7 +34,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # Git tags are the version of record and checkout fetches none by
-          # default — without this every run would look like the first one.
+          # default. fetch-tags alone doesn't do it: with the default shallow
+          # fetch-depth, actions/checkout silently fetches no tags at all, so
+          # every run looks like the first one. fetch-depth: 0 (full history)
+          # is what actually makes fetch-tags work.
+          fetch-depth: 0
           fetch-tags: true
 
       - name: Resolve version
