@@ -85,6 +85,18 @@ export function findActiveByGameIdForUser(
     .executeTakeFirst();
 }
 
+/** Game deletion cascade (services/games.ts deleteGameForUser): the session
+ * ids to clear from session_messages/session_move_notes before the sessions
+ * themselves (and the game) can be deleted. */
+export async function listIdsByGameId(db: Kysely<Database>, gameId: string): Promise<string[]> {
+  const rows = await db.selectFrom('sessions').select('id').where('gameId', '=', gameId).execute();
+  return rows.map((row) => row.id);
+}
+
+export function deleteByGameId(db: Kysely<Database>, gameId: string): Promise<void> {
+  return db.deleteFrom('sessions').where('gameId', '=', gameId).execute().then(() => undefined);
+}
+
 export function markCompleted(db: Kysely<Database>, id: string): Promise<void> {
   return db
     .updateTable('sessions')

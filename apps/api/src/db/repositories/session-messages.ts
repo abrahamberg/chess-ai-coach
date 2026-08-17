@@ -36,6 +36,11 @@ export function listBySession(db: Kysely<Database>, sessionId: string): Promise<
     .execute();
 }
 
+/** Game deletion cascade (services/games.ts deleteGameForUser). */
+export function deleteBySessionId(db: Kysely<Database>, sessionId: string): Promise<void> {
+  return db.deleteFrom('sessionMessages').where('sessionId', '=', sessionId).execute().then(() => undefined);
+}
+
 /** recall_move tool (design doc §4): the raw transcript for one specific
  * past episode, excluding whatever's currently open. */
 export function listBySessionAndPly(

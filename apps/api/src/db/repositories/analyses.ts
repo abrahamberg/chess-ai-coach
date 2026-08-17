@@ -162,6 +162,10 @@ export function findCoachingPlanByGameId(
     .then((row) => row?.coachingPlan as CoachingPlan | undefined);
 }
 
+export function deleteByGameId(db: Kysely<Database>, gameId: string): Promise<void> {
+  return db.deleteFrom('analyses').where('gameId', '=', gameId).execute().then(() => undefined);
+}
+
 export function markFailed(db: Kysely<Database>, id: string, error: string): Promise<void> {
   return db
     .updateTable('analyses')

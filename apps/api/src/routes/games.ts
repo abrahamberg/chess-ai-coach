@@ -9,7 +9,7 @@ import type { Database } from '../db/schema.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import { importGame, MissingUserColorError } from '../services/game-import.js';
-import { listGamesForUser } from '../services/games.js';
+import { deleteGameForUser, listGamesForUser } from '../services/games.js';
 import * as userProfileService from '../services/user-profile.js';
 
 export function registerGamesRoutes(app: FastifyInstance, db: Kysely<Database>, jobQueue: JobQueue): void {
@@ -56,6 +56,12 @@ export function registerGamesRoutes(app: FastifyInstance, db: Kysely<Database>, 
     const analysis = await analysesRepo.findByGameId(db, game.id);
     const classifiedMoves = await analysesRepo.findClassifiedMovesByGameId(db, game.id);
     return { ...game, analysisStatus: analysis?.status ?? null, classifiedMoves: classifiedMoves ?? null, liveMoveQualities: null };
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/games/:id', async (request, reply) => {
+    const user = await userProfileService.getOrCreate(db, request.user);
+    await deleteGameForUser(db, request.params.id, user.id);
+    return reply.code(204).send();
   });
 }
 

@@ -85,6 +85,12 @@ export function findByIdForUser(
     .executeTakeFirst();
 }
 
+/** No user scoping — callers must confirm ownership (e.g. via findByIdForUser)
+ * before calling this. */
+export function remove(db: Kysely<Database>, id: string): Promise<void> {
+  return db.deleteFrom('games').where('id', '=', id).execute().then(() => undefined);
+}
+
 export async function countImportsSince(
   db: Kysely<Database>,
   userId: string,

@@ -1,10 +1,11 @@
 import type { GameListItem } from '@chess-coach/shared';
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import './GameRow.css';
 
 export interface GameRowProps {
   game: GameListItem;
   onSelect: (gameId: string) => void;
+  onDelete: (gameId: string) => void;
 }
 
 const RESULT_DOT: Record<string, { symbol: string; label: string }> = {
@@ -38,17 +39,29 @@ function userSideResult(game: GameListItem): { symbol: string; label: string } |
 
 /** design.md §4.1: a Games (home) list row — players + result (user's side
  * bold, W/L/D dot), date, time control, and an analysis status chip. The
- * whole row is tappable. */
-export function GameRow({ game, onSelect }: GameRowProps): ReactNode {
+ * row and delete button are separate `<button>`s (can't nest interactive
+ * elements), laid out side by side by .game-row's flex. A failed-to-analyse
+ * game gets a filled/labelled delete button instead of the plain outline one
+ * — those rows are otherwise dead ends (no retry, no way to start a
+ * session), so deleting is the primary action a user has for them. */
+export function GameRow({ game, onSelect, onDelete }: GameRowProps): ReactNode {
   const chip = chipFor(game);
   const dot = userSideResult(game);
   const date = game.playedAt ?? game.createdAt;
   const [whiteName, blackName] = [game.whiteName ?? '?', game.blackName ?? '?'];
   const userIsWhite = game.userColor === 'white';
+  const failed = game.analysisStatus === 'failed';
+
+  function handleDelete(event: MouseEvent): void {
+    event.stopPropagation();
+    if (window.confirm('Delete this game? This also deletes its analysis and any coaching sessions. This cannot be undone.')) {
+      onDelete(game.id);
+    }
+  }
 
   return (
     <li className="game-row">
-      <button type="button" onClick={() => onSelect(game.id)}>
+      <button type="button" className="game-row__select" onClick={() => onSelect(game.id)}>
         {dot && (
           <span className={`game-row__dot game-row__dot--${dot.label}`} title={dot.label}>
             {dot.symbol}
@@ -64,6 +77,13 @@ export function GameRow({ game, onSelect }: GameRowProps): ReactNode {
           {game.timeControl && <span> · {game.timeControl}</span>}
         </span>
         <span className={`game-row__chip ${chip.className}`}>{chip.text}</span>
+      </button>
+      <button
+        type="button"
+        className={failed ? 'game-row__delete game-row__delete--failed' : 'game-row__delete'}
+        onClick={handleDelete}
+      >
+        {failed ? 'Delete failed game' : 'Delete'}
       </button>
     </li>
   );

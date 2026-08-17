@@ -40,6 +40,11 @@ export function deleteByPly(db: Kysely<Database>, sessionId: string, ply: number
     .then(() => undefined);
 }
 
+/** Game deletion cascade (services/games.ts deleteGameForUser). */
+export function deleteBySessionId(db: Kysely<Database>, sessionId: string): Promise<void> {
+  return db.deleteFrom('sessionMoveNotes').where('sessionId', '=', sessionId).execute().then(() => undefined);
+}
+
 export function findByPly(
   db: Kysely<Database>,
   sessionId: string,

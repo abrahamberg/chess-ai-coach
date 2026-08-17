@@ -35,11 +35,12 @@ const PLAY_MODE_GAME = {
   sessionId: 'session-2'
 };
 
-function renderGamesPage(games: unknown[] = GAMES_RESPONSE) {
-  const fetchMock = vi.fn().mockImplementation((path: string) => {
+function renderGamesPage(games: unknown[] = GAMES_RESPONSE, { deleteStatus = 204 }: { deleteStatus?: number } = {}) {
+  let currentGames = games;
+  const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
     if (path === '/api/games') {
       return Promise.resolve(
-        new Response(JSON.stringify(games), { status: 200, headers: { 'content-type': 'application/json' } })
+        new Response(JSON.stringify(currentGames), { status: 200, headers: { 'content-type': 'application/json' } })
       );
     }
     if (path === '/api/sessions') {
@@ -49,6 +50,13 @@ function renderGamesPage(games: unknown[] = GAMES_RESPONSE) {
           headers: { 'content-type': 'application/json' }
         })
       );
+    }
+    if (typeof path === 'string' && path.startsWith('/api/games/') && init?.method === 'DELETE') {
+      if (deleteStatus === 204) {
+        currentGames = currentGames.filter((game) => (game as { id: string }).id !== path.split('/').pop());
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return Promise.resolve(new Response(null, { status: deleteStatus }));
     }
     throw new Error(`unexpected fetch: ${path}`);
   });
@@ -72,6 +80,7 @@ function renderGamesPage(games: unknown[] = GAMES_RESPONSE) {
 describe('GamesPage (design.md §4.1)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   test('fetches and lists the user\'s games', async () => {
@@ -132,5 +141,46 @@ describe('GamesPage (design.md §4.1)', () => {
     renderGamesPage([]);
     expect(await screen.findByText(/no games yet|analyze your first game/i)).toBeInTheDocument();
     expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  test('deleting a game confirms, calls DELETE, and removes it from the list', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchMock = renderGamesPage();
+    await screen.findByText('daniel');
+
+    await user.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/games/g1', expect.objectContaining({ method: 'DELETE' }));
+    expect(await screen.findByText(/no games yet|analyze your first game/i)).toBeInTheDocument();
+  });
+
+  test('declining the confirm dialog does not delete the game', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const fetchMock = renderGamesPage();
+    await screen.findByText('daniel');
+
+    await user.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/games/g1', expect.objectContaining({ method: 'DELETE' }));
+    expect(screen.getByText('daniel')).toBeInTheDocument();
+  });
+
+  test('shows an error message if deleting a game fails', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderGamesPage(GAMES_RESPONSE, { deleteStatus: 500 });
+    await screen.findByText('daniel');
+
+    await user.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    expect(await screen.findByText(/could not delete/i)).toBeInTheDocument();
+    expect(screen.getByText('daniel')).toBeInTheDocument();
+  });
+
+  test('a failed-to-analyse game shows a "Delete failed game" button', async () => {
+    renderGamesPage([{ ...GAMES_RESPONSE[0], analysisStatus: 'failed' }]);
+    expect(await screen.findByRole('button', { name: /delete failed game/i })).toBeInTheDocument();
   });
 });

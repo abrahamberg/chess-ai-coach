@@ -49,6 +49,10 @@ export async function existsForSessionCategoryPly(
   return row !== undefined;
 }
 
+export function deleteByGameId(db: Kysely<Database>, gameId: string): Promise<void> {
+  return db.deleteFrom('findings').where('gameId', '=', gameId).execute().then(() => undefined);
+}
+
 export function listRecentByUser(
   db: Kysely<Database>,
   userId: string,

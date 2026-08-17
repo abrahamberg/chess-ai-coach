@@ -1,9 +1,9 @@
 import { GameListResponseSchema, type GameListItem } from '@chess-coach/shared';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
-import { apiGet, apiPost } from '../../api/client.js';
+import { apiDelete, apiGet, apiPost } from '../../api/client.js';
 import { GameRow } from './GameRow.js';
 import './GamesPage.css';
 
@@ -19,6 +19,7 @@ const SessionSummarySchema = z.object({ id: z.string() });
  * already-existing sessionId — see handleSelect. */
 export function GamesPage(): ReactNode {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const gamesQuery = useQuery({
     queryKey: ['games'],
@@ -28,6 +29,11 @@ export function GamesPage(): ReactNode {
   const sessionMutation = useMutation({
     mutationFn: (gameId: string) => apiPost('/api/sessions', { gameId }, SessionSummarySchema),
     onSuccess: (session) => navigate(`/session/${session.id}`)
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (gameId: string) => apiDelete(`/api/games/${gameId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['games'] })
   });
 
   // architecture §14: a coach_play game already has its session (created by
@@ -63,10 +69,12 @@ export function GamesPage(): ReactNode {
         </p>
       )}
 
+      {deleteMutation.isError && <p>Could not delete that game — try again.</p>}
+
       {gamesQuery.data && gamesQuery.data.length > 0 && (
         <ul className="games-page__list">
           {gamesQuery.data.map((game) => (
-            <GameRow key={game.id} game={game} onSelect={() => handleSelect(game)} />
+            <GameRow key={game.id} game={game} onSelect={() => handleSelect(game)} onDelete={(gameId) => deleteMutation.mutate(gameId)} />
           ))}
         </ul>
       )}

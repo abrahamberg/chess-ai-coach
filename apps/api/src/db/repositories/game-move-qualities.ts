@@ -57,3 +57,7 @@ export function deleteByPly(db: Kysely<Database>, gameId: string, ply: number): 
     .execute()
     .then(() => undefined);
 }
+
+export function deleteByGameId(db: Kysely<Database>, gameId: string): Promise<void> {
+  return db.deleteFrom('gameMoveQualities').where('gameId', '=', gameId).execute().then(() => undefined);
+}

@@ -1,3 +1,4 @@
+import type { CoachingPlan } from '@chess-coach/shared';
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { buildApp } from '../app.js';
@@ -21,6 +22,24 @@ const VALID_PGN = `[Event "Test"]
 const ILLEGAL_PGN = `[Event "Test"]
 
 1. e4 e5 2. Zz9 garbage`;
+
+const PLAN: CoachingPlan = {
+  gameSummary: 'A sharp game.',
+  openingNote: 'Fine.',
+  themes: ['king_safety'],
+  connectionToHistory: 'First session together.',
+  moments: [
+    {
+      ply: 4,
+      kind: 'user_mistake' as const,
+      category: 'king_safety' as const,
+      whatHappened: 'Missed the mating idea.',
+      socraticQuestion: 'What was your opponent threatening?',
+      keyLine: 'Qxf7#',
+      revealDepthPlies: 2
+    }
+  ]
+};
 
 const UNMATCHED_HEADERS_PGN = `[Event "Test"]
 [White "Somebody"]
@@ -309,5 +328,73 @@ describe('POST/GET /api/games', () => {
     });
 
     expect(response.statusCode).toBe(404);
+  });
+
+  test('DELETE /api/games/:id removes the game (and its analysis), 204, then 404s on re-fetch', async () => {
+    const app = buildTestApp();
+    const headers = headersFor('deleter@example.com', 'Deleter');
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/api/games',
+      headers,
+      payload: { pgn: VALID_PGN, source: 'paste', userColor: 'white' }
+    });
+    const { gameId, analysisId } = imported.json();
+
+    const del = await app.inject({ method: 'DELETE', url: `/api/games/${gameId}`, headers });
+    expect(del.statusCode).toBe(204);
+
+    const refetch = await app.inject({ method: 'GET', url: `/api/games/${gameId}`, headers });
+    expect(refetch.statusCode).toBe(404);
+
+    const analysis = await analysesRepo.findById(db, analysisId);
+    expect(analysis).toBeUndefined();
+
+    const list = await app.inject({ method: 'GET', url: '/api/games', headers });
+    expect(list.json()).toHaveLength(0);
+  });
+
+  test('DELETE /api/games/:id also clears the game\'s session, its messages, and findings', async () => {
+    const app = buildTestApp();
+    const headers = headersFor('cascade@example.com', 'Cascade');
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/api/games',
+      headers,
+      payload: { pgn: VALID_PGN, source: 'paste', userColor: 'white' }
+    });
+    const { gameId, analysisId } = imported.json();
+    await analysesRepo.markReady(db, analysisId, PLAN);
+
+    const session = await app.inject({ method: 'POST', url: '/api/sessions', headers, payload: { gameId } });
+    expect(session.statusCode).toBe(200);
+    const { id: sessionId } = session.json();
+
+    const del = await app.inject({ method: 'DELETE', url: `/api/games/${gameId}`, headers });
+    expect(del.statusCode).toBe(204);
+
+    const sessions = await db.selectFrom('sessions').selectAll().where('gameId', '=', gameId).execute();
+    expect(sessions).toHaveLength(0);
+    const messages = await db.selectFrom('sessionMessages').selectAll().where('sessionId', '=', sessionId).execute();
+    expect(messages).toHaveLength(0);
+  });
+
+  test('DELETE /api/games/:id 404s for another user\'s game and leaves it intact', async () => {
+    const app = buildTestApp();
+    const owner = headersFor('delowner@example.com', 'DelOwner');
+    const intruder = headersFor('delintruder@example.com', 'DelIntruder');
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/api/games',
+      headers: owner,
+      payload: { pgn: VALID_PGN, source: 'paste', userColor: 'white' }
+    });
+    const { gameId } = imported.json();
+
+    const del = await app.inject({ method: 'DELETE', url: `/api/games/${gameId}`, headers: intruder });
+    expect(del.statusCode).toBe(404);
+
+    const stillThere = await app.inject({ method: 'GET', url: `/api/games/${gameId}`, headers: owner });
+    expect(stillThere.statusCode).toBe(200);
   });
 });
