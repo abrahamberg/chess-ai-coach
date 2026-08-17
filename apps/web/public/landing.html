@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chess AI Coach — free chess coaching, bring your own AI key</title>
+    <meta
+      name="description"
+      content="A free, forever chess coach. Import your games and connect your own AI API key for personalized, engine-backed coaching that helps you actually improve."
+    />
+    <link rel="canonical" href="https://golvor.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://golvor.com/" />
+    <meta property="og:title" content="Chess AI Coach" />
+    <meta
+      property="og:description"
+      content="Free, forever. Bring your own AI API key. Personalized, engine-backed chess coaching."
+    />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Chess AI Coach" />
+    <meta
+      name="twitter:description"
+      content="Free, forever. Bring your own AI API key. Personalized, engine-backed chess coaching."
+    />
+    <style>
+      /* Mirrors apps/web/src/styles/tokens.css — this page is static and
+         can't reach the SPA's hashed, auth-gated bundle, so the palette is
+         duplicated here. Keep these two in sync if the palette changes. */
+      :root {
+        --bg: #faf9f7;
+        --surface: #ffffff;
+        --text: #26241e;
+        --text-muted: #6f6a5e;
+        --accent: #3d6b48;
+        --accent-contrast: #ffffff;
+        --board-light: #ede2c8;
+        --board-dark: #8ba173;
+        --border: rgb(0 0 0 / 12%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #15140f;
+          --surface: #1e1c16;
+          --text: #e8e5dd;
+          --text-muted: #9a948a;
+          --accent: #7fb08a;
+          --accent-contrast: #15140f;
+          --board-light: #bfb294;
+          --board-dark: #6e8258;
+          --border: rgb(255 255 255 / 14%);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      main.page {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 24px 16px 48px;
+      }
+
+      .brand {
+        font-weight: 600;
+        font-size: 18px;
+        padding: 16px 0 40px;
+      }
+
+      .hero {
+        display: flex;
+        align-items: center;
+        gap: 48px;
+        flex-wrap: wrap-reverse;
+      }
+
+      .hero__copy {
+        flex: 1 1 360px;
+        min-width: 280px;
+      }
+
+      .hero__copy h1 {
+        font-size: 34px;
+        line-height: 1.25;
+        margin: 0 0 16px;
+        font-weight: 600;
+      }
+
+      .hero__copy p {
+        color: var(--text-muted);
+        font-size: 17px;
+        margin: 0 0 28px;
+        max-width: 46ch;
+      }
+
+      .hero__board {
+        flex: 0 0 auto;
+        width: 280px;
+        height: 280px;
+        max-width: 60vw;
+        max-height: 60vw;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background-image: conic-gradient(
+          var(--board-dark) 90deg,
+          var(--board-light) 90deg 180deg,
+          var(--board-dark) 180deg 270deg,
+          var(--board-light) 270deg
+        );
+        background-size: 35px 35px;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+
+      .hero__board span {
+        font-size: 96px;
+        filter: drop-shadow(0 2px 3px rgb(0 0 0 / 25%));
+      }
+
+      /* "Sign in with Google" button — follows Google's identity branding
+         guidelines (white surface, colored G mark, neutral-grey border). */
+      .google-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        height: 44px;
+        padding: 0 16px 0 12px;
+        background: #fff;
+        color: #1f1f1f;
+        border: 1px solid #747775;
+        border-radius: 8px;
+        font-family: Roboto, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 15px;
+        font-weight: 500;
+        text-decoration: none;
+        transition: box-shadow 0.15s ease;
+      }
+
+      .google-btn:hover {
+        box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .google-btn {
+          background: #1f1f1f;
+          color: #e3e3e3;
+          border-color: #8e918f;
+        }
+      }
+
+      .tagline {
+        display: inline-block;
+        margin-top: 20px;
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
+      footer {
+        margin-top: 64px;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="brand">Chess AI Coach</div>
+      <section class="hero">
+        <div class="hero__board" aria-hidden="true"><span>♞</span></div>
+        <div class="hero__copy">
+          <h1>A personal chess coach. Free, forever.</h1>
+          <p>
+            Import your games and connect your own AI API key. Get
+            personalized, engine-backed coaching that walks through your
+            games with you and tracks your progress over time &mdash; no
+            subscription, ever.
+          </p>
+          <a class="google-btn" href="/oauth2/start?rd=/games">
+            <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+              <path
+                fill="#EA4335"
+                d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+              />
+              <path
+                fill="#4285F4"
+                d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.9-2.26 5.36-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+              />
+              <path
+                fill="#34A853"
+                d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+              />
+            </svg>
+            <span>Sign in with Google</span>
+          </a>
+          <br />
+          <span class="tagline">Free, forever. Bring your own AI API key.</span>
+        </div>
+      </section>
+      <footer>&copy; Chess AI Coach</footer>
+    </main>
+    <script>
+      // Already-signed-in visitors hitting "/" directly should land in the
+      // app, same as today's SPA behavior. A 200 from /api/users/me means an
+      // oauth2-proxy session cookie is present; an opaque redirect means
+      // oauth2-proxy would bounce them to Google, i.e. logged out.
+      fetch('/api/users/me', { redirect: 'manual' })
+        .then(function (res) {
+          if (res.type !== 'opaqueredirect' && res.ok) {
+            location.replace('/games');
+          }
+        })
+        .catch(function () {});
+    </script>
+  </body>
+</html>

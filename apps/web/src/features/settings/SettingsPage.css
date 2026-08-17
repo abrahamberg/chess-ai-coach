@@ -55,6 +55,31 @@
   flex: 1;
 }
 
+.platform-username-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.platform-username-form + .platform-username-form {
+  margin-top: 8px;
+}
+
+.platform-username-form input {
+  flex: 1;
+}
+
+.nickname-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.nickname-form input {
+  flex: 1;
+}
+
 .credit-balance {
   font-size: 20px;
 }

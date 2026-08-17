@@ -66,6 +66,62 @@ describe('GET/PATCH /api/users/me', () => {
     expect(response.json().ratingBand).toBe('advanced');
   });
 
+  test('PATCH updates the nickname (displayName)', async () => {
+    const app = buildApp({ authMode: 'proxy', db });
+    const headers = { 'x-auth-request-email': 'nick@example.com', 'x-auth-request-user': 'Nick' };
+    await app.inject({ method: 'GET', url: '/api/users/me', headers });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/users/me',
+      headers,
+      payload: { displayName: 'Nicky' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().displayName).toBe('Nicky');
+  });
+
+  test('PATCH rejects an empty/blank nickname as 400 problem+json', async () => {
+    const app = buildApp({ authMode: 'proxy', db });
+    const headers = { 'x-auth-request-email': 'blank@example.com', 'x-auth-request-user': 'Blank' };
+    await app.inject({ method: 'GET', url: '/api/users/me', headers });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/users/me',
+      headers,
+      payload: { displayName: '   ' }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['content-type']).toContain('application/problem+json');
+  });
+
+  test('PATCH updates and clears lichess/chesscom usernames', async () => {
+    const app = buildApp({ authMode: 'proxy', db });
+    const headers = { 'x-auth-request-email': 'linker@example.com', 'x-auth-request-user': 'Linker' };
+    await app.inject({ method: 'GET', url: '/api/users/me', headers });
+
+    const set = await app.inject({
+      method: 'PATCH',
+      url: '/api/users/me',
+      headers,
+      payload: { lichessUsername: 'linker_lichess', chesscomUsername: 'linker_cc' }
+    });
+    expect(set.statusCode).toBe(200);
+    expect(set.json()).toMatchObject({ lichessUsername: 'linker_lichess', chesscomUsername: 'linker_cc' });
+
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: '/api/users/me',
+      headers,
+      payload: { lichessUsername: null }
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).toMatchObject({ lichessUsername: null, chesscomUsername: 'linker_cc' });
+  });
+
   test('PATCH rejects a rating band outside RATING_BANDS as 400 problem+json', async () => {
     const app = buildApp({ authMode: 'proxy', db });
     const headers = { 'x-auth-request-email': 'dee@example.com', 'x-auth-request-user': 'Dee' };

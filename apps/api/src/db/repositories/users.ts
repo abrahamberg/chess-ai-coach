@@ -20,6 +20,10 @@ export interface NewUser {
 }
 
 export interface UserPatch {
+  // Public (UpdateUserProfileRequestSchema — the user's own nickname edit) and
+  // internal (user-profile.ts's Google auto-heal path, healDisplayNameIfNeeded)
+  // both write this.
+  displayName?: string;
   ratingBand?: RatingBand;
   engineMode?: EngineMode;
   lichessUsername?: string | null;

@@ -6,6 +6,8 @@ import { BandSelect } from './BandSelect.js';
 import { ByokKeyForm } from './ByokKeyForm.js';
 import { CreditBalance } from './CreditBalance.js';
 import { EngineModeSelect } from './EngineModeSelect.js';
+import { NicknameForm } from './NicknameForm.js';
+import { PlatformUsernameForm } from './PlatformUsernameForm.js';
 import './SettingsPage.css';
 
 type Theme = 'light' | 'dark';
@@ -41,6 +43,11 @@ export function SettingsPage(): ReactNode {
     queryFn: ({ signal }) => apiGet('/api/users/me/llm-keys', SavedLlmProvidersResponseSchema, signal)
   });
 
+  const displayNameMutation = useMutation({
+    mutationFn: (displayName: string) => apiPatch('/api/users/me', { displayName }, UserProfileSchema),
+    onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
+  });
+
   const bandMutation = useMutation({
     mutationFn: (ratingBand: RatingBand) => apiPatch('/api/users/me', { ratingBand }, UserProfileSchema),
     onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
@@ -48,6 +55,18 @@ export function SettingsPage(): ReactNode {
 
   const engineModeMutation = useMutation({
     mutationFn: (engineMode: EngineMode) => apiPatch('/api/users/me', { engineMode }, UserProfileSchema),
+    onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
+  });
+
+  const lichessUsernameMutation = useMutation({
+    mutationFn: (lichessUsername: string | null) =>
+      apiPatch('/api/users/me', { lichessUsername }, UserProfileSchema),
+    onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
+  });
+
+  const chesscomUsernameMutation = useMutation({
+    mutationFn: (chesscomUsername: string | null) =>
+      apiPatch('/api/users/me', { chesscomUsername }, UserProfileSchema),
     onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
   });
 
@@ -74,8 +93,30 @@ export function SettingsPage(): ReactNode {
     <div className="page settings-page">
       <section aria-label="Profile">
         <h2>Profile</h2>
-        <p>{profile.displayName}</p>
+        <NicknameForm value={profile.displayName} onSave={(displayName) => displayNameMutation.mutate(displayName)} />
         <BandSelect value={profile.ratingBand} onChange={(band) => bandMutation.mutate(band)} />
+      </section>
+
+      <section aria-label="Linked accounts">
+        <h2>Linked accounts</h2>
+        <p>
+          Set these so we can tell which side you played when you import a game — you won&rsquo;t be asked
+          again for games from that site.
+        </p>
+        <PlatformUsernameForm
+          platform="lichess"
+          label="Lichess username"
+          value={profile.lichessUsername}
+          onSave={(username) => lichessUsernameMutation.mutate(username)}
+          onDelete={() => lichessUsernameMutation.mutate(null)}
+        />
+        <PlatformUsernameForm
+          platform="chesscom"
+          label="Chess.com username"
+          value={profile.chesscomUsername}
+          onSave={(username) => chesscomUsernameMutation.mutate(username)}
+          onDelete={() => chesscomUsernameMutation.mutate(null)}
+        />
       </section>
 
       <section aria-label="Engine">
@@ -114,6 +155,11 @@ export function SettingsPage(): ReactNode {
       <section aria-label="Account">
         <h2>Account</h2>
         <p>{profile.email}</p>
+        {/* Ends the oauth2-proxy session (architecture §11) and lands back on
+         * the public landing page — not a fetch/mutation, so a plain link. */}
+        <a className="btn-secondary" href="/oauth2/sign_out?rd=/">
+          Sign out
+        </a>
       </section>
     </div>
   );

@@ -172,6 +172,9 @@ oauth2-proxy:
     - --skip-auth-route=^/api/stripe/webhook$
     - --skip-auth-route=^/healthz$
     - --skip-auth-route=^/readyz$
+    # Public landing page + robots.txt (see values.yaml for the full note).
+    - --skip-auth-route=^/$
+    - --skip-auth-route=^/robots.txt$
     - --redirect-url=https://golvor.com/oauth2/callback
   service:
     portNumber: 80

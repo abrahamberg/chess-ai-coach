@@ -302,6 +302,11 @@ oauth2-proxy:
     - --skip-auth-route=^/api/stripe/webhook$
     - --skip-auth-route=^/healthz$
     - --skip-auth-route=^/readyz$
+    # Public landing page (apps/web/public/landing.html, served by web's
+    # nginx at the exact "/" path) and robots.txt, so logged-out visitors
+    # and crawlers can reach them without a Google session.
+    - --skip-auth-route=^/$
+    - --skip-auth-route=^/robots.txt$
   service:
     portNumber: 80
   # Our own templates/ingress.yaml owns the public route.

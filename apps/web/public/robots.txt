@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /games
+Disallow: /settings
+Disallow: /dashboard
+Disallow: /session
+Disallow: /import
+Disallow: /play
+Disallow: /api

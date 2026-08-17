@@ -5,7 +5,7 @@ import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
 import { createTestDb, type TestDb } from '../../test/helpers/db.js';
 import { applyFocusAreaUpdate, recordFinding } from './progress.js';
-import { getProfileSummary } from './user-profile.js';
+import { getOrCreate, getProfileSummary } from './user-profile.js';
 
 describe('getProfileSummary', () => {
   let testDb: TestDb;
@@ -69,5 +69,37 @@ describe('getProfileSummary', () => {
     expect(summary.recentFindings).toHaveLength(1);
     expect(summary.findingCounts.hanging_piece).toBe(1);
     expect(summary.sessionCount).toBe(1);
+  });
+});
+
+describe('getOrCreate', () => {
+  let testDb: TestDb;
+  let db: Kysely<Database>;
+
+  beforeAll(async () => {
+    testDb = await createTestDb();
+    db = testDb.db;
+  }, 60000);
+
+  afterAll(async () => {
+    await testDb.cleanup();
+  });
+
+  test('heals a Google-login profile stuck with the raw account id as its displayName', async () => {
+    await usersRepo.insert(db, { email: 'healed@example.com', displayName: '108234821730984723' });
+
+    const healed = await getOrCreate(db, { email: 'healed@example.com', displayName: 'healed' });
+
+    expect(healed.displayName).toBe('healed');
+    const reloaded = await usersRepo.findByEmail(db, 'healed@example.com');
+    expect(reloaded?.displayName).toBe('healed');
+  });
+
+  test('never overwrites a normal, already-good displayName', async () => {
+    await usersRepo.insert(db, { email: 'stable@example.com', displayName: 'Ann' });
+
+    const result = await getOrCreate(db, { email: 'stable@example.com', displayName: 'ann' });
+
+    expect(result.displayName).toBe('Ann');
   });
 });

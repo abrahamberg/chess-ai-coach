@@ -6,6 +6,7 @@ import * as focusAreasRepo from '../db/repositories/focus-areas.js';
 import * as sessionsRepo from '../db/repositories/sessions.js';
 import * as usersRepo from '../db/repositories/users.js';
 import type { Database } from '../db/schema.js';
+import { looksLikeOpaqueId } from '../lib/display-name.js';
 
 const RECENT_FINDINGS_LIMIT = 15;
 const RECENT_GAMES_FOR_COUNTS = 20;
@@ -22,13 +23,29 @@ export async function getOrCreate(
   identity: Identity
 ): Promise<usersRepo.UserRow> {
   const existing = await usersRepo.findByEmail(db, identity.email);
-  if (existing) return existing;
+  if (existing) return healDisplayNameIfNeeded(db, existing, identity.displayName);
 
   return db.transaction().execute(async (trx) => {
     const user = await usersRepo.insert(trx, identity);
     await creditsRepo.insertSignupGrant(trx, user.id);
     return user;
   });
+}
+
+/** Repairs profiles created before the Google-login display-name fix (a raw
+ * Google account id stored as the name, see lib/display-name.ts) the next time
+ * that user signs back in. displayName is user-editable now (PATCH
+ * /api/users/me), so this only fires on the 15+-digit opaque-id shape
+ * (looksLikeOpaqueId) — implausible for a hand-picked nickname — to avoid
+ * clobbering a deliberate one. */
+function healDisplayNameIfNeeded(
+  db: Kysely<Database>,
+  existing: usersRepo.UserRow,
+  freshDisplayName: string
+): Promise<usersRepo.UserRow> {
+  const needsHealing = looksLikeOpaqueId(existing.displayName) && freshDisplayName !== existing.displayName;
+  if (!needsHealing) return Promise.resolve(existing);
+  return usersRepo.update(db, existing.id, { displayName: freshDisplayName });
 }
 
 export function updateProfile(

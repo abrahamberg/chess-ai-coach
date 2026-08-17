@@ -368,6 +368,11 @@ describe('UpdateUserProfileRequestSchema', () => {
     const patch = { lichessUsername: null, chesscomUsername: null, selfAssessment: null };
     expect(UpdateUserProfileRequestSchema.safeParse(patch).success).toBe(true);
   });
+  test('accepts a trimmed, non-empty displayName; rejects blank or >60 chars', () => {
+    expect(UpdateUserProfileRequestSchema.safeParse({ displayName: '  Nicky  ' }).data?.displayName).toBe('Nicky');
+    expect(UpdateUserProfileRequestSchema.safeParse({ displayName: '   ' }).success).toBe(false);
+    expect(UpdateUserProfileRequestSchema.safeParse({ displayName: 'a'.repeat(61) }).success).toBe(false);
+  });
 });
 
 describe('LlmProviderSchema / SetLlmKeyRequestSchema', () => {

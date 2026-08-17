@@ -1,5 +1,6 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import { resolveDisplayName } from '../lib/display-name.js';
 
 export interface AuthUser {
   email: string;
@@ -69,13 +70,23 @@ function userFromHeaders(request: FastifyRequest): AuthUser | null {
   // X-Forwarded-* — oauth2-proxy v7.x reverse-proxy mode (--pass-user-headers, default)
   const email =
     request.headers['x-auth-request-email'] ?? request.headers['x-forwarded-email'];
-  const displayName =
-    request.headers['x-auth-request-user'] ??
-    request.headers['x-forwarded-preferred-username'] ??
-    request.headers['x-forwarded-user'];
-
   if (typeof email !== 'string' || email.length === 0) return null;
-  const resolvedName =
-    typeof displayName === 'string' && displayName.length > 0 ? displayName : email;
-  return { email, displayName: resolvedName };
+
+  // x-forwarded-preferred-username carries a real username claim when the
+  // provider sends one; x-auth-request-user/x-forwarded-user are the same
+  // legacy field under oauth2-proxy's two header conventions (see lib/display-name.ts
+  // for why that legacy field is untrustworthy on its own for Google logins).
+  const displayName = resolveDisplayName({
+    preferredUsername: firstHeaderValue(request.headers['x-forwarded-preferred-username']),
+    legacyUser:
+      firstHeaderValue(request.headers['x-auth-request-user']) ??
+      firstHeaderValue(request.headers['x-forwarded-user']),
+    email
+  });
+  return { email, displayName };
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === 'string' && raw.length > 0 ? raw : null;
 }

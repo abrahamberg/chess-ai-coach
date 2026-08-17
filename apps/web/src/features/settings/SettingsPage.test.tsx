@@ -51,6 +51,34 @@ describe('SettingsPage', () => {
     expect(openaiSection).toHaveTextContent(/add key/i);
   });
 
+  test('editing the nickname PATCHes the profile with the new displayName', async () => {
+    const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/users/me' && (!init || init.method === undefined)) return Promise.resolve(jsonResponse(PROFILE));
+      if (path === '/api/users/me/llm-keys') return Promise.resolve(jsonResponse([]));
+      if (path === '/api/users/me' && init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ ...PROFILE, displayName: 'Dani' }));
+      }
+      throw new Error(`unexpected fetch: ${path} ${init?.method ?? 'GET'}`);
+    });
+    renderSettings(fetchMock);
+    const user = userEvent.setup();
+
+    await screen.findByText(/42/);
+    await user.click(screen.getByRole('button', { name: /edit/i }));
+    const nicknameInput = screen.getByRole('textbox', { name: /nickname/i });
+    await user.clear(nicknameInput);
+    await user.type(nicknameInput, 'Dani');
+    const nicknameForm = nicknameInput.closest('form') as HTMLElement;
+    await user.click(within(nicknameForm).getByRole('button', { name: /save/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/users/me',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ displayName: 'Dani' }) })
+      )
+    );
+  });
+
   test('changing the rating band PATCHes the profile', async () => {
     const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
       if (path === '/api/users/me' && (!init || init.method === undefined)) return Promise.resolve(jsonResponse(PROFILE));
@@ -97,6 +125,58 @@ describe('SettingsPage', () => {
     );
   });
 
+  test('saving a lichess username PATCHes the profile', async () => {
+    const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/users/me' && (!init || init.method === undefined)) return Promise.resolve(jsonResponse(PROFILE));
+      if (path === '/api/users/me/llm-keys') return Promise.resolve(jsonResponse([]));
+      if (path === '/api/users/me' && init?.method === 'PATCH') {
+        const body = JSON.parse(init.body as string) as { lichessUsername?: string };
+        return Promise.resolve(jsonResponse({ ...PROFILE, lichessUsername: body.lichessUsername ?? null }));
+      }
+      throw new Error(`unexpected fetch: ${path} ${init?.method ?? 'GET'}`);
+    });
+    renderSettings(fetchMock);
+    const user = userEvent.setup();
+
+    await screen.findByText(/42/);
+    const lichessInput = screen.getByRole('textbox', { name: /lichess username/i });
+    await user.type(lichessInput, 'my_lichess_handle');
+    const lichessForm = lichessInput.closest('form') as HTMLElement;
+    await user.click(within(lichessForm).getByRole('button', { name: /save/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/users/me',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ lichessUsername: 'my_lichess_handle' }) })
+      )
+    );
+  });
+
+  test('deleting a lichess username PATCHes the profile with lichessUsername: null', async () => {
+    const profileWithLichess = { ...PROFILE, lichessUsername: 'my_lichess_handle' };
+    const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/users/me' && (!init || init.method === undefined)) return Promise.resolve(jsonResponse(profileWithLichess));
+      if (path === '/api/users/me/llm-keys') return Promise.resolve(jsonResponse([]));
+      if (path === '/api/users/me' && init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ ...profileWithLichess, lichessUsername: null }));
+      }
+      throw new Error(`unexpected fetch: ${path} ${init?.method ?? 'GET'}`);
+    });
+    renderSettings(fetchMock);
+    const user = userEvent.setup();
+
+    await screen.findByText(/42/);
+    const lichessRow = screen.getByText(/my_lichess_handle/).closest('p') as HTMLElement;
+    await user.click(within(lichessRow).getByRole('button', { name: /delete/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/users/me',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ lichessUsername: null }) })
+      )
+    );
+  });
+
   test('saving an API key PUTs it, then the provider shows as saved', async () => {
     let savedProviders: string[] = [];
     const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
@@ -126,5 +206,17 @@ describe('SettingsPage', () => {
       '/api/users/me/llm-keys/openai',
       expect.objectContaining({ method: 'PUT', body: JSON.stringify({ apiKey: 'sk-oai-secret' }) })
     );
+  });
+
+  test('renders a sign-out link that ends the oauth2-proxy session and returns to the landing page', async () => {
+    const fetchMock = vi.fn().mockImplementation((path: string) => {
+      if (path === '/api/users/me') return Promise.resolve(jsonResponse(PROFILE));
+      if (path === '/api/users/me/llm-keys') return Promise.resolve(jsonResponse([]));
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    renderSettings(fetchMock);
+
+    await screen.findByText(/42/);
+    expect(screen.getByRole('link', { name: /sign out/i })).toHaveAttribute('href', '/oauth2/sign_out?rd=/');
   });
 });

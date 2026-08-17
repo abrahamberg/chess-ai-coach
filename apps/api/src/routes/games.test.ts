@@ -158,6 +158,93 @@ describe('POST/GET /api/games', () => {
     expect(response.headers['content-type']).toContain('application/problem+json');
   });
 
+  test('learns the lichess username from an explicit-color import sourced from Lichess, so the next import auto-detects it', async () => {
+    const app = buildTestApp();
+    const headers = headersFor('learner@example.com', 'Learner');
+    const lichessPgn = `[Event "Test"]
+[Site "https://lichess.org/abc123"]
+[White "learner_lichess"]
+[Black "Bob"]
+[Result "1-0"]
+
+1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0`;
+
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/api/games',
+      headers,
+      payload: { pgn: lichessPgn, source: 'lichess', userColor: 'white' }
+    });
+    expect(imported.statusCode).toBe(200);
+
+    const user = await usersRepo.findByEmail(db, 'learner@example.com');
+    expect(user?.lichessUsername).toBe('learner_lichess');
+
+    // A later PGN from the same site, with no explicit userColor and a
+    // displayName ("Learner") that doesn't match either side, should now
+    // auto-detect via the learned lichessUsername instead of 422ing.
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/games',
+      headers,
+      payload: {
+        pgn: `[Event "Test"]\n[Site "https://lichess.org/def456"]\n[White "Someone Else"]\n[Black "learner_lichess"]\n[Result "0-1"]\n\n1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0`,
+        source: 'lichess'
+      }
+    });
+    expect(second.statusCode).toBe(200);
+    const game = await db
+      .selectFrom('games')
+      .selectAll()
+      .where('id', '=', second.json().gameId)
+      .executeTakeFirstOrThrow();
+    expect(game.userColor).toBe('black');
+  });
+
+  test('learns the chess.com username from a pasted PGN whose Site header points at chess.com', async () => {
+    const app = buildTestApp();
+    const headers = headersFor('chesscom-learner@example.com', 'ChesscomLearner');
+    const chesscomPgn = `[Event "Test"]
+[Site "https://www.chess.com/game/live/123"]
+[White "cc_learner"]
+[Black "Bob"]
+[Result "1-0"]
+
+1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0`;
+
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/api/games',
+      headers,
+      payload: { pgn: chesscomPgn, source: 'paste', userColor: 'white' }
+    });
+    expect(imported.statusCode).toBe(200);
+
+    const user = await usersRepo.findByEmail(db, 'chesscom-learner@example.com');
+    expect(user?.chesscomUsername).toBe('cc_learner');
+  });
+
+  test('never overwrites an already-known lichess username', async () => {
+    const app = buildTestApp();
+    const headers = headersFor('already-known@example.com', 'AlreadyKnown');
+    await usersRepo.insert(db, { email: 'already-known@example.com', displayName: 'AlreadyKnown' });
+    await usersRepo.update(db, (await usersRepo.findByEmail(db, 'already-known@example.com'))!.id, {
+      lichessUsername: 'original_name'
+    });
+    const pgn = `[Event "Test"]\n[Site "https://lichess.org/xyz"]\n[White "a_different_name"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0`;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/games',
+      headers,
+      payload: { pgn, source: 'lichess', userColor: 'white' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const user = await usersRepo.findByEmail(db, 'already-known@example.com');
+    expect(user?.lichessUsername).toBe('original_name');
+  });
+
   test('rejects an ambiguous/undetectable userColor as 422 with {missing: "userColor"}', async () => {
     const app = buildTestApp();
     const headers = headersFor('ambiguous@example.com', 'Ambiguous');

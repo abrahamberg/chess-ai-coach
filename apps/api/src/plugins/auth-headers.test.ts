@@ -61,4 +61,48 @@ describe('authHeadersPlugin', () => {
     // slash prefix match), so it is NOT exempt and should still 401.
     expect(response.statusCode).toBe(401);
   });
+
+  test('Google login: x-forwarded-user carrying the numeric account id is not used as displayName — falls back to the email local part', async () => {
+    const app = buildApp({ authMode: 'proxy' });
+    app.get('/test-route', async (request) => ({ user: request.user }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/test-route',
+      headers: { 'x-forwarded-email': 'daniel@gmail.com', 'x-forwarded-user': '108234821730984723' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ user: { email: 'daniel@gmail.com', displayName: 'daniel' } });
+  });
+
+  test('a genuine preferred-username header wins over the legacy user field', async () => {
+    const app = buildApp({ authMode: 'proxy' });
+    app.get('/test-route', async (request) => ({ user: request.user }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/test-route',
+      headers: {
+        'x-forwarded-email': 'daniel@gmail.com',
+        'x-forwarded-user': '108234821730984723',
+        'x-forwarded-preferred-username': 'dabrahamberg'
+      }
+    });
+
+    expect(response.json()).toEqual({ user: { email: 'daniel@gmail.com', displayName: 'dabrahamberg' } });
+  });
+
+  test('a legacy user field that looks like a real name is still used', async () => {
+    const app = buildApp({ authMode: 'proxy' });
+    app.get('/test-route', async (request) => ({ user: request.user }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/test-route',
+      headers: { 'x-auth-request-email': 'ann@example.com', 'x-auth-request-user': 'Ann' }
+    });
+
+    expect(response.json()).toEqual({ user: { email: 'ann@example.com', displayName: 'Ann' } });
+  });
 });
