@@ -145,6 +145,63 @@ describe('SharedEngineWorker', () => {
     expect(client.progress).toBeNull();
   });
 
+  test('a search that never answers with bestmove times out, rejects, and resets the worker for the next call', async () => {
+    vi.useFakeTimers();
+    try {
+      const stuckWorker = fakeWorker();
+      const freshWorker = fakeWorker();
+      const createWorker = vi.fn().mockReturnValueOnce(stuckWorker).mockReturnValueOnce(freshWorker);
+      const client = new SharedEngineWorker({ createWorker });
+
+      const stuck = client.analyze({ fen: START_FEN, depth: 10, multiPv: 1 });
+      // Attached before advancing timers so the rejection below never has an
+      // unhandled tick between firing and being awaited.
+      const stuckAssertion = expect(stuck).rejects.toThrow(/timed out/);
+      stuckWorker.emit('uciok');
+      stuckWorker.emit('readyok');
+      expect(stuckWorker.sent.some((m) => m.startsWith('go'))).toBe(true);
+
+      // No 'bestmove' ever arrives for stuckWorker.
+      await vi.advanceTimersByTimeAsync(25_000);
+      await stuckAssertion;
+      expect(stuckWorker.terminate).toHaveBeenCalledOnce();
+      expect(client.status).toBe('absent');
+
+      // A subsequent analyze() gets a brand-new worker rather than reusing
+      // the wedged one, and isn't left permanently queued behind it.
+      const recovered = client.analyze({ fen: START_FEN, depth: 10, multiPv: 1 });
+      freshWorker.emit('uciok');
+      freshWorker.emit('readyok');
+      freshWorker.emit('info depth 10 multipv 1 score cp 5 pv e2e4');
+      freshWorker.emit('bestmove e2e4');
+      await expect(recovered).resolves.toMatchObject([{ moveUci: 'e2e4' }]);
+      expect(createWorker).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a stuck search also rejects whatever else was queued behind it', async () => {
+    vi.useFakeTimers();
+    try {
+      const stuckWorker = fakeWorker();
+      const client = new SharedEngineWorker({ createWorker: () => stuckWorker });
+
+      const stuck = client.analyze({ fen: START_FEN, depth: 10, multiPv: 1 });
+      const queued = client.analyze({ fen: START_FEN, depth: 10, multiPv: 1 });
+      const stuckAssertion = expect(stuck).rejects.toThrow(/timed out/);
+      const queuedAssertion = expect(queued).rejects.toThrow(/reset/);
+      stuckWorker.emit('uciok');
+      stuckWorker.emit('readyok');
+
+      await vi.advanceTimersByTimeAsync(25_000);
+      await stuckAssertion;
+      await queuedAssertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // preload() runs from a React effect, so a throw here would surface during
   // commit and take the page down over an engine that merely isn't available.
   test('an engine that cannot be created fails softly rather than throwing', async () => {

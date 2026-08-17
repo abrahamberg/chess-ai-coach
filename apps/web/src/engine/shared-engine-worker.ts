@@ -118,6 +118,17 @@ interface QueuedAnalysis {
   reject: (error: Error) => void;
 }
 
+/** A `go` that never answers with `bestmove` (worker crash, a dropped
+ * postMessage, or the WASM engine itself wedging) used to hang pump() forever:
+ * `active` never clears, so every later analyze() call — Explore panel or
+ * tunnel fulfillment alike — queues silently behind it for the rest of the
+ * tab's life with no visible error. Comfortably above the slowest real
+ * search seen in practice (depth 16/multiPv 3 takes a few seconds; a cold,
+ * resource-constrained tab can run several times that) but short enough that
+ * a genuinely stuck engine self-heals within one browser-mode tunnel chunk
+ * instead of eating every later request in the game. */
+const SEARCH_TIMEOUT_MS = 25_000;
+
 /** Owns the single WASM Stockfish Worker — shared between the Explore panel
  * and browser-mode tunnel fulfillment so only one engine process ever runs
  * client-side (design spec §5). Serializes analyze() calls: a WASM engine
@@ -182,6 +193,25 @@ export class SharedEngineWorker {
   private rejectPending(error: unknown): void {
     const reason = error instanceof Error ? error : new Error(String(error));
     while (this.pending.length > 0) this.pending.shift()?.reject(reason);
+  }
+
+  /** Recovers from a `go` that never answered (see SEARCH_TIMEOUT_MS): the
+   * worker that owned it may still be alive but wedged (or may go on to
+   * deliver a late, now-unwanted `bestmove` for a request nothing is
+   * awaiting anymore), so it's terminated outright rather than reused —
+   * `ensureWorker()` builds a fresh one on the next analyze(). Whatever else
+   * was queued behind the stuck request is rejected too, on the same
+   * reasoning as a failed worker construction: nothing left in `pending` can
+   * still run on a worker that's being thrown away. */
+  private resetStuckWorker(): void {
+    this.active = false;
+    this.isReady = false;
+    const worker = this.worker;
+    this.worker = null;
+    worker?.terminate();
+    this.setStatus('absent');
+    this.setProgress(null);
+    this.rejectPending(new Error('Engine reset after a stuck search'));
   }
 
   private setStatus(status: EngineInstallStatus): void {
@@ -265,13 +295,18 @@ export class SharedEngineWorker {
     if (!worker) return;
     const next = this.pending.shift();
     if (!next) return;
-    const { request, resolve } = next;
+    const { request, resolve, reject } = next;
     this.active = true;
 
     const lines = new Map<number, RawEngineLine>();
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`Engine search timed out after ${SEARCH_TIMEOUT_MS}ms`));
+      this.resetStuckWorker();
+    }, SEARCH_TIMEOUT_MS);
     worker.onmessage = (event) => {
       const line = event.data;
       if (line.startsWith('bestmove')) {
+        clearTimeout(timeoutId);
         this.active = false;
         resolve([...lines.values()].sort((a, b) => a.multiPv - b.multiPv));
         this.pump();

@@ -39,9 +39,12 @@ describe('GameRow (design.md §4.1)', () => {
     expect(screen.getByText(/ready.*start session/i)).toBeInTheDocument();
   });
 
-  test('shows a "failed — retry" chip when analysis failed', () => {
+  // Plain "failed", not "failed — retry": clicking the row no-ops for a
+  // failed game (handleSelect gates on analysisStatus === 'ready'), so a
+  // label promising a retry that doesn't exist is worse than no label.
+  test('shows a "failed" chip when analysis failed', () => {
     render(<GameRow game={{ ...BASE_GAME, analysisStatus: 'failed' }} onSelect={vi.fn()} onDelete={vi.fn()} />);
-    expect(screen.getByText(/failed.*retry/i)).toBeInTheDocument();
+    expect(screen.getByText('failed')).toBeInTheDocument();
   });
 
   // architecture §14: a coach_play game never gets an `analyses` row, so it

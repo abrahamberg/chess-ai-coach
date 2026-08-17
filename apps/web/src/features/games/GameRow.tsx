@@ -23,7 +23,7 @@ function chipFor(game: GameListItem): { text: string; className: string } {
     return { text: 'game over', className: 'game-row__chip--analyzing' };
   }
   if (game.analysisStatus === 'ready') return { text: 'ready — start session', className: 'game-row__chip--ready' };
-  if (game.analysisStatus === 'failed') return { text: 'failed — retry', className: 'game-row__chip--failed' };
+  if (game.analysisStatus === 'failed') return { text: 'failed', className: 'game-row__chip--failed' };
   return { text: 'analyzing…', className: 'game-row__chip--analyzing' };
 }
 
