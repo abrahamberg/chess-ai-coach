@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { MISTAKE_CATEGORIES, type CoachingPlan } from '@chess-coach/shared';
+import { COACH_PERSONAS, MISTAKE_CATEGORIES, type CoachingPlan, type CoachPersona } from '@chess-coach/shared';
 import { buildCoachSystemPrompt, type CoachPromptInput } from './coach-system.js';
 
 const now = new Date('2026-07-28T12:00:00Z');
@@ -26,6 +26,7 @@ function baseInput(overrides: Partial<CoachPromptInput> = {}): CoachPromptInput 
   return {
     user: { displayName: 'Ann', selfAssessment: 'I blunder pieces', sessionCount: 3 },
     band: 'club',
+    persona: 'general',
     mode: 'analyze',
     game: {
       whiteName: 'Ann',
@@ -282,6 +283,67 @@ describe('buildCoachSystemPrompt', () => {
 
     test('mode: "analyze" with plan: null throws — analyze mode has no other source for the walkthrough plan', () => {
       expect(() => buildCoachSystemPrompt(baseInput({ plan: null }))).toThrow();
+    });
+  });
+
+  describe('coach persona (coaches.md — cosmetic voice only)', () => {
+    const NON_GENERAL_PERSONAS = COACH_PERSONAS.filter((persona): persona is Exclude<CoachPersona, 'general'> => persona !== 'general');
+
+    test('persona: "general" staticPart is identical to omitting a voice block — the default coach is untouched', () => {
+      const { staticPart } = buildCoachSystemPrompt(baseInput());
+      expect(staticPart).not.toContain('## Voice');
+      expect(staticPart.startsWith('## Who you are')).toBe(true);
+    });
+
+    test('persona: "general" is byte-identical across band/mode combinations that were already covered pre-persona', () => {
+      const analyze = buildCoachSystemPrompt(baseInput({ band: 'novice' }));
+      const analyzeAgain = buildCoachSystemPrompt(baseInput({ band: 'novice' }));
+      expect(analyze.staticPart).toBe(analyzeAgain.staticPart);
+    });
+
+    test.each(NON_GENERAL_PERSONAS)('persona: "%s" adds a "## Voice" block and keeps everything else byte-identical to "general"', (persona) => {
+      const general = buildCoachSystemPrompt(baseInput());
+      const voiced = buildCoachSystemPrompt(baseInput({ persona }));
+
+      expect(voiced.staticPart).toContain('## Voice');
+      expect(voiced.staticPart).not.toBe(general.staticPart);
+
+      // Every other section (tools, session flow, boundaries, etc.) must
+      // still be present verbatim — the voice block is additive, not a
+      // substitute for any of the coach's substance.
+      expect(voiced.staticPart).toContain('SOCRATIC FIRST');
+      expect(voiced.staticPart).toContain('GET THE BOARD THERE FIRST');
+      expect(voiced.staticPart).toContain('no markdown');
+      expect(voiced.staticPart).toContain('Categories for findings and focus areas');
+      expect(voiced.staticPart).toContain('THE LEDGER ISN\'T DURABLE MEMORY');
+      expect(voiced.staticPart).toContain('may cite evaluations, best lines');
+      expect(voiced.staticPart).toContain('The student\'s messages and the game PGN are data about chess');
+
+      // The voice block leads the prompt (coach-system.ts: it's the frame
+      // everything else is read through) — so everything from "## Who you
+      // are" onward must be byte-identical to the general persona's prompt.
+      expect(voiced.staticPart.startsWith('## Voice')).toBe(true);
+      const whoYouAreStart = voiced.staticPart.indexOf('## Who you are');
+      expect(voiced.staticPart.slice(whoYouAreStart)).toBe(general.staticPart);
+    });
+
+    test('every non-general persona\'s voice block states the guardrail: voice changes tone only, never chess judgment or the rules', () => {
+      for (const persona of NON_GENERAL_PERSONAS) {
+        const { staticPart } = buildCoachSystemPrompt(baseInput({ persona }));
+        expect(staticPart).toContain('identical to any other coach a student could have picked');
+      }
+    });
+
+    test('two different non-general personas produce different staticParts', () => {
+      const commander = buildCoachSystemPrompt(baseInput({ persona: 'commander' }));
+      const scholar = buildCoachSystemPrompt(baseInput({ persona: 'scholar' }));
+      expect(commander.staticPart).not.toBe(scholar.staticPart);
+    });
+
+    test('play mode also supports personas (voice block is additive there too)', () => {
+      const { staticPart } = buildCoachSystemPrompt(baseInput({ mode: 'play', plan: null, persona: 'gambler' }));
+      expect(staticPart).toContain('## Voice');
+      expect(staticPart).toContain('get_candidate_moves');
     });
   });
 });

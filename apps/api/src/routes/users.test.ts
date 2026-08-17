@@ -30,6 +30,7 @@ describe('GET/PATCH /api/users/me', () => {
       email: 'ann@example.com',
       displayName: 'Ann',
       ratingBand: 'improving',
+      coachPersona: 'general',
       lichessUsername: null,
       chesscomUsername: null,
       selfAssessment: null,
@@ -132,6 +133,38 @@ describe('GET/PATCH /api/users/me', () => {
       url: '/api/users/me',
       headers,
       payload: { ratingBand: 'grandmaster' }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['content-type']).toContain('application/problem+json');
+  });
+
+  test('PATCH updates the coach persona', async () => {
+    const app = buildApp({ authMode: 'proxy', db });
+    const headers = { 'x-auth-request-email': 'gambit@example.com', 'x-auth-request-user': 'Gambit' };
+    await app.inject({ method: 'GET', url: '/api/users/me', headers });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/users/me',
+      headers,
+      payload: { coachPersona: 'gambler' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().coachPersona).toBe('gambler');
+  });
+
+  test('PATCH rejects a coach persona outside COACH_PERSONAS as 400 problem+json', async () => {
+    const app = buildApp({ authMode: 'proxy', db });
+    const headers = { 'x-auth-request-email': 'fae@example.com', 'x-auth-request-user': 'Fae' };
+    await app.inject({ method: 'GET', url: '/api/users/me', headers });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/users/me',
+      headers,
+      payload: { coachPersona: 'wizard' }
     });
 
     expect(response.statusCode).toBe(400);

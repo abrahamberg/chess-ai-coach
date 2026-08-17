@@ -1,3 +1,4 @@
+import { COACH_PERSONA_INFO } from '@chess-coach/shared';
 import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useIsBoardSideBySide } from '../../hooks/useIsBoardSideBySide.js';
@@ -31,6 +32,7 @@ export function SessionPage(): ReactNode {
 
   const {
     sessionQuery,
+    profileQuery,
     gameQuery,
     sanMoves,
     positions,
@@ -92,6 +94,7 @@ export function SessionPage(): ReactNode {
     void chat.sendMessage(content);
   }
 
+  const coachAvatar = COACH_PERSONA_INFO[profileQuery.data?.coachPersona ?? 'general'].avatar;
   const orientation = gameQuery.data?.userColor ?? 'white';
   // Same fen SessionBoardColumn computes for the board itself — needed here
   // too so ChatPane can resolve move mentions against the position actually
@@ -141,6 +144,7 @@ export function SessionPage(): ReactNode {
         fen={fen}
         positions={positions}
         onHoverMove={setHoverMove}
+        coachAvatar={coachAvatar}
       />
     );
 

@@ -1,5 +1,6 @@
-import type { CoachingPlan, RatingBand, SessionMode } from '@chess-coach/shared';
+import type { CoachingPlan, CoachPersona, RatingBand, SessionMode } from '@chess-coach/shared';
 import { CALIBRATION } from './calibration.js';
+import { PERSONA_VOICE } from './coach-persona.js';
 import {
   MISTAKE_CATEGORIES_BLOCK,
   renderCoachingPlanBlock,
@@ -28,6 +29,9 @@ export interface GameMeta {
 export interface CoachPromptInput {
   user: CoachPromptUser;
   band: RatingBand;
+  /** coaches.md: cosmetic voice/tone only — see coach-persona.ts. `general`
+   * reproduces today's prompt byte-for-byte. */
+  persona: CoachPersona;
   game: GameMeta;
   mode: SessionMode;
   /** Null in play mode (architecture §14) — there is no pre-session
@@ -55,18 +59,24 @@ export interface CoachSystemPrompt {
  */
 export function buildCoachSystemPrompt(input: CoachPromptInput): CoachSystemPrompt {
   return {
-    staticPart: buildStaticPart(input.band, input.mode),
+    staticPart: buildStaticPart(input.band, input.mode, input.persona),
     dynamicPart: buildDynamicPart(input)
   };
 }
 
-/** `mode: 'analyze'` reproduces the pre-play-mode output byte-for-byte — see
- * coach-system.test.ts's regression test. This is the cached, per-band-
- * shared layer, so a silent divergence here would be a real cost regression
- * (a busted prompt cache for every analyze-mode session). */
-function buildStaticPart(band: RatingBand, mode: SessionMode): string {
+/** `mode: 'analyze'`, `persona: 'general'` reproduces the pre-persona output
+ * byte-for-byte — see coach-system.test.ts's regression test. This is the
+ * cached, per-band/mode/persona-shared layer, so a silent divergence here
+ * would be a real cost regression (a busted prompt cache for every session
+ * sharing that combination). PERSONA_VOICE['general'] is '', so
+ * .filter(Boolean) drops it and adds zero bytes for the default coach.
+ * The voice block leads (coach-persona.ts) — it's the frame every other
+ * instruction below gets read through, not one paragraph competing for
+ * attention against several thousand words of neutral procedural prose. */
+function buildStaticPart(band: RatingBand, mode: SessionMode, persona: CoachPersona): string {
   const calibration = CALIBRATION[band];
   return [
+    PERSONA_VOICE[persona],
     WHO_YOU_ARE,
     howYouRunTheSession(calibration.revealDepthPlies, mode),
     FORMATTING,
@@ -75,7 +85,9 @@ function buildStaticPart(band: RatingBand, mode: SessionMode): string {
     mode === 'play' ? PLAY_SESSION_FLOW : SESSION_FLOW,
     ENGINE_VISIBILITY,
     BOUNDARIES
-  ].join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function buildDynamicPart(input: CoachPromptInput): string {

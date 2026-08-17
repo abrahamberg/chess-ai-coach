@@ -13,7 +13,8 @@ const PROFILE = {
   chesscomUsername: null,
   selfAssessment: null,
   creditBalance: 42,
-  engineMode: 'native'
+  engineMode: 'native',
+  coachPersona: 'general'
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -121,6 +122,29 @@ describe('SettingsPage', () => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/users/me',
         expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ engineMode: 'browser' }) })
+      )
+    );
+  });
+
+  test('switching coach persona PATCHes /api/users/me with the new coachPersona', async () => {
+    const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/users/me' && (!init || init.method === undefined)) return Promise.resolve(jsonResponse(PROFILE));
+      if (path === '/api/users/me/llm-keys') return Promise.resolve(jsonResponse([]));
+      if (path === '/api/users/me' && init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ ...PROFILE, coachPersona: 'gambler' }));
+      }
+      throw new Error(`unexpected fetch: ${path} ${init?.method ?? 'GET'}`);
+    });
+    renderSettings(fetchMock);
+    const user = userEvent.setup();
+
+    await screen.findByText(/42/);
+    await user.click(screen.getByRole('radio', { name: /the gambler/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/users/me',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ coachPersona: 'gambler' }) })
       )
     );
   });

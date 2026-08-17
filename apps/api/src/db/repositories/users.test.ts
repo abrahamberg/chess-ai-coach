@@ -39,4 +39,18 @@ describe('users repository', () => {
     expect(fetched).toBeDefined();
     expect(fetched?.engineMode).toBe('native');
   });
+
+  test('insert() includes coachPersona with default value "general"', async () => {
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Dana' });
+
+    expect(user.coachPersona).toBe('general');
+  });
+
+  test('update() can change coachPersona', async () => {
+    const user = await usersRepo.insert(db, { email: `${crypto.randomUUID()}@example.com`, displayName: 'Eve' });
+
+    const updated = await usersRepo.update(db, user.id, { coachPersona: 'gambler' });
+
+    expect(updated.coachPersona).toBe('gambler');
+  });
 });

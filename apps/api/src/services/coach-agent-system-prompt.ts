@@ -31,6 +31,7 @@ export async function buildSystemPromptForSession(
   const prompt = buildCoachSystemPrompt({
     user: { displayName: user.displayName, selfAssessment: user.selfAssessment, sessionCount },
     band: user.ratingBand,
+    persona: user.coachPersona,
     mode: 'analyze',
     game: {
       whiteName: game.whiteName ?? 'White',
@@ -63,6 +64,7 @@ async function buildPlayModeSystemPrompt(db: Kysely<Database>, session: SessionR
   const prompt = buildCoachSystemPrompt({
     user: { displayName: user.displayName, selfAssessment: user.selfAssessment, sessionCount },
     band: user.ratingBand,
+    persona: user.coachPersona,
     mode: 'play',
     game: {
       whiteName: game.whiteName ?? 'White',

@@ -39,6 +39,9 @@ export interface ChatPaneProps {
   /** Fired on hover/focus of a resolved move mention; lifted by the parent
    * to preview it on the board. */
   onHoverMove?: (move: HoverMove) => void;
+  /** The selected coach persona's avatar glyph (coaches.md) — passed
+   * through to MessageList. Defaults to the original coach's ♞ glyph. */
+  coachAvatar?: string;
 }
 
 /** Composes MessageList + ToolActivity + the reply input. No fetching — the
@@ -57,7 +60,8 @@ export function ChatPane({
   hasPendingLine = false,
   fen,
   positions,
-  onHoverMove
+  onHoverMove,
+  coachAvatar
 }: ChatPaneProps): ReactNode {
   const [parts, setParts] = useState<DraftPart[]>(createEmptyDraft);
   const [isDebugOpen, setIsDebugOpen] = useState(false);
@@ -95,6 +99,7 @@ export function ChatPane({
         fen={fen}
         positions={positions}
         onHoverMove={onHoverMove}
+        coachAvatar={coachAvatar}
       />
       <ThinkingIndicator visible={isThinking} />
       <ToolActivity toolName={activeToolName} />

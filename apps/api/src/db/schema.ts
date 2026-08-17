@@ -1,5 +1,5 @@
 import type { ColumnType, Generated } from 'kysely';
-import type { EngineMode, MistakeCategory, MoveQuality, RatingBand, SessionMode } from '@chess-coach/shared';
+import type { CoachPersona, EngineMode, MistakeCategory, MoveQuality, RatingBand, SessionMode } from '@chess-coach/shared';
 
 /** jsonb columns: pg parses them to JS values on select; inserts/updates must pass a JSON string. */
 type Jsonb<T> = ColumnType<T, string, string>;
@@ -10,6 +10,7 @@ export interface UsersTable {
   displayName: string;
   ratingBand: Generated<RatingBand>;
   engineMode: Generated<EngineMode>;
+  coachPersona: Generated<CoachPersona>;
   lichessUsername: string | null;
   chesscomUsername: string | null;
   selfAssessment: string | null;

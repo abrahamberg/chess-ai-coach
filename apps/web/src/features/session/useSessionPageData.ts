@@ -1,4 +1,5 @@
 import { parsePgn, resolveSanMove } from '@chess-coach/chess-analysis';
+import { UserProfileSchema } from '@chess-coach/shared';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -80,6 +81,14 @@ export function useSessionPageData(sessionId: string) {
     queryKey: ['session', sessionId],
     queryFn: ({ signal }) => apiGet(`/api/sessions/${sessionId}`, SessionDetailSchema, signal),
     enabled: sessionId !== ''
+  });
+
+  // Same query key SettingsPage.tsx uses (TanStack Query dedupes/shares the
+  // cache) — this is the coach's selected persona, for the chat avatar
+  // (coaches.md).
+  const profileQuery = useQuery({
+    queryKey: ['profile'],
+    queryFn: ({ signal }) => apiGet('/api/users/me', UserProfileSchema, signal)
   });
 
   const gameId = sessionQuery.data?.gameId;
@@ -192,6 +201,7 @@ export function useSessionPageData(sessionId: string) {
 
   return {
     sessionQuery,
+    profileQuery,
     gameQuery,
     sanMoves,
     positions,

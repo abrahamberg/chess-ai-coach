@@ -334,6 +334,7 @@ describe('UserProfileSchema', () => {
       chesscomUsername: 'daniel_c',
       selfAssessment: null,
       engineMode: 'native',
+      coachPersona: 'general',
       creditBalance: 100
     };
     expect(UserProfileSchema.safeParse(profile).success).toBe(true);
@@ -363,6 +364,12 @@ describe('UpdateUserProfileRequestSchema', () => {
   });
   test('rejects a rating band outside RATING_BANDS', () => {
     expect(UpdateUserProfileRequestSchema.safeParse({ ratingBand: 'grandmaster' }).success).toBe(false);
+  });
+  test('accepts a valid coach persona', () => {
+    expect(UpdateUserProfileRequestSchema.safeParse({ coachPersona: 'gambler' }).success).toBe(true);
+  });
+  test('rejects a coach persona outside COACH_PERSONAS', () => {
+    expect(UpdateUserProfileRequestSchema.safeParse({ coachPersona: 'wizard' }).success).toBe(false);
   });
   test('accepts nullable lichessUsername/chesscomUsername/selfAssessment', () => {
     const patch = { lichessUsername: null, chesscomUsername: null, selfAssessment: null };

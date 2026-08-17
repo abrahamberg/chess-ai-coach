@@ -51,6 +51,9 @@ interface SessionFixture {
    * whenever a fixture's messages include a show_position elsewhere and the
    * test expects the board to reopen there. */
   subjectPly?: number;
+  /** The signed-in user's selected coach persona (coaches.md) — defaults to
+   * 'general', the original coach's ♞ avatar. */
+  coachPersona?: string;
 }
 
 // Most tests aren't about the fresh-session kickoff behavior — default to a
@@ -77,6 +80,25 @@ function mockFetch(session: SessionFixture = {}, extra: (path: string) => Respon
             summary: session.summary ?? null,
             homework: session.homework ?? null,
             messages: session.messages ?? ALREADY_STARTED_MESSAGES
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      );
+    }
+    if (path === '/api/users/me') {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: '7d9f2a44-9a5f-4f6e-b1a1-0a4c1e2d3f4b',
+            email: 'daniel@example.com',
+            displayName: 'daniel',
+            ratingBand: 'club',
+            engineMode: 'native',
+            coachPersona: session.coachPersona ?? 'general',
+            lichessUsername: null,
+            chesscomUsername: null,
+            selfAssessment: null,
+            creditBalance: 100
           }),
           { status: 200, headers: { 'content-type': 'application/json' } }
         )
@@ -164,6 +186,22 @@ describe('SessionPage', () => {
     const options = capturedOptions.at(-1);
     expect(options?.position).toBe(START_FEN);
     expect(options?.boardOrientation).toBe('black');
+  });
+
+  test('coaches.md: the chat avatar reflects the signed-in user\'s selected coach persona', async () => {
+    vi.stubGlobal('fetch', mockFetch({ coachPersona: 'gambler' }));
+    renderSessionPage();
+
+    const messageList = await screen.findByTestId('message-list');
+    expect(await within(messageList).findByText('🎲')).toBeInTheDocument();
+  });
+
+  test('coaches.md: defaults to the original ♞ avatar for the "general" persona', async () => {
+    vi.stubGlobal('fetch', mockFetch());
+    renderSessionPage();
+
+    const messageList = await screen.findByTestId('message-list');
+    expect(await within(messageList).findByText('♞')).toBeInTheDocument();
   });
 
   test('design.md §5.3: hovering a move mention in chat previews it on the board in a distinct color from the coach\'s own arrows', async () => {

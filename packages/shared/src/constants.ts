@@ -22,6 +22,27 @@ export const ENGINE_MODES = ['native', 'browser'] as const;
 export type EngineMode = (typeof ENGINE_MODES)[number];
 
 /**
+ * Cosmetic coach personalities (coaches.md). `general` is the coach as it
+ * has always existed — every other value only changes voice/tone, never
+ * chess judgment, method, or the rules the coach follows (see
+ * packages/prompts/src/coach-persona.ts).
+ */
+export const COACH_PERSONAS = ['general', 'commander', 'scholar', 'huntress', 'shark', 'sunzi', 'gambler'] as const;
+export type CoachPersona = (typeof COACH_PERSONAS)[number];
+
+export const COACH_PERSONA_INFO: Record<CoachPersona, { label: string; avatar: string; tagline: string; explicit: boolean }> = {
+  general: { label: 'General Daniel', avatar: '♞', tagline: 'The coach as you know them today', explicit: false },
+  commander: { label: 'The Commander', avatar: '🎖️', tagline: 'Direct, demanding, no excuses', explicit: false },
+  scholar: { label: 'The Scholar', avatar: '🎓', tagline: 'Patient, curious, explains the why', explicit: false },
+  huntress: { label: 'The Huntress', avatar: '🗡️', tagline: 'Sharp, relentless, attack-minded', explicit: false },
+  // coaches.md: unfiltered slang, trash talk, and profanity are part of the character.
+  shark: { label: 'The Street Shark', avatar: '🦈', tagline: 'Loud, funny, thrives in chaos', explicit: true },
+  sunzi: { label: 'Art of the Board', avatar: '⚖️', tagline: 'Calm, strategic, aphoristic', explicit: false },
+  // coaches.md: profanity and insults are part of the character.
+  gambler: { label: 'The Gambler', avatar: '🎲', tagline: 'Charismatic, fearless, roasts you', explicit: true }
+};
+
+/**
  * Search depth every backend analyzes at by default. Lives here, in the one
  * package all three of them depend on, because `position_evaluations` is keyed
  * by `fen` alone: a row written by one backend is served to callers using the

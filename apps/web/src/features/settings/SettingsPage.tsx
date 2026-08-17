@@ -1,9 +1,17 @@
-import { SavedLlmProvidersResponseSchema, UserProfileSchema, type EngineMode, type LlmProvider, type RatingBand } from '@chess-coach/shared';
+import {
+  SavedLlmProvidersResponseSchema,
+  UserProfileSchema,
+  type CoachPersona,
+  type EngineMode,
+  type LlmProvider,
+  type RatingBand
+} from '@chess-coach/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPut } from '../../api/client.js';
 import { BandSelect } from './BandSelect.js';
 import { ByokKeyForm } from './ByokKeyForm.js';
+import { CoachPersonaSelect } from './CoachPersonaSelect.js';
 import { CreditBalance } from './CreditBalance.js';
 import { EngineModeSelect } from './EngineModeSelect.js';
 import { NicknameForm } from './NicknameForm.js';
@@ -58,6 +66,11 @@ export function SettingsPage(): ReactNode {
     onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
   });
 
+  const coachPersonaMutation = useMutation({
+    mutationFn: (coachPersona: CoachPersona) => apiPatch('/api/users/me', { coachPersona }, UserProfileSchema),
+    onSuccess: (profile) => queryClient.setQueryData(['profile'], profile)
+  });
+
   const lichessUsernameMutation = useMutation({
     mutationFn: (lichessUsername: string | null) =>
       apiPatch('/api/users/me', { lichessUsername }, UserProfileSchema),
@@ -95,6 +108,15 @@ export function SettingsPage(): ReactNode {
         <h2>Profile</h2>
         <NicknameForm value={profile.displayName} onSave={(displayName) => displayNameMutation.mutate(displayName)} />
         <BandSelect value={profile.ratingBand} onChange={(band) => bandMutation.mutate(band)} />
+      </section>
+
+      <section aria-label="Coach">
+        <h2>Coach</h2>
+        <p>Pick who coaches you. It's cosmetic — every coach gives the same advice, just in a different voice.</p>
+        <CoachPersonaSelect
+          value={profile.coachPersona}
+          onChange={(coachPersona) => coachPersonaMutation.mutate(coachPersona)}
+        />
       </section>
 
       <section aria-label="Linked accounts">

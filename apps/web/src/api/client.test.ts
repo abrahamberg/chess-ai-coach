@@ -11,6 +11,7 @@ const VALID_PROFILE = {
   chesscomUsername: null,
   selfAssessment: null,
   engineMode: 'native',
+  coachPersona: 'general',
   creditBalance: 100
 };
 

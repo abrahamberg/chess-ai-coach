@@ -1,0 +1,54 @@
+.coach-persona-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.coach-persona-select__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.coach-persona-select__avatar {
+  flex: none;
+  width: 28px;
+  font-size: 20px;
+  text-align: center;
+}
+
+.coach-persona-select__text {
+  display: flex;
+  flex-direction: column;
+}
+
+.coach-persona-select__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Explicit-content marker (coaches.md: profanity/insults are part of the
+ * character for some personas) — same shape/idea as music-platform "E"
+ * tags, so it reads as a familiar content warning at a glance. */
+.coach-persona-select__explicit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 3px;
+  background: var(--text-muted);
+  color: var(--surface);
+}
+
+.coach-persona-select__tagline {
+  color: var(--text-muted);
+  font-size: 13px;
+}
