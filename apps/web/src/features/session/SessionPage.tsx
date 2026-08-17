@@ -34,7 +34,6 @@ export function SessionPage(): ReactNode {
     gameQuery,
     sanMoves,
     positions,
-    classifiedMoves,
     boardState,
     divergedLine,
     currentRealPosition,

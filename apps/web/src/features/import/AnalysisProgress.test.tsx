@@ -135,7 +135,9 @@ describe('AnalysisProgress (design.md §4.2)', () => {
     const seen = new Set<string | null>();
     for (let i = 0; i < 3; i++) {
       seen.add(screen.getByTestId('analysis-progress-tip').textContent);
-      act(() => vi.advanceTimersByTime(4000));
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
     }
 
     expect([...seen].some((tip) => /a few minutes/i.test(tip ?? ''))).toBe(true);
