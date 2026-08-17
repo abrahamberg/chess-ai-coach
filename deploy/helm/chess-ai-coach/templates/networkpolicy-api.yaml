@@ -3,7 +3,15 @@
      HTTP only from the proxy's pods. That includes the Stripe webhook, which
      reaches the api through the proxy's skip-auth-route (§12: still
      signature-verified in-app). Egress is intentionally unrestricted — the api
-     calls LLM providers and Stripe. */}}
+     calls LLM providers and Stripe.
+
+     The worker also talks to the api directly, bypassing oauth2-proxy: its
+     engine-tunnel relay (RelayEngineTunnelTransport -> routes/engine-tunnel-
+     internal.ts) is how a worker job reaches the browser-mode tunnel
+     connection the api process holds, since the worker never holds that
+     WebSocket itself. That route is guarded by its own shared-secret header
+     rather than oauth2-proxy identity headers, so allowing the worker pod
+     here doesn't weaken auth on the oauth2-proxy-fronted routes. */}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -22,6 +30,9 @@ spec:
             matchLabels:
               app.kubernetes.io/name: oauth2-proxy
               app.kubernetes.io/instance: {{ .Release.Name }}
+        - podSelector:
+            matchLabels:
+              {{- include "chess-ai-coach.selectorLabels" (dict "ctx" . "component" "worker") | nindent 14 }}
       ports:
         - protocol: TCP
           port: {{ .Values.api.containerPort }}

@@ -192,6 +192,11 @@ assert_contains "engine NetworkPolicy exists" "chess-coach-engine" "$NETPOL"
 assert_contains "engine accepts only api + worker" "component: worker" "$NETPOL"
 assert_not_matches "no NetworkPolicy opens a component to the whole world" 'ipBlock' "$NETPOL"
 
+API_NETPOL="$RENDER_DIR/netpol-api.yaml"
+render "$API_NETPOL" --show-only templates/networkpolicy-api.yaml
+assert_contains "api NetworkPolicy accepts oauth2-proxy" "name: oauth2-proxy" "$API_NETPOL"
+assert_contains "api NetworkPolicy also accepts the worker (engine-tunnel relay)" "component: worker" "$API_NETPOL"
+
 INGRESS="$RENDER_DIR/ingress.yaml"
 render "$INGRESS" --set ingress.backend.serviceName=chess-coach-oauth2-proxy \
   --set ingress.backend.servicePort=80 --show-only templates/ingress.yaml
