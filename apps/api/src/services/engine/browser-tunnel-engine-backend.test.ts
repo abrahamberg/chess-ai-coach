@@ -49,7 +49,9 @@ describe('BrowserTunnelEngineBackend', () => {
       // back to its own constant and can search shallower than the native
       // backend, mixing depths in the fen-keyed eval cache.
       { kind: 'analyze-position', fen: 'f', depth: ENGINE_DEFAULT_DEPTH, multiPv: 3 },
-      8000
+      // A single position can still be one of the slow ones — same
+      // per-position allowance analyzeGame gets, just for one position.
+      8000 + ENGINE_TUNNEL_PER_POSITION_MS
     );
     expect(result).toEqual(VALID_ANALYSIS);
   });

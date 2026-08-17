@@ -32,11 +32,16 @@ export type EngineMode = (typeof ENGINE_MODES)[number];
 export const ENGINE_DEFAULT_DEPTH = 16;
 
 /**
- * Per-position allowance added to the tunnel timeout for a whole-game batch.
- * A batch is one request covering every position in the game, so timing it
- * like a single-position request is wrong by two orders of magnitude: a real
- * 46-ply game measured ~42s end to end in the browser (~0.9s/position on the
- * full-net WASM build), against a flat 10s budget. Sized well above that
- * average so slower machines and sharper positions still land inside it.
+ * Per-position allowance added to the tunnel timeout, for both a single
+ * analyzePosition request and each position folded into a whole-game
+ * analyzeGame batch. This isn't an average — it has to cover the *worst*
+ * position, because `go depth 16` / multiPv 3 has no time bound at all: the
+ * single-threaded full-net WASM build measured 9.9s-16.1s on ordinary early
+ * Ruy Lopez positions (wide-open, nothing to prune, three full lines to
+ * maintain), against sharper middlegame positions finishing in ~3-4s. Every
+ * new game's first chunk is the opening, so an average-sized budget fails
+ * almost every browser-mode import at the very first chunk. Product call:
+ * browser-mode analysis is allowed to take minutes — correctness and
+ * depth-16 parity with the native engine matter more than latency here.
  */
-export const ENGINE_TUNNEL_PER_POSITION_MS = 4000;
+export const ENGINE_TUNNEL_PER_POSITION_MS = 30_000;

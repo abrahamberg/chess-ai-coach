@@ -162,7 +162,7 @@ describe('SharedEngineWorker', () => {
       expect(stuckWorker.sent.some((m) => m.startsWith('go'))).toBe(true);
 
       // No 'bestmove' ever arrives for stuckWorker.
-      await vi.advanceTimersByTimeAsync(25_000);
+      await vi.advanceTimersByTimeAsync(45_000);
       await stuckAssertion;
       expect(stuckWorker.terminate).toHaveBeenCalledOnce();
       expect(client.status).toBe('absent');
@@ -194,7 +194,7 @@ describe('SharedEngineWorker', () => {
       stuckWorker.emit('uciok');
       stuckWorker.emit('readyok');
 
-      await vi.advanceTimersByTimeAsync(25_000);
+      await vi.advanceTimersByTimeAsync(45_000);
       await stuckAssertion;
       await queuedAssertion;
     } finally {

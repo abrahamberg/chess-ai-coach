@@ -34,7 +34,10 @@ export class BrowserTunnelEngineBackend implements EngineBackend {
       // fall back to a constant of its own when it isn't, which is how it ended
       // up searching a ply shallower than the native backend.
       { kind: 'analyze-position', fen, depth: opts?.depth ?? ENGINE_DEFAULT_DEPTH, multiPv: opts?.multiPv ?? ENGINE_MULTI_PV },
-      this.timeoutMs
+      // Same reasoning as analyzeGame below: a single position can be one of
+      // the slow ones (see ENGINE_TUNNEL_PER_POSITION_MS's doc), so this needs
+      // the same per-position allowance on top of the base, not the base alone.
+      this.timeoutMs + ENGINE_TUNNEL_PER_POSITION_MS
     );
     return PositionAnalysisSchema.parse(raw);
   }

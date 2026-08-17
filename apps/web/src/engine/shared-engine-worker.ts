@@ -122,12 +122,15 @@ interface QueuedAnalysis {
  * postMessage, or the WASM engine itself wedging) used to hang pump() forever:
  * `active` never clears, so every later analyze() call — Explore panel or
  * tunnel fulfillment alike — queues silently behind it for the rest of the
- * tab's life with no visible error. Comfortably above the slowest real
- * search seen in practice (depth 16/multiPv 3 takes a few seconds; a cold,
- * resource-constrained tab can run several times that) but short enough that
- * a genuinely stuck engine self-heals within one browser-mode tunnel chunk
- * instead of eating every later request in the game. */
-const SEARCH_TIMEOUT_MS = 25_000;
+ * tab's life with no visible error. `go depth 16`/multiPv 3 has no time bound
+ * at all, and ordinary early-game positions measured up to ~16s on the
+ * single-threaded full-net WASM build (packages/shared's
+ * ENGINE_TUNNEL_PER_POSITION_MS doc has the numbers) — comfortably slower
+ * than this would look identical to "stuck" without a wide margin above it.
+ * Kept above the server's own per-position tunnel budget so the server times
+ * a request out first on a truly slow-but-working search; this only fires
+ * for a search that's actually never coming back. */
+const SEARCH_TIMEOUT_MS = 45_000;
 
 /** Owns the single WASM Stockfish Worker — shared between the Explore panel
  * and browser-mode tunnel fulfillment so only one engine process ever runs

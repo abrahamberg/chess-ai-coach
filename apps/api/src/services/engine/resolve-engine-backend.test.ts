@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi, beforeAll, afterAll } from 'vitest';
 import type { Kysely } from 'kysely';
+import { ENGINE_TUNNEL_PER_POSITION_MS } from '@chess-coach/shared';
 import { createTestDb, type TestDb } from '../../../test/helpers/db.js';
 import * as usersRepo from '../../db/repositories/users.js';
 import type { Database } from '../../db/schema.js';
@@ -90,7 +91,11 @@ describe('resolveEngineBackend', () => {
     const backend = await resolveEngineBackend(options(tunnelTransport), user.id);
     await backend.analyzePosition(BROWSER_FEN);
 
-    expect(tunnelTransport.request).toHaveBeenCalledWith(user.id, expect.objectContaining({ kind: 'analyze-position' }), 8000);
+    expect(tunnelTransport.request).toHaveBeenCalledWith(
+      user.id,
+      expect.objectContaining({ kind: 'analyze-position' }),
+      8000 + ENGINE_TUNNEL_PER_POSITION_MS
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
