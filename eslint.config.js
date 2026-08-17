@@ -6,6 +6,15 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Served as-is by Vite from apps/web/public — runs in the service
+    // worker global scope, not the browser/Node globals the rest of the
+    // repo uses.
+    files: ['apps/web/public/*-sw.js'],
+    languageOptions: {
+      globals: { self: 'readonly', caches: 'readonly', fetch: 'readonly' }
+    }
+  },
+  {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parserOptions: {
