@@ -120,9 +120,28 @@ function send(socket: WebSocket, message: TunnelResponseMessage): void {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
+// requestId-less, so EngineTunnelRegistry's onmessage handler ("Ignore
+// messages without requestId") drops it as a no-op — its only purpose is to
+// put traffic on the wire so the connection doesn't look idle.
+function sendPing(socket: WebSocket): void {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }));
+}
+
 function defaultWsUrl(): string {
   return `${window.location.origin.replace(/^http/, 'ws')}/api/engine-tunnel`;
 }
+
+// nginx-ingress closes an idle proxied connection after its default 60s
+// proxy-read-timeout, and this tunnel can otherwise sit silent for a long
+// time between jobs. A ping well under that (the message itself is a no-op —
+// EngineTunnelRegistry.registerConnection drops anything without a
+// requestId) keeps the connection alive instead of it dying invisibly and
+// failing every job with "No tunnel connection" until the tab is reloaded.
+const KEEPALIVE_INTERVAL_MS = 20_000;
+// A deploy rolling the api pod also closes this socket server-side. Without
+// a reconnect, that outage is permanent for the tab's lifetime even though
+// the server comes back within seconds.
+const RECONNECT_DELAY_MS = 2_000;
 
 export interface UseEngineTunnelClientOptions {
   enabled: boolean;
@@ -133,16 +152,39 @@ export interface UseEngineTunnelClientOptions {
  * the same SharedEngineWorker the Explore panel uses. Mounted once at the
  * app root (App.tsx via useEngineTunnelActivation), not scoped to the
  * session page — background jobs can tunnel a request any time engineMode
- * is 'browser', not just mid-session. */
+ * is 'browser', not just mid-session. Reconnects on any close (idle-timeout
+ * or a server redeploy) rather than leaving the tab permanently tunnel-less. */
 export function useEngineTunnelClient(options: UseEngineTunnelClientOptions): void {
   useEffect(() => {
     if (!options.enabled) return undefined;
 
-    const socket = new WebSocket(options.wsUrl ?? defaultWsUrl());
-    socket.onmessage = (event: MessageEvent<string>) => {
-      void handleTunnelRequest(socket, event.data);
-    };
+    const wsUrl = options.wsUrl ?? defaultWsUrl();
+    let socket: WebSocket | undefined;
+    let keepaliveId: ReturnType<typeof setInterval> | undefined;
+    let reconnectId: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
 
-    return () => socket.close();
+    function connect(): void {
+      socket = new WebSocket(wsUrl);
+      socket.onmessage = (event: MessageEvent<string>) => {
+        void handleTunnelRequest(socket!, event.data);
+      };
+      socket.onopen = () => {
+        if (stopped) return;
+        keepaliveId = setInterval(() => sendPing(socket!), KEEPALIVE_INTERVAL_MS);
+      };
+      socket.onclose = () => {
+        if (keepaliveId !== undefined) clearInterval(keepaliveId);
+        if (!stopped) reconnectId = setTimeout(connect, RECONNECT_DELAY_MS);
+      };
+    }
+    connect();
+
+    return () => {
+      stopped = true;
+      if (keepaliveId !== undefined) clearInterval(keepaliveId);
+      if (reconnectId !== undefined) clearTimeout(reconnectId);
+      socket?.close();
+    };
   }, [options.enabled, options.wsUrl]);
 }

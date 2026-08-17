@@ -42,12 +42,14 @@ class FakeSocket {
   static instances: FakeSocket[] = [];
   onmessage: ((event: { data: string }) => void) | null = null;
   onopen: (() => void) | null = null;
+  onclose: (() => void) | null = null;
   sent: string[] = [];
   closed = false;
   readyState = 1;
 
   constructor(public url: string) {
     FakeSocket.instances.push(this);
+    queueMicrotask(() => this.onopen?.());
   }
 
   send(message: string): void {
@@ -60,6 +62,13 @@ class FakeSocket {
 
   emitMessage(data: string): void {
     this.onmessage?.({ data });
+  }
+
+  // Simulates the server (or an idle-timeout proxy in front of it) dropping
+  // the connection — distinct from close(), which is the client hanging up.
+  closeFromServer(): void {
+    this.readyState = FakeSocket.CLOSED;
+    this.onclose?.();
   }
 }
 
@@ -157,5 +166,51 @@ describe('useEngineTunnelClient', () => {
 
     const response = JSON.parse(socket.sent[0]!) as { result?: Array<{ lines: Array<{ cp: number | null }> }> };
     expect(response.result?.[0]?.lines[0]?.cp).toBe(-50);
+  });
+
+  // Regression: nginx-ingress's default 60s proxy-read-timeout silently
+  // drops an idle tunnel — a game import submitted after that point failed
+  // instantly with "No tunnel connection" and stayed broken until the tab
+  // was reloaded, since nothing kept the connection alive or reconnected it.
+  describe('keepalive and reconnect', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    test('pings periodically once open, to keep an idle-timeout proxy from closing the socket', async () => {
+      renderHook(() => useEngineTunnelClient({ enabled: true, wsUrl: 'ws://localhost/api/engine-tunnel' }));
+      const socket = FakeSocket.instances[0]!;
+      await vi.advanceTimersByTimeAsync(0); // flush the constructor's onopen microtask
+      expect(socket.sent).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(socket.sent).toHaveLength(1);
+      expect(JSON.parse(socket.sent[0]!)).not.toHaveProperty('requestId');
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(socket.sent).toHaveLength(2);
+    });
+
+    test('reconnects after the server drops the connection', async () => {
+      renderHook(() => useEngineTunnelClient({ enabled: true, wsUrl: 'ws://localhost/api/engine-tunnel' }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(FakeSocket.instances).toHaveLength(1);
+
+      FakeSocket.instances[0]!.closeFromServer();
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(FakeSocket.instances).toHaveLength(2);
+      expect(FakeSocket.instances[1]!.url).toBe('ws://localhost/api/engine-tunnel');
+    });
+
+    test('does not reconnect once unmounted', async () => {
+      const { unmount } = renderHook(() => useEngineTunnelClient({ enabled: true, wsUrl: 'ws://localhost/api/engine-tunnel' }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      FakeSocket.instances[0]!.closeFromServer();
+      unmount();
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(FakeSocket.instances).toHaveLength(1);
+    });
   });
 });
